@@ -41,6 +41,9 @@ final class EventMonitor {
     /// Kinetic scrolling parameters, pushed from main whenever settings change.
     var smooth: SmoothConfig { get { _smooth.value } set { _smooth.value = newValue } }
     private let _smooth = Locked(SmoothConfig.off)
+    /// Force-click parameters, pushed from main whenever settings change.
+    var force: ForceConfig { get { _force.value } set { _force.value = newValue } }
+    private let _force = Locked(ForceConfig.off)
     var lastPointerMove: CFTimeInterval { _lastMove.value }
     private let _lastMove = Locked<CFTimeInterval>(0)
     var lastClick: CFTimeInterval { _lastClick.value }
@@ -79,6 +82,15 @@ final class EventMonitor {
     private var notchTimes: [CFTimeInterval] = []
     private var scrollTimer: CFRunLoopTimer?
     private var lastTick: CFTimeInterval = 0
+
+    // Force click state (tap thread only): where the press started, the hold and ramp
+    // timers, the stage reached (0 none, 1 ramping, 2 deep), and the device ID stamped.
+    private var forceOrigin = CGPoint.zero
+    private var forceHoldTimer: CFRunLoopTimer?
+    private var forceRampTimer: CFRunLoopTimer?
+    private var forceStage = 0
+    private var forceStamped: Int64 = 0
+    private var forceRampStep = 0
 
     func start() {
         guard tap == nil else { return }
@@ -126,6 +138,7 @@ final class EventMonitor {
         swallowLeftUpUntil = 0; swallowRightUpUntil = 0
         if let scrollTimer { CFRunLoopTimerInvalidate(scrollTimer) }
         scrollTimer = nil
+        cancelForce()
     }
 
     /// Main thread. AppKit screen geometry, converted once for the tap thread.
@@ -158,6 +171,7 @@ final class EventMonitor {
             dragStart = event.location; dragDistance = 0
             _leftDown.value = true
             _lastClick.value = now
+            armForce(event, now)
             // Accessibility IPC must not run on the tap thread (or main): snapshot the window frame off both.
             axQueue.async { [weak self] in guard let self else { return }; self.frameBeforeDrag.value = self.focusedWindowFrame() }
         case .leftMouseDragged:
@@ -165,8 +179,10 @@ final class EventMonitor {
             let p = event.location
             dragDistance += hypot(p.x - dragStart.x, p.y - dragStart.y); dragStart = p
             checkEdge(p)
+            if forceStage < 2, hypot(p.x - forceOrigin.x, p.y - forceOrigin.y) > 4 { cancelForce() }   // it is a drag, not a press
         case .leftMouseUp:
             _leftDown.value = false
+            releaseForce(event)
             if now < swallowLeftUpUntil { swallowLeftUpUntil = 0; return nil }
             if dragDistance > 20 {
                 onEvent?(.dragEnd)
@@ -175,6 +191,7 @@ final class EventMonitor {
             }
             dragDistance = 0
         case .rightMouseDown:
+            cancelForce()
             if !listenOnly, ringCancel?() == true { swallowRightUpUntil = now + 1.5; return nil }
         case .rightMouseUp:
             if now < swallowRightUpUntil { swallowRightUpUntil = 0; return nil }
@@ -296,6 +313,83 @@ final class EventMonitor {
                                wheel1: dy, wheel2: dx, wheel3: 0) else { return }
         ev.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1)
         ev.post(tap: .cghidEventTap)
+    }
+
+    // MARK: Force click (press and hold → trackpad-style deep press)
+    //
+    // See ForceClick.swift for the measured event format. The real mouse-down is stamped
+    // with a Force Touch trackpad's device ID so AppKit's immediate-action recogniser
+    // arms; after the hold delay with the pointer still, a pressure ramp is posted up to
+    // stage 2, which is when the app shows its preview and the mouse gets its pulse.
+
+    private func armForce(_ event: CGEvent, _ now: CFTimeInterval) {
+        cancelForce()
+        let cfg = force
+        guard cfg.enabled, !listenOnly, cfg.deviceID != 0,
+              event.getIntegerValueField(.mouseEventClickState) == 1,
+              event.flags.intersection([.maskControl, .maskCommand, .maskShift, .maskAlternate]).isEmpty else { return }
+        let dev = event.getIntegerValueField(ForceClick.fieldDeviceID)
+        guard !cfg.touchDevices.contains(dev) else { return }               // a trackpad: it force-clicks by itself
+        event.setIntegerValueField(ForceClick.fieldDeviceID, value: cfg.deviceID)
+        forceStamped = cfg.deviceID
+        forceOrigin = event.location
+        forceStage = 0
+        let t = CFRunLoopTimerCreateWithHandler(kCFAllocatorDefault, CFAbsoluteTimeGetCurrent() + cfg.delay, 0, 0, 0) { [weak self] _ in
+            self?.beginForceRamp()
+        }
+        CFRunLoopAddTimer(TapThread.shared.runLoop, t, .commonModes)
+        forceHoldTimer = t
+    }
+
+    /// Tap thread. The button is still down and the pointer has not moved: start pressing.
+    private func beginForceRamp() {
+        forceHoldTimer = nil
+        guard _leftDown.value, forceStamped != 0, forceStage == 0 else { return }
+        forceStage = 1
+        forceRampStep = 0
+        postForce(stage: 1, pressure: 0.1, phase: 1)
+        let t = CFRunLoopTimerCreateWithHandler(kCFAllocatorDefault, CFAbsoluteTimeGetCurrent() + 1.0 / 60, 1.0 / 60, 0, 0) { [weak self] _ in
+            self?.forceRampTick()
+        }
+        CFRunLoopAddTimer(TapThread.shared.runLoop, t, .commonModes)
+        forceRampTimer = t
+    }
+
+    private func forceRampTick() {
+        guard _leftDown.value, forceStage == 1 else { cancelForce(); return }
+        forceRampStep += 1
+        if forceRampStep < 6 {
+            postForce(stage: 1, pressure: Double(forceRampStep) / 6, phase: 2)
+            return
+        }
+        if let forceRampTimer { CFRunLoopTimerInvalidate(forceRampTimer) }
+        forceRampTimer = nil
+        forceStage = 2
+        postForce(stage: 2, pressure: 1.0, phase: 2)
+        onEvent?(.forceClick)
+        DebugLog.log(String(format: "force click at (%.0f, %.0f)", forceOrigin.x, forceOrigin.y))
+    }
+
+    /// Tap thread, on the real left-up: let the press go and keep the up on the same device.
+    private func releaseForce(_ up: CGEvent) {
+        if forceStamped != 0 { up.setIntegerValueField(ForceClick.fieldDeviceID, value: forceStamped) }
+        if forceStage > 0 {
+            postForce(stage: 1, pressure: 0.5, phase: 2)
+            postForce(stage: 0, pressure: 0, phase: 4)
+        }
+        cancelForce()
+    }
+
+    private func cancelForce() {
+        if let forceHoldTimer { CFRunLoopTimerInvalidate(forceHoldTimer) }
+        if let forceRampTimer { CFRunLoopTimerInvalidate(forceRampTimer) }
+        forceHoldTimer = nil; forceRampTimer = nil
+        forceStage = 0; forceStamped = 0
+    }
+
+    private func postForce(stage: Int64, pressure: Double, phase: Int64) {
+        ForceClick.pressureEvent(source: scrollSource, at: forceOrigin, stage: stage, pressure: pressure,
+                                 phase: phase, device: forceStamped)?.post(tap: .cghidEventTap)
     }
 
     // MARK: Screen edge

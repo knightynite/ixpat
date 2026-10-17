@@ -276,6 +276,8 @@ struct ButtonPane: View {
                 GesturePane()
             }
             Divider()
+            ForceClickSection()
+            Divider()
             Toggle(isOn: $settings.swallowButton) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Hide the button's built-in chords from apps").font(.system(size: 13, weight: .medium))
@@ -283,6 +285,54 @@ struct ButtonPane: View {
                         .font(.system(size: 11)).foregroundStyle(pal.text2)
                 }
             }.toggleStyle(.switch).disabled(!permissions.accessibility)
+        }
+    }
+}
+
+
+/// Press-and-hold as a trackpad Force Click (Look Up, link previews, Quick Look).
+struct ForceClickSection: View {
+    @EnvironmentObject var settings: Settings
+    @EnvironmentObject var permissions: Permissions
+    @Environment(\.palette) private var pal
+    @State private var systemOn = ForceClick.systemEnabled
+    @State private var touchDevices = ForceClick.touchDeviceIDs().count
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle(isOn: $settings.forceClick) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Force click: press and hold the left button").font(.system(size: 13, weight: .medium))
+                    Text("Keep the button down without moving and the app gets a trackpad Force Click: Look Up on a word, a preview of a link, "
+                       + "Quick Look on a file, with a deeper second click on the mouse. Release or move and nothing extra happens.")
+                        .font(.system(size: 11)).foregroundStyle(pal.text2)
+                }
+            }.toggleStyle(.switch).disabled(!permissions.accessibility)
+            HStack {
+                Text("Hold for").font(.system(size: 12)).frame(width: 130, alignment: .leading)
+                Slider(value: Binding(get: { Double(settings.forceClickMs) }, set: { settings.forceClickMs = Int($0) }), in: 200...800, step: 25) { }
+                    minimumValueLabel: { Text("Quick").font(.system(size: 10)) } maximumValueLabel: { Text("Patient").font(.system(size: 10)) }
+                Text("\(settings.forceClickMs) ms").font(.system(size: 11, design: .monospaced)).frame(width: 60)
+            }.disabled(!settings.forceClick).opacity(settings.forceClick ? 1 : 0.5)
+            if !permissions.accessibility {
+                Text("Needs Accessibility (Diagnostics tab).").font(.system(size: 11)).foregroundStyle(.orange)
+            } else if touchDevices == 0 {
+                Text("No Force Touch trackpad is attached. macOS only accepts a force click from a trackpad it knows, so this needs a built-in or Magic Trackpad present.")
+                    .font(.system(size: 11)).foregroundStyle(.orange)
+            } else if !systemOn {
+                HStack(spacing: 10) {
+                    Text("“Force Click and haptic feedback” is off in System Settings › Trackpad, so apps ignore force clicks from any device.")
+                        .font(.system(size: 11)).foregroundStyle(.orange)
+                    Button("Turn on") {
+                        ForceClick.enableSystemPreference()
+                        systemOn = ForceClick.systemEnabled
+                    }.controlSize(.small)
+                }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            systemOn = ForceClick.systemEnabled
+            touchDevices = ForceClick.touchDeviceIDs().count
         }
     }
 }

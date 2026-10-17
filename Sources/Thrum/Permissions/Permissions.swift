@@ -14,7 +14,7 @@ enum PermissionKind: String, CaseIterable, Identifiable {
     var why: String {
         switch self {
         case .inputMonitoring:
-            return "Lets Thrum read the mouse's own reports: button presses for click haptics, "
+            return "Lets iXpat read the mouse's own reports: button presses for click haptics, "
                  + "the scroll wheel, and the action button. Haptic playback itself works without it."
         case .accessibility:
             return "Needed to reverse scrolling for this mouse only, hide the action button's "

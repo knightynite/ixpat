@@ -9,7 +9,7 @@ import Network
 ///
 /// `event` is a waveform name (hover, collide, align, step, grow, success, error,
 /// click) or one of the semantic aliases below. Intensity 1…4, scaled by the
-/// master strength. The app decides when; Thrum only plays.
+/// master strength. The app decides when; iXpat only plays.
 final class HapticBridge {
     var onPlay: ((String, Int) -> Void)?           // (waveform name, intensity) on main
     var waveformsJSON: () -> String = { "[]" }
@@ -86,7 +86,7 @@ final class HapticBridge {
     private func route(_ r: Request) -> (Int, String) {
         switch (r.method, r.path) {
         case ("OPTIONS", _): return (204, "")
-        case ("GET", "/ping"): return (200, #"{"ok":true,"app":"Thrum"}"#)
+        case ("GET", "/ping"): return (200, #"{"ok":true,"app":"iXpat"}"#)
         case ("GET", "/waveforms"): return (200, waveformsJSON())
         case ("POST", "/haptic"):
             guard let obj = try? JSONSerialization.jsonObject(with: r.body) as? [String: Any] else { return (400, #"{"error":"bad json"}"#) }

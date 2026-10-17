@@ -176,7 +176,7 @@ struct Wordmark: View {
     let pal: Palette
     var size: CGFloat = 16
     var body: some View {
-        Text("Thrum")
+        Text("iXpat")
             .font(.system(size: size, weight: .bold, design: .rounded))
             .foregroundStyle(LinearGradient(colors: [pal.text, pal.accent], startPoint: .leading, endPoint: .trailing))
     }

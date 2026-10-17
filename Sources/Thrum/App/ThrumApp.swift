@@ -74,7 +74,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 .environmentObject(permissions).environmentObject(button)
             let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 860, height: 700),
                              styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
-            w.title = "Thrum"
+            w.title = "iXpat"
             w.titlebarAppearsTransparent = true
             w.titleVisibility = .hidden
             w.styleMask.insert(.fullSizeContentView)

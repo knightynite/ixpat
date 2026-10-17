@@ -373,6 +373,12 @@ final class EventMonitor {
     /// Tap thread, on the real left-up: let the press go and keep the up on the same device.
     private func releaseForce(_ up: CGEvent) {
         if forceStamped != 0 { up.setIntegerValueField(ForceClick.fieldDeviceID, value: forceStamped) }
+        // Apps that handle the deep press themselves (Safari, NSTextView) swallow the click; those
+        // that only react to it (Chrome: Look Up, then the link still opens on release) do not.
+        // Blink and WebKit treat a left release with Control held as a context-menu event and
+        // skip the click (a click count of 0 does not help: Blink takes the count from the
+        // press), so the release after a deep press carries Control.
+        if forceStage == 2 { up.flags.insert(.maskControl) }
         if forceStage > 0 {
             postForce(stage: 1, pressure: 0.5, phase: 2)
             postForce(stage: 0, pressure: 0, phase: 4)

@@ -408,6 +408,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                       accel: s.scrollAccel,
                                       multiplier: freeSpinActive ? s.freeSpinMultiplier : 1,
                                       reverse: live && s.reverseScroll)
+        let touch = ForceClick.touchDeviceIDs()
+        monitor.force = ForceConfig(enabled: s.enabled && s.forceClick && permissions.accessibility,   // any plain mouse; trackpads are skipped by device ID
+                                    delay: Double(s.forceClickMs) / 1000,
+                                    deviceID: touch.first ?? 0,
+                                    touchDevices: Set(touch))
         menus.config = MenuWatcher.Config(menuTicks: s.enabled && s.rule(.menuHighlight).enabled,
                                           textTicks: s.enabled && (s.rule(.textSelect).enabled || s.rule(.textLine).enabled),
                                           controlTicks: s.enabled && s.rule(.controlHover).enabled,

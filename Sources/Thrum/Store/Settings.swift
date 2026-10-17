@@ -9,6 +9,7 @@ enum HapticEvent: String, CaseIterable, Codable, Identifiable {
     case menuHighlight, textSelect, textLine, ringDetent, ringOpen, ringCommit, freeSpinOn, freeSpinOff
     case leftHold, rightHold, freeSpinTexture, gestureStep, gestureLimit, gestureSwipe
     case controlHover, hoverAffordance, dropTarget, sliderTick, selectionChange, scrollEnd, pluginPulse
+    case forceClick
 
     var id: String { rawValue }
     var title: String {
@@ -45,6 +46,7 @@ enum HapticEvent: String, CaseIterable, Codable, Identifiable {
         case .selectionChange: return "Tab or item selected"
         case .scrollEnd:    return "Scrolling hits the end"
         case .pluginPulse:  return "App plugin pulse"
+        case .forceClick:   return "Force click"
         }
     }
     var detail: String {
@@ -78,6 +80,7 @@ enum HapticEvent: String, CaseIterable, Codable, Identifiable {
         case .selectionChange:      return "A tab, segment, slide thumbnail or list selection changed under the mouse."
         case .scrollEnd:            return "The scroll bar of the front app reached the top or bottom: an overscroll bump."
         case .pluginPulse:          return "Pulses requested by app plugins over the local bridge (Diagnostics tab). The plugin picks the waveform; this switch gates it."
+        case .forceClick:           return "The second, deeper click of a press-and-hold, the moment the app opens its Look Up or preview (Action Button tab)."
         }
     }
     var permission: PermissionKind? {
@@ -90,6 +93,7 @@ enum HapticEvent: String, CaseIterable, Codable, Identifiable {
         case .gestureStep, .gestureLimit, .gestureSwipe: return nil
         case .controlHover, .dropTarget, .sliderTick, .selectionChange, .scrollEnd: return .accessibility
         case .hoverAffordance, .pluginPulse: return nil
+        case .forceClick: return .accessibility
         }
     }
     static let defaults: [HapticEvent: HapticRule] = [
@@ -125,6 +129,7 @@ enum HapticEvent: String, CaseIterable, Codable, Identifiable {
         .selectionChange: HapticRule(enabled: true, ordinal: 5, intensity: 2), // ALIGN
         .scrollEnd:    HapticRule(enabled: true,  ordinal: 4,  intensity: 2),   // COLLIDE at the boundary
         .pluginPulse:  HapticRule(enabled: true,  ordinal: 10, intensity: 3),
+        .forceClick:    HapticRule(enabled: true,  ordinal: 10, intensity: 4),   // CLICK: the deep second click
     ]
 }
 
@@ -352,6 +357,8 @@ final class Settings: ObservableObject {
     @Published var bridgeToken = "" { didSet { save() } }
     // Click feel extras
     @Published var clickHoldMs = 300 { didSet { save() } }           // when leftHold / rightHold play
+    @Published var forceClick = true { didSet { save() } }           // press-and-hold = trackpad Force Click
+    @Published var forceClickMs = 350 { didSet { save() } }         // how long the button must stay still first
     @Published var freeSpinTextureEvery = 2 { didSet { save() } }    // notches per texture tick during free-spin
     @Published var swallowButton = true { didSet { save() } }
     // Appearance
@@ -414,6 +421,8 @@ final class Settings: ObservableObject {
         var gestureFreezePointer: Bool?
         var gesturesOnHold: Bool?
         var clickHoldMs, freeSpinTextureEvery: Int?
+        var forceClick: Bool?
+        var forceClickMs: Int?
         var profiles: [AppProfile]?
         var bridgeEnabled: Bool?
         var bridgePort: Int?
@@ -474,6 +483,7 @@ final class Settings: ObservableObject {
         gestureFreezePointer = s.gestureFreezePointer ?? true
         gesturesOnHold = s.gesturesOnHold ?? true
         clickHoldMs = s.clickHoldMs ?? 300; freeSpinTextureEvery = s.freeSpinTextureEvery ?? 2
+        forceClick = s.forceClick ?? true; forceClickMs = s.forceClickMs ?? 350
         profiles = s.profiles ?? []
         bridgeEnabled = s.bridgeEnabled ?? true; bridgePort = s.bridgePort ?? 47337; bridgeToken = s.bridgeToken ?? ""
         loading = false
@@ -507,6 +517,7 @@ final class Settings: ObservableObject {
                          gestureUp: gestureUp, gestureDown: gestureDown, gestureLeft: gestureLeft, gestureRight: gestureRight,
                          gestureStepPx: gestureStepPx, gestureSwipePx: gestureSwipePx, gestureFreezePointer: gestureFreezePointer, gesturesOnHold: gesturesOnHold,
                          clickHoldMs: clickHoldMs, freeSpinTextureEvery: freeSpinTextureEvery,
+                         forceClick: forceClick, forceClickMs: forceClickMs,
                          profiles: profiles, bridgeEnabled: bridgeEnabled, bridgePort: bridgePort, bridgeToken: bridgeToken)
         let enc = JSONEncoder(); enc.outputFormatting = [.prettyPrinted, .sortedKeys]
         if let data = try? enc.encode(s) { try? data.write(to: Self.url, options: .atomic) }

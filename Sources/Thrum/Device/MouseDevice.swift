@@ -179,8 +179,26 @@ final class MouseDevice: ObservableObject {
 
     // MARK: Input
 
+    // Reports arrive at the mouse's polling rate; publishing each one re-renders every
+    // view that observes the device (measured: ~15% CPU in NSHostingView.layout while the
+    // mouse moved). Motion and the report counter are coalesced to one publish per 80 ms.
+    private var reportCount = 0
+    private var pendingMotion: CGSize?
+    private var flushScheduled = false
+    private func scheduleFlush() {
+        guard !flushScheduled else { return }
+        flushScheduled = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in
+            guard let self else { return }
+            self.flushScheduled = false
+            if let m = self.pendingMotion { self.pendingMotion = nil; if m != self.lastMotion { self.lastMotion = m } }
+            if self.reportCount != self.reportsSeen { self.reportsSeen = self.reportCount }
+        }
+    }
+
     private func handleInput(reportID: UInt8, bytes: [UInt8]) {
-        reportsSeen += 1
+        reportCount += 1
+        scheduleFlush()
         let rep = RawReport(reportID: reportID, bytes: bytes)
         if reportID == 0x03, bytes.count >= 6 {
             let b = bytes[1] & 0x1f
@@ -194,7 +212,7 @@ final class MouseDevice: ObservableObject {
                 append(rep)
             }
             if dx != 0 || dy != 0 {
-                lastMotion = CGSize(width: dx, height: dy)
+                pendingMotion = CGSize(width: dx, height: dy)
                 motionReset?.cancel()
                 let w = DispatchWorkItem { [weak self] in self?.lastMotion = .zero }
                 motionReset = w

@@ -10,7 +10,6 @@ struct MenuView: View {
     @EnvironmentObject var permissions: Permissions
     @Environment(\.colorScheme) private var systemScheme
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
-    @State private var pulse = false
 
     private var pal: Palette { Palette.resolve(theme: settings.theme, systemScheme: systemScheme, accent: settings.accent) }
 
@@ -23,9 +22,10 @@ struct MenuView: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Wordmark(pal: pal, size: 15)
                     HStack(spacing: 6) {
+                        // A static glow: a repeat-forever animation here kept the hidden popover's
+                        // hosting view laying out at display rate (measured ~15% CPU while closed).
                         Circle().fill(device.connected ? Color.green : pal.text3).frame(width: 7, height: 7)
-                            .overlay(Circle().stroke(Color.green.opacity(device.connected ? 0.5 : 0), lineWidth: pulse ? 5 : 1).opacity(pulse ? 0 : 1))
-                            .animation(device.connected ? .easeOut(duration: 1.4).repeatForever(autoreverses: false) : .default, value: pulse)
+                            .shadow(color: device.connected ? .green.opacity(0.8) : .clear, radius: 4)
                         Text(device.connected ? "Connected" : "Not connected")
                             .font(.system(size: 11)).foregroundStyle(pal.text2)
                     }
@@ -84,7 +84,6 @@ struct MenuView: View {
         .environment(\.palette, pal)
         .preferredColorScheme(settings.theme == .system ? nil : (pal.isDark ? .dark : .light))
         .tint(pal.accent)
-        .onAppear { pulse = true }
     }
 
     private func icon(_ name: String, _ pal: Palette) -> some View {

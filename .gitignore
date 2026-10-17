@@ -1,0 +1,7 @@
+.build/
+Thrum.app/
+*.xcodeproj/
+.swiftpm/
+.DS_Store
+*.dSYM/
+.sign-id

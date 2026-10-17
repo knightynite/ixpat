@@ -15,8 +15,11 @@ import IOKit
 ///    `associatedEventsMask` with the pressure bit, which AppKit derives from the event's
 ///    device ID (private field 87): it must be the registry ID of an `AppleMultitouchDevice`
 ///    that supports force. Stamping the real mouse-down with the trackpad's ID is enough.
-///  • The user preference `com.apple.trackpad.forceClick` (global domain) must be 1 or
-///    AppKit ignores the gesture; apps pick a change up live through the distributed
+///  • The global preference `com.apple.trackpad.forceClick` must be 1 or AppKit's
+///    NSForceClickMonitor refuses the gesture. It is the "Look up & data detectors =
+///    Force Click with One Finger" part of Trackpad settings (the "Force Click and haptic
+///    feedback" checkbox is a different, driver-level key); setting it alone leaves a
+///    three-finger tap working. Apps pick a change up live through the distributed
 ///    notification `com.apple.ForceClickBehaviorDidChangeNotification`.
 enum ForceClick {
     static let prefKey = "com.apple.trackpad.forceClick"
@@ -45,12 +48,12 @@ enum ForceClick {
         return ids
     }
 
-    /// Whether the system-wide "Force Click and haptic feedback" preference is on.
+    /// Whether AppKit will accept force clicks for Look Up and previews (see above).
     static var systemEnabled: Bool {
         (CFPreferencesCopyAppValue(prefKey as CFString, kCFPreferencesAnyApplication) as? NSNumber)?.boolValue ?? false
     }
 
-    /// Turn the system preference on (what the Trackpad settings toggle writes) and tell running apps.
+    /// Switch look-ups to force click (only the AppKit key) and tell running apps.
     static func enableSystemPreference() {
         CFPreferencesSetAppValue(prefKey as CFString, NSNumber(value: 1), kCFPreferencesAnyApplication)
         CFPreferencesAppSynchronize(kCFPreferencesAnyApplication)

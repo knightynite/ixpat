@@ -36,6 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let menus = MenuWatcher()
     let ring = RadialMenuController.shared
     let button = ActionButtonController()
+    let gestures = GestureController()
 
     // Wheel feel: notch rate → free-spin (MX SmartShift style)
     private var notchTimes: [CFTimeInterval] = []
@@ -48,6 +49,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var lastNotchTime: CFTimeInterval = 0
     private var lastNotchDir = 0
     private var lastRatchetTick: CFTimeInterval = 0
+    private var textureAccum = 0
+    private var holdTimers: [UInt8: Timer] = [:]
+    /// The hold action deferred to release while gesture mode runs (runs only if nothing was gestured).
+    private var pendingHoldAction: ButtonAction?
 
     /// The settings window is a plain NSWindow hosting the SwiftUI view, so it
     /// can be opened from anywhere (first launch, Finder reopen, the menu) even
@@ -92,10 +97,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         device.onButtons = { [weak self] old, new in
             guard let self, self.settings.enabled else { return }
             let went = new & ~old, left = old & ~new
-            if went & 0x01 != 0 { self.engine.play(.leftDown) }
-            if left & 0x01 != 0 { self.engine.play(.leftUp) }
-            if went & 0x02 != 0 { self.engine.play(.rightDown) }
-            if left & 0x02 != 0 { self.engine.play(.rightUp) }
+            if went & 0x01 != 0 { self.engine.play(.leftDown); self.armHold(0x01, .leftHold) }
+            if left & 0x01 != 0 { self.engine.play(.leftUp); self.holdTimers[0x01]?.invalidate() }
+            if went & 0x02 != 0 { self.engine.play(.rightDown); self.armHold(0x02, .rightHold) }
+            if left & 0x02 != 0 { self.engine.play(.rightUp); self.holdTimers[0x02]?.invalidate() }
             if went & 0x04 != 0 { self.engine.play(.middleDown) }
         }
         device.onWheel = { [weak self] delta in
@@ -125,7 +130,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.freeSpinActive = false
                 self.pushConfig()
             }
-            guard !self.freeSpinActive else { return }      // free-spin: no ratchet ticks
+            if self.freeSpinActive {                        // free-spin: no ratchet, optional grain
+                self.textureAccum += abs(delta)
+                if self.textureAccum >= max(1, self.settings.freeSpinTextureEvery), now - self.lastRatchetTick >= 0.04 {
+                    self.textureAccum = 0; self.lastRatchetTick = now
+                    self.engine.play(.freeSpinTexture)
+                }
+                return
+            }
+            self.textureAccum = 0
             // Direction reversal while scrolling: one firmer Collide bump, like a detent catching.
             let dir = delta > 0 ? 1 : (delta < 0 ? -1 : 0)
             if self.settings.ratchetDynamic, dir != 0, self.lastNotchDir != 0, dir != self.lastNotchDir, gap < 1.0 {
@@ -183,7 +196,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Let the ring disappear before the action (shortcuts must reach the real target).
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { self?.run(item.action, hold: false) }
         }
-        button.onHoldEnd = { [weak self] in self?.ring.holdEnded() }
+        button.onHoldEnd = { [weak self] in
+            guard let self else { return }
+            self.ring.holdEnded()
+            let gestured = self.gestures.firedCount > 0
+            self.gestures.end()
+            if let a = self.pendingHoldAction {
+                self.pendingHoldAction = nil
+                if !gestured { self.run(a, hold: true) }      // a hold without movement is still the hold action
+            }
+        }
+        // Hold-and-move gestures: the tap feeds pointer deltas while the button is held.
+        monitor.gestureMove = { [weak self] dx, dy in self?.gestures.handleMove(dx: dx, dy: dy) ?? false }
+        gestures.onAction = { [weak self] a in
+            guard let self else { return }
+            switch a {
+            case .volumeUp, .volumeDown:
+                // At the end of the range the system ignores the key; play a bump instead of a step.
+                if let v = SystemVolume.current(), (a == .volumeUp && v >= 0.999) || (a == .volumeDown && v <= 0.001) {
+                    self.engine.play(.gestureLimit); return
+                }
+                ActionRunner.run(a); self.engine.play(.gestureStep)
+            case .brightnessUp, .brightnessDown:
+                ActionRunner.run(a); self.engine.play(.gestureStep)
+            case .previousTrack:
+                self.run(a, hold: false); self.engine.play(.gestureSwipe, ordinal: self.ordinal(0x100A, fallback: 9))   // ERROR: the descending pattern
+            default:
+                self.run(a, hold: false); self.engine.play(.gestureSwipe)
+            }
+        }
         button.pressIntercept = { [weak self] in
             guard let self, self.ring.isOpen, !self.ring.holdMode else { return false }
             self.ring.close(commit: true); return true
@@ -210,7 +251,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         button.onGesture = { [weak self] g in
             guard let self, self.settings.enabled else { return }
             self.engine.play(.actionButton)
-            if let a = self.settings.actions[g] { self.run(a, hold: g == .hold) }
+            guard let a = self.settings.actions[g] else { return }
+            // A hold starts gesture mode (unless it drives the ring, which needs the pointer); its own
+            // action waits for the release and runs only when the mouse stayed put.
+            if g == .hold, self.settings.gesturesOnHold, a.kind != .actionRing, a.kind != .gestures, self.button.pressed {
+                self.pendingHoldAction = a
+                self.gestures.begin()
+                return
+            }
+            self.run(a, hold: g == .hold)
         }
 
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification,
@@ -262,8 +311,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if case .actionRing = a {
             if hold { ring.open(items: settings.ringItems, holdMode: true) }
             else { ring.toggle(items: settings.ringItems, holdMode: false) }
+        } else if case .gestures = a {
+            // Only while the chord is really down: the test button must not freeze the pointer.
+            if hold, button.pressed { gestures.begin() }
         } else {
             ActionRunner.run(a)
+        }
+    }
+
+    /// Start the press-and-hold timer for a mouse button (main thread).
+    private func armHold(_ mask: UInt8, _ event: HapticEvent) {
+        holdTimers[mask]?.invalidate()
+        guard settings.rule(event).enabled else { return }
+        holdTimers[mask] = Timer.scheduledTimer(withTimeInterval: Double(settings.clickHoldMs) / 1000, repeats: false) { [weak self] _ in
+            guard let self, self.device.buttons & mask != 0 else { return }
+            self.engine.play(event)
         }
     }
 
@@ -290,6 +352,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                           textTicks: s.enabled && (s.rule(.textSelect).enabled || s.rule(.textLine).enabled))
         button.swallowEnabled = s.enabled && s.swallowButton
         ring.accentHex = s.accentHex
+        gestures.config = GestureController.Config(up: s.gestureUp, down: s.gestureDown, left: s.gestureLeft, right: s.gestureRight,
+                                                   stepPx: s.gestureStepPx, swipePx: s.gestureSwipePx, freezePointer: s.gestureFreezePointer)
     }
 
     /// Ordinal of a haptic waveform usage in the connected device's table.

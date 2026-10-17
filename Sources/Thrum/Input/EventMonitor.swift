@@ -43,6 +43,8 @@ final class EventMonitor {
     private let _smooth = Locked(SmoothConfig.off)
     var lastPointerMove: CFTimeInterval { _lastMove.value }
     private let _lastMove = Locked<CFTimeInterval>(0)
+    var lastClick: CFTimeInterval { _lastClick.value }
+    private let _lastClick = Locked<CFTimeInterval>(0)
     /// True between a left press and its release (used by the selection watcher).
     var leftButtonDown: Bool { _leftDown.value }
     private let _leftDown = Locked(false)
@@ -154,6 +156,7 @@ final class EventMonitor {
             if !listenOnly, shouldSwallow?(event, type) == true { swallowLeftUpUntil = now + 1.5; return nil }
             dragStart = event.location; dragDistance = 0
             _leftDown.value = true
+            _lastClick.value = now
             // Accessibility IPC must not run on the tap thread (or main): snapshot the window frame off both.
             axQueue.async { [weak self] in guard let self else { return }; self.frameBeforeDrag.value = self.focusedWindowFrame() }
         case .leftMouseDragged:

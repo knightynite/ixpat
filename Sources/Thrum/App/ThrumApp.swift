@@ -37,6 +37,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let ring = RadialMenuController.shared
     let button = ActionButtonController()
     let gestures = GestureController()
+    let hover = HoverWatcher()
+    let axWatch = AXWatcher()
+    let bridge = HapticBridge()
 
     // Wheel feel: notch rate → free-spin (MX SmartShift style)
     private var notchTimes: [CFTimeInterval] = []
@@ -44,6 +47,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var freeSpinTimer: Timer?
 
     private var settingsWindow: NSWindow?
+    private var menuPreview: NSWindow?
     private var bag = Set<AnyCancellable>()
     private var wheelAccum = 0
     private var lastNotchTime: CFTimeInterval = 0
@@ -66,6 +70,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 860, height: 700),
                              styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
             w.title = "Thrum"
+            w.titlebarAppearsTransparent = true
+            w.titleVisibility = .hidden
+            w.styleMask.insert(.fullSizeContentView)
+            w.isMovableByWindowBackground = true
             w.contentView = NSHostingView(rootView: root)
             w.isReleasedWhenClosed = false
             w.center()
@@ -92,6 +100,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         engine.device = device
         engine.settings = settings
+        // THRUM_MENU_PREVIEW=1: host the menu popover in a plain window (design checks / screenshots).
+        if ProcessInfo.processInfo.environment["THRUM_MENU_PREVIEW"] != nil {
+            let root = MenuView().environmentObject(settings).environmentObject(device).environmentObject(engine).environmentObject(permissions)
+            let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 360), styleMask: [.titled], backing: .buffered, defer: false)
+            w.title = "MenuPreview"; w.contentView = NSHostingView(rootView: root); w.isReleasedWhenClosed = false; w.center(); w.orderFront(nil)
+            menuPreview = w
+        }
 
         // Mouse → haptic rules and the action button.
         device.onButtons = { [weak self] old, new in
@@ -113,7 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let rate = Double(self.notchTimes.count) / 0.25          // notches per second, recent window
             // Free-spin (SmartShift): a flick past the threshold silences the ratchet and
             // boosts distance until the wheel rests; the ratchet re-engages with a soft Align.
-            if self.settings.enabled, self.settings.freeSpin {
+            if self.settings.enabled, self.settings.effFreeSpin {
                 if !self.freeSpinActive, rate >= self.settings.freeSpinThreshold {
                     self.freeSpinActive = true
                     self.pushConfig()
@@ -132,7 +147,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             if self.freeSpinActive {                        // free-spin: no ratchet, optional grain
                 self.textureAccum += abs(delta)
-                if self.textureAccum >= max(1, self.settings.freeSpinTextureEvery), now - self.lastRatchetTick >= 0.04 {
+                if self.textureAccum >= max(1, self.settings.effFreeSpinTextureEvery), now - self.lastRatchetTick >= 0.04 {
                     self.textureAccum = 0; self.lastRatchetTick = now
                     self.engine.play(.freeSpinTexture)
                 }
@@ -141,7 +156,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.textureAccum = 0
             // Direction reversal while scrolling: one firmer Collide bump, like a detent catching.
             let dir = delta > 0 ? 1 : (delta < 0 ? -1 : 0)
-            if self.settings.ratchetDynamic, dir != 0, self.lastNotchDir != 0, dir != self.lastNotchDir, gap < 1.0 {
+            if self.settings.effRatchetDynamic, dir != 0, self.lastNotchDir != 0, dir != self.lastNotchDir, gap < 1.0 {
                 self.lastNotchDir = dir
                 self.wheelAccum = 0
                 self.engine.play(.scrollStep, ordinal: self.ordinal(0x1012, fallback: 4), boost: 1)
@@ -149,11 +164,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             self.lastNotchDir = dir
             self.wheelAccum += abs(delta)
-            let every = max(1, self.settings.scrollStepEvery)
+            let every = max(1, self.settings.effScrollStepEvery)
             guard self.wheelAccum >= every else { return }
             self.wheelAccum = 0
-            guard self.settings.ratchetDynamic else { self.engine.play(.scrollStep); return }
-            if rate >= self.settings.ratchetLightRate {
+            guard self.settings.effRatchetDynamic else { self.engine.play(.scrollStep); return }
+            if rate >= self.settings.effRatchetLightRate {
                 // Fast: short light ticks, capped at 25/s so they stay distinct instead of smearing.
                 guard now - self.lastRatchetTick >= 0.04 else { return }
                 self.lastRatchetTick = now
@@ -240,7 +255,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return false }
             return self.monitor.leftButtonDown && !self.ring.isOpen
         }
+        menus.onControl = { [weak self] in self?.engine.play(.controlHover) }
+        menus.onDropTarget = { [weak self] in self?.engine.play(.dropTarget) }
+        menus.leftDown = { [weak self] in self?.monitor.leftButtonDown ?? false }
         menus.start()
+
+        // Cursor-shape hover ticks (main thread, cheap) and the drag badge.
+        hover.pointerMovedRecently = { [weak self] in
+            guard let self else { return false }
+            return CACurrentMediaTime() - self.monitor.lastPointerMove < 0.3
+        }
+        hover.leftButtonDown = { [weak self] in self?.monitor.leftButtonDown ?? false }
+        hover.onHover = { [weak self] in self?.engine.play(.hoverAffordance) }
+        hover.onDropTarget = { [weak self] in self?.engine.play(.dropTarget) }
+        hover.start()
+
+        // Accessibility notifications from the front app: sliders, selections, scroll ends.
+        axWatch.pointerActiveRecently = { [weak self] in
+            guard let self else { return false }
+            let now = CACurrentMediaTime()
+            return now - self.monitor.lastPointerMove < 0.5 || now - self.monitor.lastClick < 0.5
+        }
+        axWatch.onSlider = { [weak self] in self?.engine.play(.sliderTick) }
+        axWatch.onSelection = { [weak self] in self?.engine.play(.selectionChange) }
+        axWatch.onScrollEnd = { [weak self] in self?.engine.play(.scrollEnd) }
+        if let front = NSWorkspace.shared.frontmostApplication { axWatch.observe(pid: front.processIdentifier); settings.frontBundleID = front.bundleIdentifier }
+
+        // Plugin bridge: apps ask for a pulse by waveform name.
+        bridge.onPlay = { [weak self] name, intensity in
+            guard let self, self.settings.enabled, self.settings.effHapticsEnabled, self.settings.rule(.pluginPulse).enabled,
+                  let wf = self.device.waveforms.first(where: { $0.name.lowercased() == name }) else { return }
+            let scaled = max(1, Int((Double(intensity) * Double(self.settings.masterIntensity) / 4.0).rounded()))
+            self.engine.play(ordinal: wf.ordinal, intensity: scaled, label: "plugin " + name)
+        }
+        bridge.waveformsJSON = { [weak self] in
+            let list = (self?.device.waveforms ?? []).map { "{\"name\":\"\($0.name.lowercased())\",\"ordinal\":\($0.ordinal),\"ms\":\($0.durationMs)}" }
+            return "[" + list.joined(separator: ",") + "]"
+        }
 
         // Settings → the other threads, as snapshots.
         pushConfig()
@@ -265,8 +316,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification,
                                                           object: nil, queue: .main) { [weak self] n in
             guard let self else { return }
-            if let app = n.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
-               app.processIdentifier == ProcessInfo.processInfo.processIdentifier { return }
+            guard let app = n.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
+            self.settings.frontBundleID = app.bundleIdentifier
+            if app.processIdentifier == ProcessInfo.processInfo.processIdentifier { return }
+            self.axWatch.observe(pid: app.processIdentifier)
             self.engine.play(.appSwitch)
         }
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification,
@@ -309,8 +362,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func run(_ a: ButtonAction, hold: Bool) {
         DebugLog.log("run action \(a.describe) hold=\(hold) ringOpen=\(ring.isOpen)")
         if case .actionRing = a {
-            if hold { ring.open(items: settings.ringItems, holdMode: true) }
-            else { ring.toggle(items: settings.ringItems, holdMode: false) }
+            if hold { ring.open(items: settings.effRingItems, holdMode: true) }
+            else { ring.toggle(items: settings.effRingItems, holdMode: false) }
         } else if case .gestures = a {
             // Only while the chord is really down: the test button must not freeze the pointer.
             if hold, button.pressed { gestures.begin() }
@@ -341,7 +394,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Bluetooth idle sleep, so the first notches that wake it are not left unshaped.
         let recent = device.lastDetach.map { Date().timeIntervalSince($0) < 1800 } ?? false
         let live = s.enabled && (device.connected || recent)
-        monitor.smooth = SmoothConfig(enabled: live && s.smoothScroll,
+        monitor.smooth = SmoothConfig(enabled: live && s.effSmoothScroll,
                                       pxPerNotch: s.scrollPixelsPerNotch,
                                       glide: s.scrollGlide,
                                       momentum: s.scrollMomentum,
@@ -349,10 +402,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                       multiplier: freeSpinActive ? s.freeSpinMultiplier : 1,
                                       reverse: live && s.reverseScroll)
         menus.config = MenuWatcher.Config(menuTicks: s.enabled && s.rule(.menuHighlight).enabled,
-                                          textTicks: s.enabled && (s.rule(.textSelect).enabled || s.rule(.textLine).enabled))
+                                          textTicks: s.enabled && (s.rule(.textSelect).enabled || s.rule(.textLine).enabled),
+                                          controlTicks: s.enabled && s.rule(.controlHover).enabled,
+                                          dropTicks: s.enabled && s.rule(.dropTarget).enabled)
+        hover.config = HoverWatcher.Config(hoverTicks: s.enabled && s.rule(.hoverAffordance).enabled,
+                                           dropTicks: s.enabled && s.rule(.dropTarget).enabled)
+        axWatch.config = AXWatcher.Config(sliderTicks: s.enabled && s.rule(.sliderTick).enabled,
+                                          selectionTicks: s.enabled && s.rule(.selectionChange).enabled,
+                                          scrollEndTicks: s.enabled && s.rule(.scrollEnd).enabled)
+        if s.bridgeEnabled, !bridge.running { bridge.start(port: UInt16(clamping: s.bridgePort), token: s.bridgeToken) }
+        else if !s.bridgeEnabled, bridge.running { bridge.stop() }
         button.swallowEnabled = s.enabled && s.swallowButton
         ring.accentHex = s.accentHex
-        gestures.config = GestureController.Config(up: s.gestureUp, down: s.gestureDown, left: s.gestureLeft, right: s.gestureRight,
+        gestures.config = GestureController.Config(up: s.effGestureUp, down: s.effGestureDown, left: s.effGestureLeft, right: s.effGestureRight,
                                                    stepPx: s.gestureStepPx, swipePx: s.gestureSwipePx, freezePointer: s.gestureFreezePointer)
     }
 
@@ -365,5 +427,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settings.flush()
         if settings.managePointer { PointerSettings.restoreSystem() }
         monitor.stop()
+        bridge.stop()
+        hover.stop()
+        axWatch.detach()
     }
 }

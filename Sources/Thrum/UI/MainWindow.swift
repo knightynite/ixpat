@@ -109,33 +109,18 @@ struct HeaderBar: View {
                 Text("Haptics, gestures and feel for the Surface Mouse on macOS").font(.system(size: 11)).foregroundStyle(pal.text2)
             }
             Spacer()
-            Picker("", selection: $settings.theme) { ForEach(AppTheme.allCases) { Text($0.label).tag($0) } }
-                .pickerStyle(.segmented).labelsHidden().frame(width: 170)
-            HStack(spacing: 6) {
-                ForEach(Accents.all) { a in
-                    Button { settings.accentHex = a.hex } label: {
-                        Circle().fill(LinearGradient(colors: [a.color, a.color.opacity(0.7)], startPoint: .top, endPoint: .bottom))
-                            .frame(width: 13, height: 13)
-                            .overlay(Circle().strokeBorder(Color.white.opacity(settings.accentHex == a.hex ? 0.95 : 0.25), lineWidth: settings.accentHex == a.hex ? 2 : 1))
-                            .shadow(color: a.color.opacity(settings.accentHex == a.hex ? 0.6 : 0), radius: 4)
-                    }.buttonStyle(.plain).help(a.name)
-                }
-            }
-            .padding(.horizontal, 8).padding(.vertical, 5)
-            .background(Capsule().fill(pal.field))
             Toggle("", isOn: $settings.enabled).toggleStyle(.switch).labelsHidden()
         }
         .padding(.leading, 86).padding(.trailing, 20).padding(.top, 14).padding(.bottom, 12)
     }
 }
 
-/// Right-hand hero tile: what just happened, plus one button per waveform.
+/// Right-hand hero tile: what just happened.
 struct LiveTile: View {
     @EnvironmentObject var device: MouseDevice
     @EnvironmentObject var engine: HapticEngine
     @EnvironmentObject var settings: Settings
     @Environment(\.palette) private var pal
-    private let cols = [GridItem(.adaptive(minimum: 96), spacing: 8)]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -144,30 +129,9 @@ struct LiveTile: View {
                 Spacer()
                 Text("\(engine.pulseCount) pulses").font(.system(size: 10, design: .monospaced)).foregroundStyle(pal.text3)
             }
-            HStack(spacing: 18) {
+            VStack(alignment: .leading, spacing: 12) {
                 stat("Last event", engine.lastEvent)
                 stat("Last pulse", engine.lastPlayed)
-            }
-            Divider()
-            Text("Waveforms on this mouse \(device.tableFromDevice ? "(read from the device)" : "(measured table; device not read yet)")")
-                .font(.system(size: 11)).foregroundStyle(pal.text2)
-            LazyVGrid(columns: cols, spacing: 8) {
-                ForEach(device.waveforms) { wf in
-                    Button {
-                        engine.play(ordinal: wf.ordinal, intensity: settings.masterIntensity, label: "Test")
-                    } label: {
-                        VStack(spacing: 4) {
-                            Image(systemName: wf.symbol).font(.system(size: 15)).foregroundStyle(pal.accent)
-                            Text(wf.name).font(.system(size: 11, weight: .semibold)).foregroundStyle(pal.text)
-                            Text("\(wf.durationMs) ms").font(.system(size: 10)).foregroundStyle(pal.text3)
-                        }
-                        .frame(maxWidth: .infinity).padding(.vertical, 9)
-                        .glass(pal, radius: 12)
-                        .contentShape(RoundedRectangle(cornerRadius: 12))
-                    }
-                    .buttonStyle(.plain).disabled(!device.connected)
-                    .help("Play \(wf.name) at the master intensity")
-                }
             }
             Spacer(minLength: 0)
         }
@@ -285,7 +249,7 @@ struct ButtonPane: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text("How the mouse reports its action button").font(.system(size: 13, weight: .semibold)).foregroundStyle(pal.text)
                 Text("The firmware decides the gesture and sends a Windows chord for each: press = Win+Shift+S (Snipping Tool), "
-                   + "double press = Win + a fake left click (Click to Do), hold = Win+Shift+F23, the Copilot key, held. Thrum maps those chords "
+                   + "double press = Win + a fake left click (Click to Do), hold = Win+Shift+F23, the Copilot key, held. iXpat maps those chords "
                    + "straight to the actions below and hides them from your apps.")
                     .font(.system(size: 11)).foregroundStyle(pal.text2)
                 HStack(spacing: 8) {
@@ -883,7 +847,7 @@ struct BridgeSection: View {
                 Text(running ? "listening on 127.0.0.1:\(settings.bridgePort)" : "off").font(.system(size: 11, design: .monospaced)).foregroundStyle(running ? .green : pal.text3)
                 Toggle("", isOn: $settings.bridgeEnabled).toggleStyle(.switch).labelsHidden()
             }
-            Text("App plugins (Photoshop UXP, VS Code, scripts) can request a pulse by name over a loopback HTTP call; the plugin decides when, Thrum plays it under the \u{201c}App plugin pulse\u{201d} rule. Sample plugin and curl example in the repo's plugins folder.")
+            Text("App plugins (Photoshop UXP, VS Code, scripts) can request a pulse by name over a loopback HTTP call; the plugin decides when, iXpat plays it under the \u{201c}App plugin pulse\u{201d} rule. Sample plugin and curl example in the repo's plugins folder.")
                 .font(.system(size: 11)).foregroundStyle(pal.text2)
             HStack(spacing: 10) {
                 Text("Token").font(.system(size: 11)).foregroundStyle(pal.text2)
@@ -922,7 +886,7 @@ struct DiagnosticsPane: View {
                         Text(kind.title).font(.system(size: 12, weight: .medium)).foregroundStyle(pal.text)
                         Text(kind.why).font(.system(size: 11)).foregroundStyle(pal.text2)
                         if !permissions.granted(kind) {
-                            Text("If macOS already lists Thrum as allowed, the grant is stale: run  \(permissions.resetCommand(kind))  and relaunch.")
+                            Text("If macOS already lists iXpat as allowed, the grant is stale: run  \(permissions.resetCommand(kind))  and relaunch.")
                                 .font(.system(size: 10)).foregroundStyle(pal.text3)
                         }
                     }
@@ -993,7 +957,7 @@ struct DiagnosticsPane: View {
     }
 
     private func copyReport() {
-        var s = "Thrum diagnostics\n"
+        var s = "iXpat diagnostics\n"
         s += "connected=\(device.connected) fw=\(device.firmware) transport=\(device.transport) reports=\(device.reportsSeen)\n"
         s += "inputMonitoring=\(permissions.inputMonitoring) accessibility=\(permissions.accessibility)\n"
         s += "waveforms: " + device.waveforms.map { "\($0.ordinal)=\($0.name)/\($0.durationMs)ms" }.joined(separator: ", ") + "\n"

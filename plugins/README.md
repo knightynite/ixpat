@@ -1,6 +1,6 @@
-# Thrum plugin bridge
+# iXpat plugin bridge
 
-Thrum listens on `http://127.0.0.1:47337` (loopback only). Any app plugin or
+iXpat listens on `http://127.0.0.1:47337` (loopback only). Any app plugin or
 script can ask for a pulse:
 
 ```sh

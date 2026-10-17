@@ -25,7 +25,6 @@ final class MenuWatcher {
     var selectionGate: () -> Bool = { false }
     var debug = ProcessInfo.processInfo.environment["THRUM_DEBUG"] != nil   // logs the role of each hit, never titles
 
-    private let systemWide = AXUIElementCreateSystemWide()
     private var lastKey = ""
     private var lastWords = -1
     private var lastLines = 0
@@ -98,6 +97,8 @@ final class MenuWatcher {
     }
 
     private func attr(_ el: AXUIElement, _ name: String) -> CFTypeRef? {
+        var p: pid_t = 0
+        if AXUIElementGetPid(el, &p) == .success, p == ownPid { return nil }   // in-process AX off-main is fatal
         var v: CFTypeRef?
         return AXUIElementCopyAttributeValue(el, name as CFString, &v) == .success ? v : nil
     }
@@ -131,6 +132,12 @@ final class MenuWatcher {
         let ownFront = NSWorkspace.shared.frontmostApplication?.processIdentifier == ownPid || ownKey.value
         let c = config
         let moved = pointerMovedRecently()
+        // Hit-tests go to the app that owns the window under the pointer (window list, no AX),
+        // never to the system-wide element: that one picks the target itself and can pick us.
+        pointerApp = nil
+        if moved, let loc = CGEvent(source: nil)?.location, let pid = pidUnderPointer(loc), pid != ownPid {
+            pointerApp = (AXUIElementCreateApplication(pid), loc)
+        }
         if c.menuTicks, moved { menuTick(focusFallbacks: !ownFront) }
         if c.textTicks, !ownFront, selectionGate() { selectionTick() } else { lastWords = -1 }
         let down = leftDown()
@@ -140,14 +147,35 @@ final class MenuWatcher {
 
     // MARK: Menus
 
+    /// The app (pid, element) owning the window under the pointer this tick; nil when it is ours or unknown.
+    private var pointerApp: (AXUIElement, CGPoint)?
+
+    /// Owner of the frontmost on-screen window containing `loc`, from the window server (no AX).
+    /// The menu bar itself belongs to the window server; its contents belong to the front app.
+    private func pidUnderPointer(_ loc: CGPoint) -> pid_t? {
+        guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else { return nil }
+        for w in list {
+            guard let b = w[kCGWindowBounds as String] as? [String: CGFloat],
+                  let pid = w[kCGWindowOwnerPID as String] as? pid_t else { continue }
+            if (w[kCGWindowAlpha as String] as? Double ?? 1) <= 0 { continue }
+            let r = CGRect(x: b["X"] ?? 0, y: b["Y"] ?? 0, width: b["Width"] ?? 0, height: b["Height"] ?? 0)
+            guard r.contains(loc) else { continue }
+            if (w[kCGWindowOwnerName as String] as? String) == "Window Server" {
+                return NSWorkspace.shared.frontmostApplication?.processIdentifier   // menu bar: the front app's menus
+            }
+            return pid
+        }
+        return nil
+    }
+
     private func menuTick(focusFallbacks: Bool) {
         var found: (String, String)? = nil    // (method, key)
-        // Primary: hit-test the element under the pointer. Context menus (Chromium,
-        // Electron, AppKit) are reachable this way even when they are not in the
-        // app's child list and the focused element never changes.
-        if let loc = CGEvent(source: nil)?.location {
+        // Primary: hit-test the element under the pointer in the app that owns the window there.
+        // Context menus (Chromium, Electron, AppKit) are reachable this way even when they are
+        // not in the app's child list and the focused element never changes.
+        if let (app, loc) = pointerApp {
             var hit: AXUIElement?
-            if AXUIElementCopyElementAtPosition(systemWide, Float(loc.x), Float(loc.y), &hit) == .success, let el = hit {
+            if AXUIElementCopyElementAtPosition(app, Float(loc.x), Float(loc.y), &hit) == .success, let el = hit {
                 let r = role(el)
                 if Self.roles.contains(r) {
                     let sel = attr(el, kAXSelectedAttribute) as? Bool ?? false
@@ -158,12 +186,7 @@ final class MenuWatcher {
                 }
             }
         }
-        if found == nil, focusFallbacks, let f = attr(systemWide, kAXFocusedUIElementAttribute) {
-            let el = f as! AXUIElement
-            let r = role(el)
-            if Self.roles.contains(r) { found = ("sys", key(el, r)) }
-        }
-        if found == nil, focusFallbacks, let app = NSWorkspace.shared.frontmostApplication {
+        if found == nil, focusFallbacks, let app = NSWorkspace.shared.frontmostApplication, app.processIdentifier != ownPid {
             let ax = AXUIElementCreateApplication(app.processIdentifier)
             if let f = attr(ax, kAXFocusedUIElementAttribute) {
                 let el = f as! AXUIElement
@@ -197,9 +220,9 @@ final class MenuWatcher {
     // MARK: Controls under the pointer / drop targets under a drag
 
     private func hitUnderPointer() -> (AXUIElement, String)? {
-        guard let loc = CGEvent(source: nil)?.location else { return nil }
+        guard let (app, loc) = pointerApp else { return nil }
         var hit: AXUIElement?
-        guard AXUIElementCopyElementAtPosition(systemWide, Float(loc.x), Float(loc.y), &hit) == .success, let el = hit else { return nil }
+        guard AXUIElementCopyElementAtPosition(app, Float(loc.x), Float(loc.y), &hit) == .success, let el = hit else { return nil }
         return (el, role(el))
     }
 
@@ -231,7 +254,7 @@ final class MenuWatcher {
     // MARK: Text selection (while dragging)
 
     private func selectionTick() {
-        guard let app = NSWorkspace.shared.frontmostApplication else { return }
+        guard let app = NSWorkspace.shared.frontmostApplication, app.processIdentifier != ownPid else { return }
         let ax = AXUIElementCreateApplication(app.processIdentifier)
         guard let f = attr(ax, kAXFocusedUIElementAttribute) else { return }
         let el = f as! AXUIElement

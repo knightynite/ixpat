@@ -1,4 +1,4 @@
-# Thrum
+# iXpat
 
 Haptics, an Action Ring, kinetic scrolling and per-mouse pointer settings for the
 **Microsoft Surface Mouse (2nd Edition)** on macOS. A menu-bar app, in the same
@@ -7,7 +7,7 @@ family as Knurl (the Magic Trackpad one).
 The mouse exposes a standard HID *Simple Haptic Controller* (usage page 0x0E),
 the same interface the Surface app drives on Windows. macOS has no driver for it,
 but user-space IOKit can read the waveform table and fire triggers with no kernel
-extension and no private framework. Thrum does that and layers on the parts
+extension and no private framework. iXpat does that and layers on the parts
 Windows offers, plus a few Logitech MX-style ones.
 
 ## What it does
@@ -27,7 +27,7 @@ Windows offers, plus a few Logitech MX-style ones.
   distance; a flick accelerates and coasts, Magic Mouse / Windows style.
   Momentum and acceleration are sliders.
 - **Action button**: the firmware sends keyboard chords (press = Win+Shift+S,
-  double = Win plus a synthetic left click, hold = Win+Shift+F23). Thrum
+  double = Win plus a synthetic left click, hold = Win+Shift+F23). iXpat
   decodes them, hides them from apps, and maps each gesture to an action:
   Action Ring, Mission Control, Spotlight, screenshot, lock, play/pause,
   show desktop, open an app, a shortcut, a shell command.
@@ -59,8 +59,8 @@ Windows offers, plus a few Logitech MX-style ones.
 
 ## Build and run
 
-    ./build.sh          # release build → Thrum.app
-    open Thrum.app
+    ./build.sh          # release build → iXpat.app
+    open iXpat.app
 
 Needs Xcode 16+ / macOS 14+. The first launch opens the settings window
 (set `THRUM_NO_WINDOW=1` to suppress it). `build.sh` signs with a local

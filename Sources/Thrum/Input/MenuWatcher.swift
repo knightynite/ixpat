@@ -113,9 +113,11 @@ final class MenuWatcher {
         if let d = attr(el, kAXDescriptionAttribute) as? String { parts.append(d) }
         if let v = attr(el, kAXValueAttribute) as? String { parts.append(v) }
         if let id = attr(el, kAXIdentifierAttribute) as? String { parts.append(id) }
-        if let pv = attr(el, kAXPositionAttribute) {
+        if let pv = attr(el, kAXPositionAttribute), CFGetTypeID(pv) == AXValueGetTypeID() {
             var pt = CGPoint.zero
-            if AXValueGetValue(pv as! AXValue, .cgPoint, &pt) { parts.append("\(Int(pt.x)),\(Int(pt.y))") }
+            if AXValueGetValue(pv as! AXValue, .cgPoint, &pt), pt.x.isFinite, pt.y.isFinite {
+                parts.append("\(Int(max(min(pt.x, 1e9), -1e9))),\(Int(max(min(pt.y, 1e9), -1e9)))")
+            }
         }
         return parts.joined(separator: "|")
     }
@@ -188,7 +190,7 @@ final class MenuWatcher {
         }
         if found == nil, focusFallbacks, let app = NSWorkspace.shared.frontmostApplication, app.processIdentifier != ownPid {
             let ax = AXUIElementCreateApplication(app.processIdentifier)
-            if let f = attr(ax, kAXFocusedUIElementAttribute) {
+            if let f = attr(ax, kAXFocusedUIElementAttribute), CFGetTypeID(f) == AXUIElementGetTypeID() {
                 let el = f as! AXUIElement
                 let r = role(el)
                 if Self.roles.contains(r) { found = ("app", key(el, r)) }
@@ -256,7 +258,7 @@ final class MenuWatcher {
     private func selectionTick() {
         guard let app = NSWorkspace.shared.frontmostApplication, app.processIdentifier != ownPid else { return }
         let ax = AXUIElementCreateApplication(app.processIdentifier)
-        guard let f = attr(ax, kAXFocusedUIElementAttribute) else { return }
+        guard let f = attr(ax, kAXFocusedUIElementAttribute), CFGetTypeID(f) == AXUIElementGetTypeID() else { return }
         let el = f as! AXUIElement
         guard let text = attr(el, kAXSelectedTextAttribute) as? String else { return }
         let words = text.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).count

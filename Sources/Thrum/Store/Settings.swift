@@ -486,7 +486,25 @@ final class Settings: ObservableObject {
         forceClick = s.forceClick ?? true; forceClickMs = s.forceClickMs ?? 350
         profiles = s.profiles ?? []
         bridgeEnabled = s.bridgeEnabled ?? true; bridgePort = s.bridgePort ?? 47337; bridgeToken = s.bridgeToken ?? ""
+        sanitize()
         loading = false
+    }
+
+    /// settings.json is user-editable: keep every number inside the range the UI offers, so a
+    /// hand-edited or corrupted value can never reach an integer conversion or a timer with
+    /// nonsense (NaN, 1e300, negative hold times).
+    private func sanitize() {
+        func clamp(_ v: inout Double, _ lo: Double, _ hi: Double, _ dflt: Double) { v = v.isFinite ? max(lo, min(hi, v)) : dflt }
+        func clamp(_ v: inout Int, _ lo: Int, _ hi: Int) { v = max(lo, min(hi, v)) }
+        clamp(&masterIntensity, 0, 4); clamp(&scrollStepEvery, 1, 10)
+        clamp(&pointerSpeed, 0, 3, 3); clamp(&scrollSpeed, 0.05, 1.5, 0.3125)
+        clamp(&scrollPixelsPerNotch, 10, 400, 60); clamp(&scrollGlide, 1, 10, 5); clamp(&scrollMomentum, 0, 10, 4); clamp(&scrollAccel, 0, 3, 1)
+        clamp(&freeSpinThreshold, 5, 60, 18); clamp(&freeSpinMultiplier, 1, 10, 3); clamp(&ratchetLightRate, 2, 40, 10)
+        clamp(&gestureStepPx, 4, 200, 24); clamp(&gestureSwipePx, 20, 600, 90)
+        clamp(&clickHoldMs, 150, 1500); clamp(&freeSpinTextureEvery, 1, 6); clamp(&forceClickMs, 200, 800)
+        clamp(&bridgePort, 1024, 65535)
+        for (k, r) in rules { rules[k] = HapticRule(enabled: r.enabled, ordinal: max(0, min(255, r.ordinal)), intensity: max(1, min(4, r.intensity)),
+                                                    echo: r.echo.map { HapticEcho(ordinal: max(0, min(255, $0.ordinal)), intensity: max(1, min(4, $0.intensity)), delayMs: max(0, min(2000, $0.delayMs))) }) }
     }
 
     private func save() {

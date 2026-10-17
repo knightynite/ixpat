@@ -75,6 +75,7 @@ final class EventMonitor {
     // the current friction time constant, and the recent notch times for the wheel rate.
     private var velX = 0.0, velY = 0.0, carryX = 0.0, carryY = 0.0
     private var tau = 0.05
+    private var tauTarget = 0.05
     private var notchTimes: [CFTimeInterval] = []
     private var scrollTimer: CFRunLoopTimer?
     private var lastTick: CFTimeInterval = 0
@@ -121,7 +122,7 @@ final class EventMonitor {
 
     /// Tap thread. Drops any coast in flight and forgets pending swallows.
     private func resetTapState() {
-        velX = 0; velY = 0; carryX = 0; carryY = 0; notchTimes = []
+        velX = 0; velY = 0; carryX = 0; carryY = 0; notchTimes = []; tau = 0.05; tauTarget = 0.05
         swallowLeftUpUntil = 0; swallowRightUpUntil = 0
         if let scrollTimer { CFRunLoopTimerInvalidate(scrollTimer) }
         scrollTimer = nil
@@ -217,12 +218,9 @@ final class EventMonitor {
         let now = CACurrentMediaTime()
         notchTimes.append(now)
         notchTimes.removeAll { now - $0 > 0.25 }
-        let rate = Double(notchTimes.count) / 0.25                       // notches per second
-        let fast = min(1, max(0, (rate - 5) / 20))                       // 0 at ≤5/s … 1 at ≥25/s
+        let wheelRate = Double(notchTimes.count) / 0.25                  // notches per second
         let tauSlow = 0.015 + cfg.glide * 0.008                          // 0.023 … 0.095 s
         let tauFast = max(tauSlow, cfg.momentum * 0.12)                  // up to 1.2 s of coast
-        tau = tauSlow + (tauFast - tauSlow) * fast
-        let gain = (1 + cfg.accel * fast) * cfg.multiplier
         let sign = cfg.reverse ? -1.0 : 1.0
         func notches(_ f: CGEventField) -> Double {
             let v = Double(event.getIntegerValueField(f))
@@ -231,15 +229,26 @@ final class EventMonitor {
         // Distance of an impulse Δv under exponential decay is Δv·tau, so Δv = px/tau.
         func kick(_ vel: inout Double, _ n: Double) {
             guard n != 0 else { return }
-            var d = n * cfg.pxPerNotch * gain * sign
-            if vel != 0, (d > 0) != (vel > 0) {
+            let dir = n * sign
+            if vel != 0, (dir > 0) != (vel > 0) {
                 // Reversing kills the coast and starts a fresh, slow gesture: one plain notch.
                 vel = 0
                 notchTimes = [now]
-                tau = tauSlow
-                d = n * cfg.pxPerNotch * cfg.multiplier * sign
+                tau = tauSlow; tauTarget = tauSlow
+                vel += dir * cfg.pxPerNotch * cfg.multiplier / tau
+                return
             }
-            vel += d / tau
+            // How fast the wheel "is" spinning: the notch rate of the last quarter second, or,
+            // when the content is still coasting from an earlier flick, the wheel rate that
+            // coast is equivalent to. Without the second term a notch during a coast reads as a
+            // lone slow notch, tau collapses, and the content slams to a stop before jerking on.
+            let coastRate = abs(vel) / (cfg.pxPerNotch * cfg.multiplier)
+            let rate = max(wheelRate, coastRate)
+            let fast = min(1, max(0, (rate - 5) / 20))                   // 0 at ≤5/s … 1 at ≥25/s
+            tauTarget = tauSlow + (tauFast - tauSlow) * fast
+            if tauTarget > tau { tau = tauTarget }                       // a flick takes hold at once…
+            let gain = (1 + cfg.accel * fast) * cfg.multiplier
+            vel += dir * cfg.pxPerNotch * gain / tau
         }
         kick(&velY, notches(.scrollWheelEventDeltaAxis1))
         kick(&velX, notches(.scrollWheelEventDeltaAxis2))
@@ -269,6 +278,8 @@ final class EventMonitor {
             scrollTimer = nil
             return
         }
+        // …while extra friction eases in over ~80 ms, so the coast never brakes in one frame.
+        if tauTarget < tau { tau += (tauTarget - tau) * (1 - exp(-dt / 0.08)) }
         let decay = exp(-dt / tau)
         func step(_ vel: inout Double, _ carry: inout Double) -> Int32 {
             guard vel != 0 else { return 0 }

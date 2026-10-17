@@ -191,6 +191,8 @@ struct HapticsPane: View {
                + "The mouse's own click feel is in its firmware; these are extra pulses layered on top.")
                 .font(.system(size: 11)).foregroundStyle(pal.text2)
             Divider()
+            FeelPresets()
+            Divider()
             ForEach(HapticEvent.allCases) { ev in
                 RuleRow(event: ev)
                 if ev != HapticEvent.allCases.last { Divider().opacity(0.5) }
@@ -225,6 +227,19 @@ struct RuleRow: View {
                 Stepper("every \(settings.scrollStepEvery)", value: $settings.scrollStepEvery, in: 1...10)
                     .font(.system(size: 11)).frame(width: 110)
             }
+            if event == .freeSpinTexture {
+                Stepper("every \(settings.freeSpinTextureEvery)", value: $settings.freeSpinTextureEvery, in: 1...6)
+                    .font(.system(size: 11)).frame(width: 110)
+            }
+            if event == .leftHold {
+                Stepper("after \(settings.clickHoldMs) ms", value: $settings.clickHoldMs, in: 150...1500, step: 50)
+                    .font(.system(size: 11)).frame(width: 130)
+            }
+            if let e = rule.wrappedValue.echo {
+                Text("+ \(device.waveforms.first { $0.ordinal == e.ordinal }?.name ?? "#\(e.ordinal)") \(e.intensity) @\(e.delayMs) ms")
+                    .font(.system(size: 10, design: .monospaced)).foregroundStyle(pal.text2)
+                Button { rule.wrappedValue.echo = nil } label: { Image(systemName: "xmark.circle") }.buttonStyle(.plain).help("Remove the second pulse")
+            }
             Picker("", selection: rule.ordinal) {
                 ForEach(device.waveforms) { Text($0.name).tag($0.ordinal) }
             }.labelsHidden().frame(width: 110)
@@ -232,7 +247,7 @@ struct RuleRow: View {
                 ForEach(1..<5, id: \.self) { Text("\($0)").tag($0) }
             }.pickerStyle(.segmented).labelsHidden().frame(width: 110)
             Button {
-                engine.play(ordinal: rule.wrappedValue.ordinal, intensity: rule.wrappedValue.intensity, label: "Test")
+                engine.preview(rule.wrappedValue, label: "Test")
             } label: { Image(systemName: "play.fill") }
             .buttonStyle(.bordered).disabled(!device.connected)
         }
@@ -270,6 +285,17 @@ struct ButtonPane: View {
                 ActionRow(gesture: g)
             }
             Divider()
+            Toggle(isOn: $settings.gesturesOnHold) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Hold-and-move gestures on every hold").font(.system(size: 13, weight: .medium))
+                    Text("Keep the button down and move to gesture; release without moving and the hold action above runs as usual. Off: only a hold mapped to “Hold-and-move gestures” gestures.")
+                        .font(.system(size: 11)).foregroundStyle(pal.text2)
+                }
+            }.toggleStyle(.switch)
+            if settings.gesturesOnHold || settings.actions.values.contains(.gestures) {
+                GesturePane()
+            }
+            Divider()
             Toggle(isOn: $settings.swallowButton) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Hide the button's built-in chords from apps").font(.system(size: 13, weight: .medium))
@@ -303,6 +329,8 @@ struct ActionPicker: View {
                     .textFieldStyle(.roundedBorder).frame(width: 220)
             case .actionRing:
                 Text("opens the ring (hold: sweep and release · press: click a chamber)").font(.system(size: 11)).foregroundStyle(pal.text2)
+            case .gestures:
+                Text("hold, then move the mouse: ↑ ↓ ← → run the gesture actions below").font(.system(size: 11)).foregroundStyle(pal.text2)
             default:
                 EmptyView()
             }
@@ -352,6 +380,96 @@ struct ActionRow: View {
                 .buttonStyle(.bordered).help("Run this action now")
         }
         .padding(.vertical, 4)
+    }
+}
+
+/// Hold-and-move gesture settings (shown when a gesture is mapped to "Hold-and-move gestures").
+struct GesturePane: View {
+    @EnvironmentObject var settings: Settings
+    @Environment(\.palette) private var pal
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Hold-and-move gestures").font(.system(size: 13, weight: .semibold)).foregroundStyle(pal.text)
+                Text("Keep the action button down and move the mouse. The pointer stays put; the first few pixels pick the axis. "
+                   + "Up / down actions marked (step) repeat as you keep moving, with a tick each; sideways swipes fire once per swipe.")
+                    .font(.system(size: 11)).foregroundStyle(pal.text2)
+            }
+            row("Move up", $settings.gestureUp)
+            row("Move down", $settings.gestureDown)
+            row("Move left", $settings.gestureLeft)
+            row("Move right", $settings.gestureRight)
+            HStack {
+                Text("Step size").font(.system(size: 12)).frame(width: 120, alignment: .leading)
+                Slider(value: $settings.gestureStepPx, in: 8...80, step: 2) { } minimumValueLabel: { Text("Fine").font(.system(size: 10)) } maximumValueLabel: { Text("Coarse").font(.system(size: 10)) }
+                Text("\(Int(settings.gestureStepPx)) px").font(.system(size: 11, design: .monospaced)).frame(width: 50)
+            }
+            HStack {
+                Text("Swipe length").font(.system(size: 12)).frame(width: 120, alignment: .leading)
+                Slider(value: $settings.gestureSwipePx, in: 30...250, step: 10) { } minimumValueLabel: { Text("Short").font(.system(size: 10)) } maximumValueLabel: { Text("Long").font(.system(size: 10)) }
+                Text("\(Int(settings.gestureSwipePx)) px").font(.system(size: 11, design: .monospaced)).frame(width: 50)
+            }
+            Toggle(isOn: $settings.gestureFreezePointer) {
+                Text("Freeze the pointer while gesturing").font(.system(size: 12))
+            }.toggleStyle(.switch)
+        }
+    }
+
+    private func row(_ label: String, _ action: Binding<ButtonAction>) -> some View {
+        HStack(spacing: 12) {
+            Text(label).font(.system(size: 13, weight: .medium)).foregroundStyle(pal.text).frame(width: 120, alignment: .leading)
+            ActionPicker(action: action)
+            Spacer()
+        }
+    }
+}
+
+/// Named feels for the two buttons and the wheel; each writes several rules at once.
+struct FeelPresets: View {
+    @EnvironmentObject var settings: Settings
+    @Environment(\.palette) private var pal
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Feel presets").font(.system(size: 13, weight: .semibold)).foregroundStyle(pal.text)
+            Text("Pick a feel for each button and the wheel; the rows below are what it sets, and stay editable (the picker reads Custom once you change them).")
+                .font(.system(size: 11)).foregroundStyle(pal.text2)
+            HStack(spacing: 10) {
+                clickPicker("Left click", right: false)
+                clickPicker("Right click", right: true)
+                wheelPicker()
+            }
+            Text(blurb).font(.system(size: 11)).foregroundStyle(pal.text2)
+        }
+    }
+
+    private var blurb: String {
+        let l = ClickFeel.all.first { $0.name == settings.clickFeelName(right: false) }?.blurb ?? "Left: custom rules."
+        let w = WheelFeel.all.first { $0.name == settings.wheelFeelName() }?.blurb ?? "Wheel: custom rules."
+        return "Left: " + l + "  Wheel: " + w
+    }
+
+    private func clickPicker(_ label: String, right: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label).font(.system(size: 11)).foregroundStyle(pal.text2)
+            Picker("", selection: Binding(get: { settings.clickFeelName(right: right) },
+                                          set: { n in if let f = ClickFeel.all.first(where: { $0.name == n }) { settings.applyClickFeel(f, right: right) } })) {
+                ForEach(ClickFeel.all) { Text($0.name).tag($0.name) }
+                if settings.clickFeelName(right: right) == "Custom" { Text("Custom").tag("Custom") }
+            }.labelsHidden().frame(width: 150)
+        }
+    }
+
+    private func wheelPicker() -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Scroll wheel").font(.system(size: 11)).foregroundStyle(pal.text2)
+            Picker("", selection: Binding(get: { settings.wheelFeelName() },
+                                          set: { n in if let f = WheelFeel.all.first(where: { $0.name == n }) { settings.applyWheelFeel(f) } })) {
+                ForEach(WheelFeel.all) { Text($0.name).tag($0.name) }
+                if settings.wheelFeelName() == "Custom" { Text("Custom").tag("Custom") }
+            }.labelsHidden().frame(width: 150)
+        }
     }
 }
 

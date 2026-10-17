@@ -40,5 +40,17 @@ final class HapticEngine: ObservableObject {
         let base = max(1, min(4, rule.intensity + boost))
         let intensity = max(1, Int((Double(base) * Double(settings.masterIntensity) / 4.0).rounded()))
         play(ordinal: ordinal ?? rule.ordinal, intensity: intensity, label: event.title)
+        if let e = rule.echo, e.intensity > 0 {
+            let ei = max(1, Int((Double(max(1, min(4, e.intensity + boost))) * Double(settings.masterIntensity) / 4.0).rounded()))
+            DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(max(20, e.delayMs))) { [weak self] in
+                self?.play(ordinal: e.ordinal, intensity: ei, label: event.title + " echo")
+            }
+        }
+    }
+
+    /// Preview a rule as the user would feel it (pulse + echo), for the test buttons.
+    func preview(_ r: HapticRule, label: String) {
+        play(ordinal: r.ordinal, intensity: r.intensity, label: label)
+        if let e = r.echo { DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(max(20, e.delayMs))) { [weak self] in self?.play(ordinal: e.ordinal, intensity: e.intensity, label: label + " echo") } }
     }
 }

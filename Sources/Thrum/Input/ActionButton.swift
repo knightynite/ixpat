@@ -124,6 +124,16 @@ enum ActionRunner {
         switch a {
         case .none: break
         case .actionRing: break   // handled by the app delegate (needs the ring items)
+        case .gestures: break     // handled by the app delegate (needs the hold state)
+        case .volumeUp:       mediaKey(0)
+        case .volumeDown:     mediaKey(1)
+        case .mute:           mediaKey(7)
+        case .nextTrack:      mediaKey(17)
+        case .previousTrack:  mediaKey(18)
+        case .brightnessUp:   mediaKey(2)
+        case .brightnessDown: mediaKey(3)
+        case .spaceLeft:      press(123, [.maskControl])
+        case .spaceRight:     press(124, [.maskControl])
         case .missionControl:
             NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: "/System/Applications/Mission Control.app"),
                                                configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil)

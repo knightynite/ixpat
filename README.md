@@ -35,6 +35,16 @@ Windows offers, plus a few Logitech MX-style ones.
   eight editable chambers and a haptic detent per chamber.
 - **Pointer & scroll**: tracking speed, no-acceleration, scroll speed and
   reversed scrolling for *this mouse only*; the trackpad is untouched.
+- **Feel presets**: named click feels for each button (Subtle, Crisp, Mechanical,
+  Deep, Push back, Double tap, Hold & swell, …) and wheel feels (Classic ratchet,
+  Fine, Mechanical, Heavy, Coarse, Silk, Slider, Rumble, Silent). A rule can carry a
+  second pulse (echo) after a delay; a button held past the hold time plays a swell;
+  a free-spinning wheel can keep a faint texture.
+- **Hold-and-move gestures**: keep the action button down and move the mouse (the
+  pointer stays put, MX gesture-button style). Up/down step the volume or brightness
+  with a tick per step and a bump at the end of the range; left/right swipe to the
+  previous/next track (or desktops, or any shortcut). Release without moving and the
+  hold's own action runs as usual.
 - **Diagnostics**: permissions, device identity, haptic table, raw report log.
 
 ## Build and run

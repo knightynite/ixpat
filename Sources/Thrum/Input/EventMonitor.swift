@@ -33,6 +33,8 @@ final class EventMonitor {
     var ringClick: (() -> Bool)?
     /// Ring open and a right click arrived: return true to consume it (cancel).
     var ringCancel: (() -> Bool)?
+    /// Pointer deltas while the action button is held: return true to consume the move (gesture mode).
+    var gestureMove: ((Double, Double) -> Bool)?
 
     private(set) var running = false
     private(set) var listenOnly = false
@@ -141,6 +143,10 @@ final class EventMonitor {
         switch type {
         case .leftMouseDown, .rightMouseDown, .keyDown: velX = 0; velY = 0   // a click or key stops the coast
         default: break
+        }
+        if type == .mouseMoved || type == .leftMouseDragged || type == .otherMouseDragged, let g = gestureMove,
+           g(Double(event.getIntegerValueField(.mouseEventDeltaX)), Double(event.getIntegerValueField(.mouseEventDeltaY))) {
+            return listenOnly ? event : nil
         }
         switch type {
         case .leftMouseDown:

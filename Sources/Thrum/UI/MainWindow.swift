@@ -1,0 +1,624 @@
+import SwiftUI
+import AppKit
+
+enum TabKind: String, CaseIterable, Identifiable {
+    case haptics, button, ring, pointer, diagnostics
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .haptics: return "Haptics"
+        case .button: return "Action Button"
+        case .ring: return "Action Ring"
+        case .pointer: return "Pointer & Scroll"
+        case .diagnostics: return "Diagnostics"
+        }
+    }
+}
+
+struct MainWindow: View {
+    @EnvironmentObject var settings: Settings
+    @EnvironmentObject var device: MouseDevice
+    @EnvironmentObject var engine: HapticEngine
+    @EnvironmentObject var permissions: Permissions
+    @EnvironmentObject var button: ActionButtonController
+    @Environment(\.colorScheme) private var systemScheme
+    @State private var tab: TabKind = .haptics
+
+    private var palette: Palette { Palette.resolve(theme: settings.theme, systemScheme: systemScheme, accent: settings.accent) }
+
+    var body: some View {
+        let pal = palette
+        ZStack {
+            LinearGradient(colors: [pal.stageTop, pal.bg, pal.stageBottom], startPoint: .top, endPoint: .bottom).ignoresSafeArea()
+            VStack(spacing: 0) {
+                HeaderBar()
+                ScrollView {
+                    VStack(spacing: 14) {
+                        HStack(spacing: 14) {
+                            heroTile.frame(width: 330, height: 300)
+                            LiveTile().frame(height: 300)
+                        }
+                        Picker("", selection: $tab) {
+                            ForEach(TabKind.allCases) { Text($0.title).tag($0) }
+                        }.pickerStyle(.segmented).labelsHidden()
+                        Group {
+                            switch tab {
+                            case .haptics: HapticsPane()
+                            case .button: ButtonPane()
+                            case .ring: RingPane()
+                            case .pointer: PointerPane()
+                            case .diagnostics: DiagnosticsPane()
+                            }
+                        }
+                        .padding(16)
+                        .background(RoundedRectangle(cornerRadius: 14).fill(pal.panel))
+                        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(pal.hair))
+                    }
+                    .padding(18)
+                }
+            }
+        }
+        .environment(\.palette, pal)
+        .preferredColorScheme(settings.theme == .system ? nil : (pal.isDark ? .dark : .light))
+        .tint(pal.accent)
+        .frame(width: 860, height: 700)
+    }
+
+    private var heroTile: some View {
+        let pal = palette
+        return ZStack {
+            RoundedRectangle(cornerRadius: 14).fill(pal.tile)
+            RoundedRectangle(cornerRadius: 14).strokeBorder(pal.hair)
+            VStack(alignment: .leading) {
+                HStack {
+                    Text("SURFACE MOUSE 2ND EDITION").font(.system(size: 11, weight: .semibold)).foregroundStyle(pal.text2).tracking(0.4)
+                    Spacer()
+                    Circle().fill(device.connected ? .green : .secondary).frame(width: 7, height: 7)
+                }
+                Spacer()
+                HStack {
+                    BatteryBadge(percent: device.battery)
+                    Spacer()
+                    Text("fw \(device.firmware)").font(.system(size: 11)).foregroundStyle(pal.text3)
+                }
+            }.padding(12)
+            MouseSchematic().padding(.vertical, 28)
+        }
+    }
+}
+
+struct HeaderBar: View {
+    @EnvironmentObject var settings: Settings
+    @EnvironmentObject var device: MouseDevice
+    @Environment(\.palette) private var pal
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(nsImage: NSApp.applicationIconImage).resizable().interpolation(.high).frame(width: 28, height: 28)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Thrum").font(.system(size: 15, weight: .bold)).foregroundStyle(pal.text)
+                Text("Haptics and settings for the Surface Mouse on macOS").font(.system(size: 11)).foregroundStyle(pal.text2)
+            }
+            Spacer()
+            Picker("", selection: $settings.theme) { ForEach(AppTheme.allCases) { Text($0.label).tag($0) } }
+                .pickerStyle(.segmented).labelsHidden().frame(width: 180)
+            Menu {
+                ForEach(Accents.all) { a in
+                    Button { settings.accentHex = a.hex } label: { Label(a.name, systemImage: settings.accentHex == a.hex ? "checkmark.circle.fill" : "circle.fill") }
+                }
+            } label: { Circle().fill(pal.accent).frame(width: 14, height: 14) }
+            .menuStyle(.borderlessButton).frame(width: 28)
+            Toggle("", isOn: $settings.enabled).toggleStyle(.switch).labelsHidden()
+        }
+        .padding(.horizontal, 18).padding(.vertical, 12)
+        .background(pal.bar)
+        .overlay(Rectangle().fill(pal.hair).frame(height: 1), alignment: .bottom)
+    }
+}
+
+/// Right-hand hero tile: what just happened, plus one button per waveform.
+struct LiveTile: View {
+    @EnvironmentObject var device: MouseDevice
+    @EnvironmentObject var engine: HapticEngine
+    @EnvironmentObject var settings: Settings
+    @Environment(\.palette) private var pal
+    private let cols = [GridItem(.adaptive(minimum: 96), spacing: 8)]
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 14).fill(pal.tile)
+            RoundedRectangle(cornerRadius: 14).strokeBorder(pal.hair)
+            VStack(alignment: .leading, spacing: 10) {
+                Text("LIVE").font(.system(size: 11, weight: .semibold)).foregroundStyle(pal.text2).tracking(0.4)
+                HStack(spacing: 18) {
+                    stat("Last event", engine.lastEvent)
+                    stat("Last pulse", engine.lastPlayed)
+                }
+                Divider()
+                Text("Waveforms on this mouse \(device.tableFromDevice ? "(read from the device)" : "(measured table; device not read yet)")")
+                    .font(.system(size: 11)).foregroundStyle(pal.text2)
+                LazyVGrid(columns: cols, spacing: 8) {
+                    ForEach(device.waveforms) { wf in
+                        Button {
+                            engine.play(ordinal: wf.ordinal, intensity: settings.masterIntensity, label: "Test")
+                        } label: {
+                            VStack(spacing: 4) {
+                                Image(systemName: wf.symbol).font(.system(size: 15))
+                                Text(wf.name).font(.system(size: 11, weight: .semibold))
+                                Text("\(wf.durationMs) ms").font(.system(size: 10)).foregroundStyle(pal.text3)
+                            }
+                            .frame(maxWidth: .infinity).padding(.vertical, 8)
+                            .background(RoundedRectangle(cornerRadius: 10).fill(pal.panel))
+                            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(pal.hair))
+                        }
+                        .buttonStyle(.plain).disabled(!device.connected)
+                        .help("Play \(wf.name) at the master intensity")
+                    }
+                }
+                Spacer(minLength: 0)
+            }.padding(12)
+        }
+    }
+
+    private func stat(_ k: String, _ v: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(k).font(.system(size: 10, weight: .semibold)).foregroundStyle(pal.text3)
+            Text(v).font(.system(size: 12, weight: .medium)).foregroundStyle(pal.text).lineLimit(1)
+        }
+    }
+}
+
+// MARK: - Haptics pane
+
+struct HapticsPane: View {
+    @EnvironmentObject var settings: Settings
+    @EnvironmentObject var device: MouseDevice
+    @EnvironmentObject var engine: HapticEngine
+    @EnvironmentObject var permissions: Permissions
+    @Environment(\.palette) private var pal
+    private let levels = ["Off", "Light", "Medium", "Strong", "Max"]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Toggle(isOn: $settings.hapticsEnabled) { Text("Haptic feedback").font(.system(size: 13, weight: .semibold)) }.toggleStyle(.switch)
+                Spacer()
+                Text("Strength").font(.system(size: 12)).foregroundStyle(pal.text2)
+                Picker("", selection: $settings.masterIntensity) {
+                    ForEach(0..<5, id: \.self) { Text(levels[$0]).tag($0) }
+                }.pickerStyle(.segmented).labelsHidden().frame(width: 300)
+            }
+            Text("Each event below plays one of the waveforms the mouse itself reports (HID Simple Haptic Controller). "
+               + "The mouse's own click feel is in its firmware; these are extra pulses layered on top.")
+                .font(.system(size: 11)).foregroundStyle(pal.text2)
+            Divider()
+            ForEach(HapticEvent.allCases) { ev in
+                RuleRow(event: ev)
+                if ev != HapticEvent.allCases.last { Divider().opacity(0.5) }
+            }
+        }
+    }
+}
+
+struct RuleRow: View {
+    let event: HapticEvent
+    @EnvironmentObject var settings: Settings
+    @EnvironmentObject var device: MouseDevice
+    @EnvironmentObject var engine: HapticEngine
+    @EnvironmentObject var permissions: Permissions
+    @Environment(\.palette) private var pal
+
+    var body: some View {
+        let rule = settings.binding(event)
+        HStack(spacing: 12) {
+            Toggle("", isOn: rule.enabled).toggleStyle(.switch).labelsHidden()
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(event.title).font(.system(size: 13, weight: .medium)).foregroundStyle(pal.text)
+                    if let p = event.permission, !permissions.granted(p) {
+                        Text("needs \(p.title)").font(.system(size: 10, weight: .semibold)).foregroundStyle(.orange)
+                    }
+                }
+                Text(event.detail).font(.system(size: 11)).foregroundStyle(pal.text2)
+            }
+            Spacer()
+            if event == .scrollStep {
+                Stepper("every \(settings.scrollStepEvery)", value: $settings.scrollStepEvery, in: 1...10)
+                    .font(.system(size: 11)).frame(width: 110)
+            }
+            Picker("", selection: rule.ordinal) {
+                ForEach(device.waveforms) { Text($0.name).tag($0.ordinal) }
+            }.labelsHidden().frame(width: 110)
+            Picker("", selection: rule.intensity) {
+                ForEach(1..<5, id: \.self) { Text("\($0)").tag($0) }
+            }.pickerStyle(.segmented).labelsHidden().frame(width: 110)
+            Button {
+                engine.play(ordinal: rule.wrappedValue.ordinal, intensity: rule.wrappedValue.intensity, label: "Test")
+            } label: { Image(systemName: "play.fill") }
+            .buttonStyle(.bordered).disabled(!device.connected)
+        }
+        .padding(.vertical, 4)
+        .opacity(rule.wrappedValue.enabled ? 1 : 0.6)
+    }
+}
+
+// MARK: - Action button pane
+
+struct ButtonPane: View {
+    @EnvironmentObject var settings: Settings
+    @EnvironmentObject var button: ActionButtonController
+    @EnvironmentObject var permissions: Permissions
+    @Environment(\.palette) private var pal
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("How the mouse reports its action button").font(.system(size: 13, weight: .semibold)).foregroundStyle(pal.text)
+                Text("The firmware decides the gesture and sends a Windows chord for each: press = Win+Shift+S (Snipping Tool), "
+                   + "double press = Win + a fake left click (Click to Do), hold = Win+Shift+F23, the Copilot key, held. Thrum maps those chords "
+                   + "straight to the actions below and hides them from your apps.")
+                    .font(.system(size: 11)).foregroundStyle(pal.text2)
+                HStack(spacing: 8) {
+                    Text("Last gesture:").font(.system(size: 11)).foregroundStyle(pal.text2)
+                    Text(button.lastGesture).font(.system(size: 11, weight: .semibold)).foregroundStyle(pal.accent)
+                }
+            }
+            if !permissions.inputMonitoring {
+                Text("Reading the button needs Input Monitoring (Diagnostics tab).").font(.system(size: 11)).foregroundStyle(.orange)
+            }
+            Divider()
+            ForEach(ButtonGesture.allCases) { g in
+                ActionRow(gesture: g)
+            }
+            Divider()
+            Toggle(isOn: $settings.swallowButton) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Hide the button's built-in chords from apps").font(.system(size: 13, weight: .medium))
+                    Text("Otherwise a press also reaches the frontmost app as ⌘⇧S and the double press as a real click. Needs Accessibility.")
+                        .font(.system(size: 11)).foregroundStyle(pal.text2)
+                }
+            }.toggleStyle(.switch).disabled(!permissions.accessibility)
+        }
+    }
+}
+
+/// Picker for a ButtonAction plus the detail control its kind needs.
+struct ActionPicker: View {
+    @Binding var action: ButtonAction
+    @Environment(\.palette) private var pal
+    @State private var recording = false
+    @State private var monitor: Any?
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Picker("", selection: Binding(get: { action.kind }, set: { action = ButtonAction.blank($0) })) {
+                ForEach(ButtonAction.Kind.allCases) { Text($0.title).tag($0) }
+            }.labelsHidden().frame(width: 180)
+            switch action {
+            case .launchApp(let path):
+                Button(path.isEmpty ? "Choose app…" : ((path as NSString).lastPathComponent as NSString).deletingPathExtension) { chooseApp() }
+            case .shortcut(_, _, let label):
+                Button(recording ? "Press keys…" : (label.isEmpty ? "Record shortcut" : label)) { record() }.buttonStyle(.bordered)
+            case .shell(let cmd):
+                TextField("zsh command", text: Binding(get: { cmd }, set: { action = .shell(command: $0) }))
+                    .textFieldStyle(.roundedBorder).frame(width: 220)
+            case .actionRing:
+                Text("opens the ring (hold: sweep and release · press: click a chamber)").font(.system(size: 11)).foregroundStyle(pal.text2)
+            default:
+                EmptyView()
+            }
+        }
+        .onDisappear { stopRecording() }
+    }
+
+    private func chooseApp() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.applicationBundle]
+        panel.directoryURL = URL(fileURLWithPath: "/Applications")
+        panel.canChooseDirectories = false
+        if panel.runModal() == .OK, let url = panel.url { action = .launchApp(path: url.path) }
+    }
+
+    private func record() {
+        guard !recording else { return }
+        recording = true
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { ev in
+            if ev.keyCode != 53 {                                   // Escape cancels
+                let flags = CGEventFlags(rawValue: UInt64(ev.modifierFlags.intersection([.command, .shift, .control, .option]).rawValue))
+                let label = ActionRunner.shortcutLabel(keyCode: Int(ev.keyCode), flags: flags)
+                action = .shortcut(keyCode: Int(ev.keyCode), flags: flags.rawValue, label: label)
+            }
+            stopRecording()
+            return nil
+        }
+    }
+
+    private func stopRecording() {
+        if let m = monitor { NSEvent.removeMonitor(m) }
+        monitor = nil; recording = false
+    }
+}
+
+struct ActionRow: View {
+    let gesture: ButtonGesture
+    @EnvironmentObject var settings: Settings
+    @Environment(\.palette) private var pal
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(gesture.title).font(.system(size: 13, weight: .medium)).foregroundStyle(pal.text).frame(width: 120, alignment: .leading)
+            ActionPicker(action: Binding(get: { settings.actions[gesture] ?? .none }, set: { settings.actions[gesture] = $0 }))
+            Spacer()
+            Button { (NSApp.delegate as? AppDelegate)?.run(settings.actions[gesture] ?? .none, hold: gesture == .hold) } label: { Image(systemName: "play.fill") }
+                .buttonStyle(.bordered).help("Run this action now")
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+// MARK: - Action Ring pane
+
+struct RingPane: View {
+    @EnvironmentObject var settings: Settings
+    @EnvironmentObject var permissions: Permissions
+    @Environment(\.palette) private var pal
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Action Ring").font(.system(size: 13, weight: .semibold)).foregroundStyle(pal.text)
+                    Text("A ring of shortcuts that opens under the pointer. Assign it to the action button (press or hold). "
+                       + "Sweep the mouse toward a chamber (you feel a detent per chamber), then release or click to run it. Escape or right-click cancels.")
+                        .font(.system(size: 11)).foregroundStyle(pal.text2)
+                }
+                Spacer()
+                Button {
+                    (NSApp.delegate as? AppDelegate)?.run(.actionRing, hold: false)
+                } label: { Label("Open ring now", systemImage: "circle.hexagongrid") }
+                .buttonStyle(.borderedProminent).disabled(!permissions.accessibility)
+            }
+            Divider()
+            ForEach(Array(settings.ringItems.enumerated()), id: \.element.id) { i, item in
+                HStack(spacing: 10) {
+                    Image(systemName: item.symbol.isEmpty ? "questionmark" : item.symbol)
+                        .font(.system(size: 16)).frame(width: 34, height: 34)
+                        .background(Circle().fill(pal.accent.opacity(0.18)))
+                    TextField("Title", text: Binding(get: { item.title }, set: { v in if settings.ringItems.indices.contains(i) { settings.ringItems[i].title = v } }))
+                        .textFieldStyle(.roundedBorder).frame(width: 130)
+                    TextField("SF Symbol", text: Binding(get: { item.symbol }, set: { v in if settings.ringItems.indices.contains(i) { settings.ringItems[i].symbol = v } }))
+                        .textFieldStyle(.roundedBorder).frame(width: 150).font(.system(size: 11, design: .monospaced))
+                    ActionPicker(action: Binding(get: { item.action }, set: { v in if settings.ringItems.indices.contains(i) { settings.ringItems[i].action = v } }))
+                    Spacer()
+                    Button { settings.ringItems.remove(at: i) } label: { Image(systemName: "minus.circle") }
+                        .buttonStyle(.plain).foregroundStyle(pal.text2).disabled(settings.ringItems.count <= 2)
+                }
+            }
+            HStack {
+                Button { settings.ringItems.append(RingItem(title: "New", symbol: "star", action: .none)) } label: { Label("Add chamber", systemImage: "plus") }
+                    .disabled(settings.ringItems.count >= 8)
+                Button("Reset to defaults") { settings.ringItems = RingItem.defaults }
+                Spacer()
+                Text("Symbol names are SF Symbols (e.g. terminal, safari, music.note).").font(.system(size: 11)).foregroundStyle(pal.text3)
+            }
+        }
+    }
+}
+
+// MARK: - Pointer & scroll pane
+
+struct PointerPane: View {
+    @EnvironmentObject var settings: Settings
+    @EnvironmentObject var device: MouseDevice
+    @EnvironmentObject var permissions: Permissions
+    @Environment(\.palette) private var pal
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Toggle(isOn: $settings.managePointer) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Manage pointer settings for this mouse").font(.system(size: 13, weight: .semibold))
+                    Text("Applies to the Surface Mouse only; the trackpad and other mice keep the system values. Re-applied whenever the mouse reconnects.")
+                        .font(.system(size: 11)).foregroundStyle(pal.text2)
+                }
+            }.toggleStyle(.switch)
+            Group {
+                HStack {
+                    Text("Tracking speed").font(.system(size: 12)).frame(width: 130, alignment: .leading)
+                    Slider(value: $settings.pointerSpeed, in: 0...3, step: 0.125) { } minimumValueLabel: { Text("Slow").font(.system(size: 10)) } maximumValueLabel: { Text("Fast").font(.system(size: 10)) }
+                    Text(String(format: "%.2f", settings.pointerSpeed)).font(.system(size: 11, design: .monospaced)).frame(width: 40)
+                }
+                Toggle(isOn: $settings.noAcceleration) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("No pointer acceleration").font(.system(size: 12))
+                        Text("1:1 sensor movement, like a gaming mouse setting. Overrides the speed slider.").font(.system(size: 11)).foregroundStyle(pal.text2)
+                    }
+                }
+                HStack {
+                    Text("Scrolling speed").font(.system(size: 12)).frame(width: 130, alignment: .leading)
+                    Slider(value: $settings.scrollSpeed, in: 0.05...1.5, step: 0.05) { } minimumValueLabel: { Text("Slow").font(.system(size: 10)) } maximumValueLabel: { Text("Fast").font(.system(size: 10)) }
+                    Text(String(format: "%.2f", settings.scrollSpeed)).font(.system(size: 11, design: .monospaced)).frame(width: 40)
+                }
+            }.disabled(!settings.managePointer).opacity(settings.managePointer ? 1 : 0.5)
+            Divider()
+            Toggle(isOn: $settings.reverseScroll) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Reverse scrolling direction for this mouse").font(.system(size: 13, weight: .medium))
+                    Text("Flips wheel scrolls only, so the trackpad keeps natural scrolling. Needs Accessibility.").font(.system(size: 11)).foregroundStyle(pal.text2)
+                }
+            }.toggleStyle(.switch).disabled(!permissions.accessibility)
+            Divider()
+            Text("Wheel feel").font(.system(size: 13, weight: .semibold)).foregroundStyle(pal.text)
+            Toggle(isOn: $settings.smoothScroll) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Smooth kinetic scrolling (Magic Mouse / Windows feel)").font(.system(size: 12))
+                    Text("Each notch becomes a pixel glide instead of a jump; a fast spin coasts on after the wheel stops. Needs Accessibility.").font(.system(size: 11)).foregroundStyle(pal.text2)
+                }
+            }.toggleStyle(.switch).disabled(!permissions.accessibility)
+            Group {
+                HStack {
+                    Text("Distance per notch").font(.system(size: 12)).frame(width: 130, alignment: .leading)
+                    Slider(value: $settings.scrollPixelsPerNotch, in: 20...160, step: 5)
+                    Text("\(Int(settings.scrollPixelsPerNotch)) px").font(.system(size: 11, design: .monospaced)).frame(width: 50)
+                }
+                HStack {
+                    Text("Glide").font(.system(size: 12)).frame(width: 130, alignment: .leading)
+                    Slider(value: $settings.scrollGlide, in: 1...10, step: 1) { } minimumValueLabel: { Text("Snappy").font(.system(size: 10)) } maximumValueLabel: { Text("Long").font(.system(size: 10)) }
+                    Text("\(Int(settings.scrollGlide))").font(.system(size: 11, design: .monospaced)).frame(width: 50)
+                }
+                HStack {
+                    Text("Momentum").font(.system(size: 12)).frame(width: 130, alignment: .leading)
+                    Slider(value: $settings.scrollMomentum, in: 0...10, step: 1) { } minimumValueLabel: { Text("Off").font(.system(size: 10)) } maximumValueLabel: { Text("Coast").font(.system(size: 10)) }
+                    Text("\(Int(settings.scrollMomentum))").font(.system(size: 11, design: .monospaced)).frame(width: 50)
+                }
+                HStack {
+                    Text("Acceleration").font(.system(size: 12)).frame(width: 130, alignment: .leading)
+                    Slider(value: $settings.scrollAccel, in: 0...3, step: 0.25) { } minimumValueLabel: { Text("Linear").font(.system(size: 10)) } maximumValueLabel: { Text("Fast").font(.system(size: 10)) }
+                    Text(String(format: "%.2f×", 1 + settings.scrollAccel)).font(.system(size: 11, design: .monospaced)).frame(width: 50)
+                }
+            }.disabled(!settings.smoothScroll || !permissions.accessibility).opacity(settings.smoothScroll ? 1 : 0.5)
+            Toggle(isOn: Binding(get: { settings.rule(.scrollStep).enabled }, set: { v in var r = settings.rule(.scrollStep); r.enabled = v; settings.setRule(.scrollStep, r) })) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Ratchet tick per notch (MX feel)").font(.system(size: 12))
+                    Text("A detent pulse for every notch, so the free-spinning wheel feels notched. Waveform and strength are in the Haptics tab.").font(.system(size: 11)).foregroundStyle(pal.text2)
+                }
+            }.toggleStyle(.switch)
+            Toggle(isOn: $settings.ratchetDynamic) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Dynamic ratchet").font(.system(size: 12))
+                    Text("Firm detents when you scroll slowly, light quick ticks when you scroll fast, a firmer bump when you reverse.").font(.system(size: 11)).foregroundStyle(pal.text2)
+                }
+            }.toggleStyle(.switch).disabled(!settings.rule(.scrollStep).enabled)
+            HStack {
+                Text("Go light above").font(.system(size: 12)).frame(width: 130, alignment: .leading)
+                Slider(value: $settings.ratchetLightRate, in: 4...30, step: 1)
+                Text("\(Int(settings.ratchetLightRate))/s").font(.system(size: 11, design: .monospaced)).frame(width: 50)
+            }.disabled(!settings.ratchetDynamic || !settings.rule(.scrollStep).enabled).opacity(settings.ratchetDynamic ? 1 : 0.5)
+            Toggle(isOn: $settings.freeSpin) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Free-spin on a flick (SmartShift)").font(.system(size: 12))
+                    Text("Spin fast and the wheel switches to free-spin: no ticks, boosted distance, one Collide pulse on the switch.").font(.system(size: 11)).foregroundStyle(pal.text2)
+                }
+            }.toggleStyle(.switch)
+            Group {
+                HStack {
+                    Text("Flick threshold").font(.system(size: 12)).frame(width: 130, alignment: .leading)
+                    Slider(value: $settings.freeSpinThreshold, in: 8...40, step: 1)
+                    Text("\(Int(settings.freeSpinThreshold))/s").font(.system(size: 11, design: .monospaced)).frame(width: 50)
+                }
+                HStack {
+                    Text("Free-spin boost").font(.system(size: 12)).frame(width: 130, alignment: .leading)
+                    Slider(value: $settings.freeSpinMultiplier, in: 1.5...6, step: 0.5)
+                    Text(String(format: "%.1f×", settings.freeSpinMultiplier)).font(.system(size: 11, design: .monospaced)).frame(width: 50)
+                }
+            }.disabled(!settings.freeSpin).opacity(settings.freeSpin ? 1 : 0.5)
+            Divider()
+            HStack {
+                Text("Double-click speed, secondary click side and the system-wide tracking speed live in System Settings.")
+                    .font(.system(size: 11)).foregroundStyle(pal.text2)
+                Spacer()
+                Button("Open System Settings › Mouse") {
+                    if let u = URL(string: "x-apple.systempreferences:com.apple.Mouse-Settings.extension") { NSWorkspace.shared.open(u) }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Diagnostics pane
+
+struct DiagnosticsPane: View {
+    @EnvironmentObject var settings: Settings
+    @EnvironmentObject var device: MouseDevice
+    @EnvironmentObject var permissions: Permissions
+    @Environment(\.palette) private var pal
+    @State private var featureDump = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Permissions").font(.system(size: 13, weight: .semibold)).foregroundStyle(pal.text)
+            ForEach(PermissionKind.allCases) { kind in
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: permissions.granted(kind) ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(permissions.granted(kind) ? .green : pal.text3)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(kind.title).font(.system(size: 12, weight: .medium)).foregroundStyle(pal.text)
+                        Text(kind.why).font(.system(size: 11)).foregroundStyle(pal.text2)
+                        if !permissions.granted(kind) {
+                            Text("If macOS already lists Thrum as allowed, the grant is stale: run  \(permissions.resetCommand(kind))  and relaunch.")
+                                .font(.system(size: 10)).foregroundStyle(pal.text3)
+                        }
+                    }
+                    Spacer()
+                    if !permissions.granted(kind) {
+                        Button("Allow…") { permissions.prompt(kind) }.buttonStyle(.borderedProminent)
+                        Button("Open Settings") { permissions.openSettings(kind) }
+                    }
+                }
+            }
+            Divider()
+            Text("Device").font(.system(size: 13, weight: .semibold)).foregroundStyle(pal.text)
+            Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 4) {
+                row("State", device.connected ? "connected" : (device.openRefused ? "found, but open refused (Input Monitoring)" : "not found"))
+                row("Vendor / Product", String(format: "0x%04X / 0x%04X", MouseDevice.vendorID, MouseDevice.productID))
+                row("Firmware", device.firmware)
+                row("Serial", device.serial)
+                row("Transport", device.transport)
+                row("Reports seen", "\(device.reportsSeen)")
+                row("Last error", device.lastError.isEmpty ? "none" : device.lastError)
+            }
+            HStack {
+                Button("Read haptic table (0x42)") { device.readHapticTable() }
+                Button("Dump vendor feature 0x24") { dump(0x24) }
+                Button("Dump vendor feature 0x2A") { dump(0x2A) }
+                Button("Copy report") { copyReport() }
+            }.disabled(!device.connected)
+            if !featureDump.isEmpty {
+                Text(featureDump).font(.system(size: 10, design: .monospaced)).foregroundStyle(pal.text2).textSelection(.enabled)
+            }
+            Divider()
+            HStack {
+                Text("Raw input reports (buttons, keys, vendor; motion is not logged)").font(.system(size: 13, weight: .semibold)).foregroundStyle(pal.text)
+                Spacer()
+                Button("Clear") { device.clearLog() }
+            }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(device.log.suffix(60).reversed()) { r in
+                        HStack(spacing: 10) {
+                            Text(r.time.formatted(date: .omitted, time: .standard)).foregroundStyle(pal.text3)
+                            Text(r.kind).frame(width: 90, alignment: .leading).foregroundStyle(pal.accent)
+                            Text(r.hex).foregroundStyle(pal.text)
+                        }.font(.system(size: 10, design: .monospaced))
+                    }
+                }.frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(height: 180)
+            .padding(8)
+            .background(RoundedRectangle(cornerRadius: 8).fill(pal.field))
+        }
+    }
+
+    private func row(_ k: String, _ v: String) -> some View {
+        GridRow {
+            Text(k).font(.system(size: 11)).foregroundStyle(pal.text2)
+            Text(v).font(.system(size: 11, design: .monospaced)).foregroundStyle(pal.text).textSelection(.enabled)
+        }
+    }
+
+    private func dump(_ id: UInt8) {
+        device.readFeatureAsync(id) { bytes in
+            guard let bytes else { featureDump = String(format: "feature 0x%02x: read failed", id); return }
+            featureDump = String(format: "feature 0x%02x (%d bytes): ", id, bytes.count) + bytes.map { String(format: "%02x", $0) }.joined(separator: " ")
+        }
+    }
+
+    private func copyReport() {
+        var s = "Thrum diagnostics\n"
+        s += "connected=\(device.connected) fw=\(device.firmware) transport=\(device.transport) reports=\(device.reportsSeen)\n"
+        s += "inputMonitoring=\(permissions.inputMonitoring) accessibility=\(permissions.accessibility)\n"
+        s += "waveforms: " + device.waveforms.map { "\($0.ordinal)=\($0.name)/\($0.durationMs)ms" }.joined(separator: ", ") + "\n"
+        s += device.log.suffix(60).map { "\($0.time.formatted(date: .omitted, time: .standard)) \($0.kind) \($0.hex)" }.joined(separator: "\n")
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(s, forType: .string)
+    }
+}

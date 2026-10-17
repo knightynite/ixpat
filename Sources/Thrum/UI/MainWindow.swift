@@ -321,7 +321,8 @@ struct ForceClickSection: View {
                     .font(.system(size: 11)).foregroundStyle(.orange)
             } else if !systemOn {
                 HStack(spacing: 10) {
-                    Text("“Force Click and haptic feedback” is off in System Settings › Trackpad, so apps ignore force clicks from any device.")
+                    Text("macOS only opens Look Up and link previews from a force click when “Look up & data detectors” (System Settings › Trackpad) "
+                       + "is set to Force Click with One Finger. Turn on flips just that switch; a three-finger tap on the trackpad keeps working.")
                         .font(.system(size: 11)).foregroundStyle(.orange)
                     Button("Turn on") {
                         ForceClick.enableSystemPreference()

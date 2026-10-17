@@ -57,7 +57,7 @@ struct MenuView: View {
 
             VStack(spacing: 0) {
                 actionRow("Open Action Ring", "circle.hexagongrid", enabled: permissions.accessibility) {
-                    (NSApp.delegate as? AppDelegate)?.run(.actionRing, hold: false)
+                    AppDelegate.shared?.run(.actionRing, hold: false)
                 }
                 Divider().padding(.leading, 40)
                 actionRow("Test pulse", "waveform.path", enabled: device.connected) {
@@ -65,7 +65,7 @@ struct MenuView: View {
                     engine.play(ordinal: ord, intensity: 4, label: "Test")
                 }
                 Divider().padding(.leading, 40)
-                actionRow("Settings…", "slider.horizontal.3", shortcut: ",") { (NSApp.delegate as? AppDelegate)?.showSettings() }
+                actionRow("Settings…", "slider.horizontal.3", shortcut: ",") { AppDelegate.shared?.showSettings() }
             }
             .glass(pal, radius: 14)
 

@@ -392,7 +392,7 @@ struct ActionRow: View {
             Text(gesture.title).font(.system(size: 13, weight: .medium)).foregroundStyle(pal.text).frame(width: 120, alignment: .leading)
             ActionPicker(action: Binding(get: { settings.actions[gesture] ?? .none }, set: { settings.actions[gesture] = $0 }))
             Spacer()
-            Button { (NSApp.delegate as? AppDelegate)?.run(settings.actions[gesture] ?? .none, hold: gesture == .hold) } label: { Image(systemName: "play.fill") }
+            Button { AppDelegate.shared?.run(settings.actions[gesture] ?? .none, hold: gesture == .hold) } label: { Image(systemName: "play.fill") }
                 .buttonStyle(.bordered).help("Run this action now")
         }
         .padding(.vertical, 4)
@@ -507,7 +507,7 @@ struct RingPane: View {
                 }
                 Spacer()
                 Button {
-                    (NSApp.delegate as? AppDelegate)?.run(.actionRing, hold: false)
+                    AppDelegate.shared?.run(.actionRing, hold: false)
                 } label: { Label("Open ring now", systemImage: "circle.hexagongrid") }
                 .buttonStyle(.borderedProminent).disabled(!permissions.accessibility)
             }
@@ -879,7 +879,7 @@ struct BridgeSection: View {
             HStack {
                 SectionTitle(text: "Plugin bridge", pal: pal)
                 Spacer()
-                let running = (NSApp.delegate as? AppDelegate)?.bridge.running ?? false
+                let running = AppDelegate.shared?.bridge.running ?? false
                 Text(running ? "listening on 127.0.0.1:\(settings.bridgePort)" : "off").font(.system(size: 11, design: .monospaced)).foregroundStyle(running ? .green : pal.text3)
                 Toggle("", isOn: $settings.bridgeEnabled).toggleStyle(.switch).labelsHidden()
             }
@@ -892,11 +892,11 @@ struct BridgeSection: View {
                     NSPasteboard.general.clearContents(); NSPasteboard.general.setString(settings.bridgeToken, forType: .string)
                     copied = true; DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copied = false }
                 }
-                Button("New token") { settings.bridgeToken = Settings.newToken(); (NSApp.delegate as? AppDelegate)?.bridge.start(port: UInt16(clamping: settings.bridgePort), token: settings.bridgeToken) }
+                Button("New token") { settings.bridgeToken = Settings.newToken(); AppDelegate.shared?.bridge.start(port: UInt16(clamping: settings.bridgePort), token: settings.bridgeToken) }
                 Spacer()
                 Text("Port").font(.system(size: 11)).foregroundStyle(pal.text2)
                 TextField("47337", value: $settings.bridgePort, format: .number).textFieldStyle(.roundedBorder).frame(width: 70)
-                    .onSubmit { (NSApp.delegate as? AppDelegate)?.bridge.start(port: UInt16(clamping: settings.bridgePort), token: settings.bridgeToken) }
+                    .onSubmit { AppDelegate.shared?.bridge.start(port: UInt16(clamping: settings.bridgePort), token: settings.bridgeToken) }
             }
         }
     }

@@ -107,6 +107,7 @@ struct Glass: ViewModifier {
                     .strokeBorder(LinearGradient(colors: [Color.white.opacity(pal.isDark ? 0.38 : 0.95),
                                                           Color.white.opacity(pal.isDark ? 0.06 : 0.35)],
                                                  startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1)
+                    .allowsHitTesting(false)
             )
             .shadow(color: .black.opacity(pal.isDark ? 0.38 : 0.10), radius: 18, y: 9)
     }
@@ -166,7 +167,7 @@ struct PillTabs<T: Hashable & Identifiable & CaseIterable>: View where T.AllCase
         }
         .padding(4)
         .background(Capsule().fill(pal.field))
-        .overlay(Capsule().strokeBorder(pal.hair))
+        .overlay(Capsule().strokeBorder(pal.hair).allowsHitTesting(false))
     }
 }
 

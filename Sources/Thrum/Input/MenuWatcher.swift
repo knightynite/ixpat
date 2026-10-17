@@ -46,6 +46,12 @@ final class MenuWatcher {
     private var lastControlKey = ""
     private var lastDropKey = ""
     private var lastControlTick: CFTimeInterval = 0
+    /// Our own windows (settings, popover, ring) in CG coordinates, refreshed on main. An AX call
+    /// that resolves to this process is served in-process on the calling thread, which runs
+    /// SwiftUI's accessibility tree here instead of on main (measured: crash in AccessibilityNode).
+    private let ownFrames = Locked<[CGRect]>([])
+    private var frameTimer: Timer?
+    private let ownPid = ProcessInfo.processInfo.processIdentifier
 
     func start() {
         guard timer == nil else { return }
@@ -54,9 +60,26 @@ final class MenuWatcher {
         t.setEventHandler { [weak self] in self?.tick() }
         t.resume()
         timer = t
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.frameTimer == nil else { return }
+            self.refreshOwnFrames()
+            self.frameTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in self?.refreshOwnFrames() }
+        }
     }
 
-    func stop() { timer?.cancel(); timer = nil }
+    func stop() {
+        timer?.cancel(); timer = nil
+        DispatchQueue.main.async { [weak self] in self?.frameTimer?.invalidate(); self?.frameTimer = nil }
+    }
+
+    /// Main thread: AppKit window frames (bottom-left origin) → CG (top-left), slightly inflated.
+    private func refreshOwnFrames() {
+        let h = NSScreen.screens.first?.frame.height ?? 0
+        ownFrames.value = NSApp.windows.filter { $0.isVisible }.map { w in
+            let f = w.frame
+            return CGRect(x: f.minX, y: h - f.maxY, width: f.width, height: f.height).insetBy(dx: -4, dy: -4)
+        }
+    }
 
     private func attr(_ el: AXUIElement, _ name: String) -> CFTypeRef? {
         var v: CFTypeRef?
@@ -82,10 +105,16 @@ final class MenuWatcher {
 
     private func tick() {
         guard AXIsProcessTrusted() else { return }
+        // Never hit-test our own windows from this queue (see ownFrames).
+        if let loc = CGEvent(source: nil)?.location, ownFrames.value.contains(where: { $0.contains(loc) }) {
+            lastKey = ""; lastControlKey = ""; lastDropKey = ""; lastWords = -1; return
+        }
+        // With our own window in front, the focused-element paths would resolve to us too.
+        let ownFront = NSWorkspace.shared.frontmostApplication?.processIdentifier == ownPid
         let c = config
         let moved = pointerMovedRecently()
-        if c.menuTicks, moved { menuTick() }
-        if c.textTicks, selectionGate() { selectionTick() } else { lastWords = -1 }
+        if c.menuTicks, moved { menuTick(focusFallbacks: !ownFront) }
+        if c.textTicks, !ownFront, selectionGate() { selectionTick() } else { lastWords = -1 }
         let down = leftDown()
         if c.controlTicks, moved, !down { controlTick() } else { lastControlKey = "" }
         if c.dropTicks, moved, down { dropTick() } else { lastDropKey = "" }
@@ -93,7 +122,7 @@ final class MenuWatcher {
 
     // MARK: Menus
 
-    private func menuTick() {
+    private func menuTick(focusFallbacks: Bool) {
         var found: (String, String)? = nil    // (method, key)
         // Primary: hit-test the element under the pointer. Context menus (Chromium,
         // Electron, AppKit) are reachable this way even when they are not in the
@@ -111,12 +140,12 @@ final class MenuWatcher {
                 }
             }
         }
-        if found == nil, let f = attr(systemWide, kAXFocusedUIElementAttribute) {
+        if found == nil, focusFallbacks, let f = attr(systemWide, kAXFocusedUIElementAttribute) {
             let el = f as! AXUIElement
             let r = role(el)
             if Self.roles.contains(r) { found = ("sys", key(el, r)) }
         }
-        if found == nil, let app = NSWorkspace.shared.frontmostApplication {
+        if found == nil, focusFallbacks, let app = NSWorkspace.shared.frontmostApplication {
             let ax = AXUIElementCreateApplication(app.processIdentifier)
             if let f = attr(ax, kAXFocusedUIElementAttribute) {
                 let el = f as! AXUIElement

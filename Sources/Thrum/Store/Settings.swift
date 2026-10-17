@@ -8,6 +8,7 @@ enum HapticEvent: String, CaseIterable, Codable, Identifiable {
     case scrollStep, screenEdge, dragEnd, windowSnap, appSwitch, actionButton
     case menuHighlight, textSelect, textLine, ringDetent, ringOpen, ringCommit, freeSpinOn, freeSpinOff
     case leftHold, rightHold, freeSpinTexture, gestureStep, gestureLimit, gestureSwipe
+    case controlHover, hoverAffordance, dropTarget, sliderTick, selectionChange, scrollEnd, pluginPulse
 
     var id: String { rawValue }
     var title: String {
@@ -37,6 +38,13 @@ enum HapticEvent: String, CaseIterable, Codable, Identifiable {
         case .gestureStep:  return "Gesture step (volume, brightness)"
         case .gestureLimit: return "Gesture hits a limit"
         case .gestureSwipe: return "Gesture swipe (track, desktop)"
+        case .controlHover: return "Pointer enters a control"
+        case .hoverAffordance: return "Cursor changes shape"
+        case .dropTarget:   return "Drag crosses a drop target"
+        case .sliderTick:   return "Slider detent"
+        case .selectionChange: return "Tab or item selected"
+        case .scrollEnd:    return "Scrolling hits the end"
+        case .pluginPulse:  return "App plugin pulse"
         }
     }
     var detail: String {
@@ -63,6 +71,13 @@ enum HapticEvent: String, CaseIterable, Codable, Identifiable {
         case .gestureStep:          return "Each volume or brightness step while the action button is held and the mouse moves up or down: tick, tick, tick."
         case .gestureLimit:         return "Volume already at the top or bottom: a bump instead of a step."
         case .gestureSwipe:         return "A sideways gesture ran its action (next track rises, previous track falls)."
+        case .controlHover:         return "Buttons, tabs, Dock icons, links and pop-ups as the pointer arrives on them. One tick per control."
+        case .hoverAffordance:      return "Resize edges, text (I-beam), link hands: the system cursor changed shape under the pointer. Can be busy; off by default."
+        case .dropTarget:           return "While dragging, the cursor gains or loses its badge, or the element under it changes: a folder, a Dock icon, a text field."
+        case .sliderTick:           return "A slider in the front app crossed one of 20 detents across its range (Accessibility notification)."
+        case .selectionChange:      return "A tab, segment, slide thumbnail or list selection changed under the mouse."
+        case .scrollEnd:            return "The scroll bar of the front app reached the top or bottom: an overscroll bump."
+        case .pluginPulse:          return "Pulses requested by app plugins over the local bridge (Diagnostics tab). The plugin picks the waveform; this switch gates it."
         }
     }
     var permission: PermissionKind? {
@@ -73,6 +88,8 @@ enum HapticEvent: String, CaseIterable, Codable, Identifiable {
         case .appSwitch, .ringDetent, .ringOpen, .ringCommit, .freeSpinOn, .freeSpinOff: return nil
         case .leftHold, .rightHold, .freeSpinTexture: return .inputMonitoring
         case .gestureStep, .gestureLimit, .gestureSwipe: return nil
+        case .controlHover, .dropTarget, .sliderTick, .selectionChange, .scrollEnd: return .accessibility
+        case .hoverAffordance, .pluginPulse: return nil
         }
     }
     static let defaults: [HapticEvent: HapticRule] = [
@@ -101,6 +118,13 @@ enum HapticEvent: String, CaseIterable, Codable, Identifiable {
         .gestureStep:  HapticRule(enabled: true,  ordinal: 6,  intensity: 2),   // STEP per volume notch
         .gestureLimit: HapticRule(enabled: true,  ordinal: 4,  intensity: 3),   // COLLIDE at the end of the range
         .gestureSwipe: HapticRule(enabled: true,  ordinal: 8,  intensity: 3),   // SUCCESS: an ascending pattern
+        .controlHover: HapticRule(enabled: true,  ordinal: 3,  intensity: 1),   // HOVER, like Windows' Close-button hover
+        .hoverAffordance: HapticRule(enabled: false, ordinal: 3, intensity: 1),
+        .dropTarget:   HapticRule(enabled: true,  ordinal: 3,  intensity: 2),
+        .sliderTick:   HapticRule(enabled: true,  ordinal: 6,  intensity: 1),   // STEP per detent
+        .selectionChange: HapticRule(enabled: true, ordinal: 5, intensity: 2), // ALIGN
+        .scrollEnd:    HapticRule(enabled: true,  ordinal: 4,  intensity: 2),   // COLLIDE at the boundary
+        .pluginPulse:  HapticRule(enabled: true,  ordinal: 10, intensity: 3),
     ]
 }
 
@@ -244,6 +268,24 @@ enum ButtonAction: Codable, Equatable {
     }
 }
 
+/// Per-app overrides. Every field is optional: nil means "use the base setting".
+struct AppProfile: Codable, Identifiable, Equatable {
+    var id = UUID()
+    var bundleID: String
+    var name: String
+    var rules: [String: HapticRule] = [:]          // keyed by HapticEvent raw value
+    var hapticsEnabled: Bool? = nil
+    var smoothScroll: Bool? = nil
+    var freeSpin: Bool? = nil
+    var ratchetDynamic: Bool? = nil
+    var ratchetLightRate: Double? = nil
+    var scrollStepEvery: Int? = nil
+    var freeSpinTextureEvery: Int? = nil
+    var ringItems: [RingItem]? = nil
+    var gestureUp: ButtonAction? = nil, gestureDown: ButtonAction? = nil, gestureLeft: ButtonAction? = nil, gestureRight: ButtonAction? = nil
+    func rule(_ e: HapticEvent, base: Settings) -> HapticRule { rules[e.rawValue] ?? base.baseRule(e) }
+}
+
 /// One chamber of the Action Ring.
 struct RingItem: Codable, Identifiable, Equatable {
     var id = UUID()
@@ -301,6 +343,13 @@ final class Settings: ObservableObject {
     @Published var gestureFreezePointer = true { didSet { save() } }
     /// Any hold (except the Action Ring) starts gesture mode; the hold's own action runs on release if the mouse did not move.
     @Published var gesturesOnHold = true { didSet { save() } }
+    // Per-app profiles (overrides keyed by bundle id) and the app in front
+    @Published var profiles: [AppProfile] = [] { didSet { save() } }
+    @Published var frontBundleID: String? = nil
+    // Plugin bridge
+    @Published var bridgeEnabled = true { didSet { save() } }
+    @Published var bridgePort = 47337 { didSet { save() } }
+    @Published var bridgeToken = "" { didSet { save() } }
     // Click feel extras
     @Published var clickHoldMs = 300 { didSet { save() } }           // when leftHold / rightHold play
     @Published var freeSpinTextureEvery = 2 { didSet { save() } }    // notches per texture tick during free-spin
@@ -310,11 +359,28 @@ final class Settings: ObservableObject {
     @Published var accentHex: UInt = 0x0A84FF { didSet { save() } }
     var accent: Color { Color(rgb: accentHex) }
 
-    func rule(_ e: HapticEvent) -> HapticRule { rules[e] ?? HapticEvent.defaults[e]! }
+    /// The rule in force: the front app's profile override, else the base rule.
+    func rule(_ e: HapticEvent) -> HapticRule { profile?.rules[e.rawValue] ?? baseRule(e) }
+    func baseRule(_ e: HapticEvent) -> HapticRule { rules[e] ?? HapticEvent.defaults[e]! }
     func setRule(_ e: HapticEvent, _ r: HapticRule) { rules[e] = r }
     func binding(_ e: HapticEvent) -> Binding<HapticRule> {
-        Binding(get: { self.rule(e) }, set: { self.rules[e] = $0 })
+        Binding(get: { self.baseRule(e) }, set: { self.rules[e] = $0 })
     }
+
+    // MARK: Effective values (profile of the front app, else the base setting)
+    var profile: AppProfile? { frontBundleID.flatMap { id in profiles.first { $0.bundleID == id } } }
+    var effHapticsEnabled: Bool { profile?.hapticsEnabled ?? hapticsEnabled }
+    var effSmoothScroll: Bool { profile?.smoothScroll ?? smoothScroll }
+    var effFreeSpin: Bool { profile?.freeSpin ?? freeSpin }
+    var effRatchetDynamic: Bool { profile?.ratchetDynamic ?? ratchetDynamic }
+    var effRatchetLightRate: Double { profile?.ratchetLightRate ?? ratchetLightRate }
+    var effScrollStepEvery: Int { profile?.scrollStepEvery ?? scrollStepEvery }
+    var effFreeSpinTextureEvery: Int { profile?.freeSpinTextureEvery ?? freeSpinTextureEvery }
+    var effRingItems: [RingItem] { profile?.ringItems ?? ringItems }
+    var effGestureUp: ButtonAction { profile?.gestureUp ?? gestureUp }
+    var effGestureDown: ButtonAction { profile?.gestureDown ?? gestureDown }
+    var effGestureLeft: ButtonAction { profile?.gestureLeft ?? gestureLeft }
+    var effGestureRight: ButtonAction { profile?.gestureRight ?? gestureRight }
 
     // MARK: Persistence (JSON in Application Support)
 
@@ -348,6 +414,10 @@ final class Settings: ObservableObject {
         var gestureFreezePointer: Bool?
         var gesturesOnHold: Bool?
         var clickHoldMs, freeSpinTextureEvery: Int?
+        var profiles: [AppProfile]?
+        var bridgeEnabled: Bool?
+        var bridgePort: Int?
+        var bridgeToken: String?
     }
 
     static let url: URL = {
@@ -360,7 +430,15 @@ final class Settings: ObservableObject {
     private var loading = false
     private var pending: DispatchWorkItem?
 
-    init() { load() }
+    init() {
+        load()
+        if bridgeToken.isEmpty { bridgeToken = Self.newToken() }
+    }
+
+    static func newToken() -> String {
+        let chars = Array("abcdefghijklmnopqrstuvwxyz0123456789")
+        return String((0..<24).map { _ in chars.randomElement()! })
+    }
 
     private func load() {
         guard let data = try? Data(contentsOf: Self.url) else { return }
@@ -396,6 +474,8 @@ final class Settings: ObservableObject {
         gestureFreezePointer = s.gestureFreezePointer ?? true
         gesturesOnHold = s.gesturesOnHold ?? true
         clickHoldMs = s.clickHoldMs ?? 300; freeSpinTextureEvery = s.freeSpinTextureEvery ?? 2
+        profiles = s.profiles ?? []
+        bridgeEnabled = s.bridgeEnabled ?? true; bridgePort = s.bridgePort ?? 47337; bridgeToken = s.bridgeToken ?? ""
         loading = false
     }
 
@@ -426,7 +506,8 @@ final class Settings: ObservableObject {
                          theme: theme, accentHex: accentHex,
                          gestureUp: gestureUp, gestureDown: gestureDown, gestureLeft: gestureLeft, gestureRight: gestureRight,
                          gestureStepPx: gestureStepPx, gestureSwipePx: gestureSwipePx, gestureFreezePointer: gestureFreezePointer, gesturesOnHold: gesturesOnHold,
-                         clickHoldMs: clickHoldMs, freeSpinTextureEvery: freeSpinTextureEvery)
+                         clickHoldMs: clickHoldMs, freeSpinTextureEvery: freeSpinTextureEvery,
+                         profiles: profiles, bridgeEnabled: bridgeEnabled, bridgePort: bridgePort, bridgeToken: bridgeToken)
         let enc = JSONEncoder(); enc.outputFormatting = [.prettyPrinted, .sortedKeys]
         if let data = try? enc.encode(s) { try? data.write(to: Self.url, options: .atomic) }
     }

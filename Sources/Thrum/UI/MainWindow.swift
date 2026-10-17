@@ -2,13 +2,14 @@ import SwiftUI
 import AppKit
 
 enum TabKind: String, CaseIterable, Identifiable {
-    case haptics, button, ring, pointer, diagnostics
+    case haptics, button, ring, apps, pointer, diagnostics
     var id: String { rawValue }
     var title: String {
         switch self {
         case .haptics: return "Haptics"
         case .button: return "Action Button"
         case .ring: return "Action Ring"
+        case .apps: return "Apps"
         case .pointer: return "Pointer & Scroll"
         case .diagnostics: return "Diagnostics"
         }
@@ -29,32 +30,34 @@ struct MainWindow: View {
     var body: some View {
         let pal = palette
         ZStack {
-            LinearGradient(colors: [pal.stageTop, pal.bg, pal.stageBottom], startPoint: .top, endPoint: .bottom).ignoresSafeArea()
+            Backdrop(pal: pal)
             VStack(spacing: 0) {
                 HeaderBar()
                 ScrollView {
-                    VStack(spacing: 14) {
-                        HStack(spacing: 14) {
+                    VStack(spacing: 16) {
+                        HStack(spacing: 16) {
                             heroTile.frame(width: 330, height: 300)
                             LiveTile().frame(height: 300)
                         }
-                        Picker("", selection: $tab) {
-                            ForEach(TabKind.allCases) { Text($0.title).tag($0) }
-                        }.pickerStyle(.segmented).labelsHidden()
+                        HStack {
+                            PillTabs(selection: $tab, title: { $0.title }, pal: pal)
+                            Spacer()
+                        }
                         Group {
                             switch tab {
                             case .haptics: HapticsPane()
                             case .button: ButtonPane()
                             case .ring: RingPane()
+                            case .apps: AppsPane()
                             case .pointer: PointerPane()
                             case .diagnostics: DiagnosticsPane()
                             }
                         }
-                        .padding(16)
-                        .background(RoundedRectangle(cornerRadius: 14).fill(pal.panel))
-                        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(pal.hair))
+                        .padding(18)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .glass(pal)
                     }
-                    .padding(18)
+                    .padding(.horizontal, 20).padding(.top, 8).padding(.bottom, 22)
                 }
             }
         }
@@ -67,23 +70,29 @@ struct MainWindow: View {
     private var heroTile: some View {
         let pal = palette
         return ZStack {
-            RoundedRectangle(cornerRadius: 14).fill(pal.tile)
-            RoundedRectangle(cornerRadius: 14).strokeBorder(pal.hair)
             VStack(alignment: .leading) {
                 HStack {
-                    Text("SURFACE MOUSE 2ND EDITION").font(.system(size: 11, weight: .semibold)).foregroundStyle(pal.text2).tracking(0.4)
+                    Text("SURFACE MOUSE · 2ND EDITION").font(.system(size: 10, weight: .semibold)).foregroundStyle(pal.text2).tracking(0.8)
                     Spacer()
-                    Circle().fill(device.connected ? .green : .secondary).frame(width: 7, height: 7)
+                    HStack(spacing: 5) {
+                        Circle().fill(device.connected ? Color.green : pal.text3).frame(width: 7, height: 7)
+                            .shadow(color: device.connected ? .green.opacity(0.8) : .clear, radius: 4)
+                        Text(device.connected ? "Connected" : "Offline").font(.system(size: 10, weight: .medium)).foregroundStyle(pal.text2)
+                    }
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(Capsule().fill(pal.field))
                 }
                 Spacer()
                 HStack {
                     BatteryBadge(percent: device.battery)
                     Spacer()
-                    Text("fw \(device.firmware)").font(.system(size: 11)).foregroundStyle(pal.text3)
+                    Text("fw \(device.firmware)").font(.system(size: 10, design: .monospaced)).foregroundStyle(pal.text3)
                 }
-            }.padding(12)
-            MouseSchematic().padding(.vertical, 28)
+            }.padding(14)
+            MouseSchematic().padding(.vertical, 30)
+                .shadow(color: .black.opacity(pal.isDark ? 0.5 : 0.18), radius: 22, y: 14)
         }
+        .glass(pal, tint: pal.accent)
     }
 }
 
@@ -92,26 +101,31 @@ struct HeaderBar: View {
     @EnvironmentObject var device: MouseDevice
     @Environment(\.palette) private var pal
     var body: some View {
-        HStack(spacing: 10) {
-            Image(nsImage: NSApp.applicationIconImage).resizable().interpolation(.high).frame(width: 28, height: 28)
+        HStack(spacing: 12) {
+            Image(nsImage: NSApp.applicationIconImage).resizable().interpolation(.high).frame(width: 34, height: 34)
+                .shadow(color: pal.accent.opacity(0.45), radius: 8, y: 3)
             VStack(alignment: .leading, spacing: 1) {
-                Text("Thrum").font(.system(size: 15, weight: .bold)).foregroundStyle(pal.text)
-                Text("Haptics and settings for the Surface Mouse on macOS").font(.system(size: 11)).foregroundStyle(pal.text2)
+                Wordmark(pal: pal, size: 18)
+                Text("Haptics, gestures and feel for the Surface Mouse on macOS").font(.system(size: 11)).foregroundStyle(pal.text2)
             }
             Spacer()
             Picker("", selection: $settings.theme) { ForEach(AppTheme.allCases) { Text($0.label).tag($0) } }
-                .pickerStyle(.segmented).labelsHidden().frame(width: 180)
-            Menu {
+                .pickerStyle(.segmented).labelsHidden().frame(width: 170)
+            HStack(spacing: 6) {
                 ForEach(Accents.all) { a in
-                    Button { settings.accentHex = a.hex } label: { Label(a.name, systemImage: settings.accentHex == a.hex ? "checkmark.circle.fill" : "circle.fill") }
+                    Button { settings.accentHex = a.hex } label: {
+                        Circle().fill(LinearGradient(colors: [a.color, a.color.opacity(0.7)], startPoint: .top, endPoint: .bottom))
+                            .frame(width: 13, height: 13)
+                            .overlay(Circle().strokeBorder(Color.white.opacity(settings.accentHex == a.hex ? 0.95 : 0.25), lineWidth: settings.accentHex == a.hex ? 2 : 1))
+                            .shadow(color: a.color.opacity(settings.accentHex == a.hex ? 0.6 : 0), radius: 4)
+                    }.buttonStyle(.plain).help(a.name)
                 }
-            } label: { Circle().fill(pal.accent).frame(width: 14, height: 14) }
-            .menuStyle(.borderlessButton).frame(width: 28)
+            }
+            .padding(.horizontal, 8).padding(.vertical, 5)
+            .background(Capsule().fill(pal.field))
             Toggle("", isOn: $settings.enabled).toggleStyle(.switch).labelsHidden()
         }
-        .padding(.horizontal, 18).padding(.vertical, 12)
-        .background(pal.bar)
-        .overlay(Rectangle().fill(pal.hair).frame(height: 1), alignment: .bottom)
+        .padding(.leading, 86).padding(.trailing, 20).padding(.top, 14).padding(.bottom, 12)
     }
 }
 
@@ -124,39 +138,41 @@ struct LiveTile: View {
     private let cols = [GridItem(.adaptive(minimum: 96), spacing: 8)]
 
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 14).fill(pal.tile)
-            RoundedRectangle(cornerRadius: 14).strokeBorder(pal.hair)
-            VStack(alignment: .leading, spacing: 10) {
-                Text("LIVE").font(.system(size: 11, weight: .semibold)).foregroundStyle(pal.text2).tracking(0.4)
-                HStack(spacing: 18) {
-                    stat("Last event", engine.lastEvent)
-                    stat("Last pulse", engine.lastPlayed)
-                }
-                Divider()
-                Text("Waveforms on this mouse \(device.tableFromDevice ? "(read from the device)" : "(measured table; device not read yet)")")
-                    .font(.system(size: 11)).foregroundStyle(pal.text2)
-                LazyVGrid(columns: cols, spacing: 8) {
-                    ForEach(device.waveforms) { wf in
-                        Button {
-                            engine.play(ordinal: wf.ordinal, intensity: settings.masterIntensity, label: "Test")
-                        } label: {
-                            VStack(spacing: 4) {
-                                Image(systemName: wf.symbol).font(.system(size: 15))
-                                Text(wf.name).font(.system(size: 11, weight: .semibold))
-                                Text("\(wf.durationMs) ms").font(.system(size: 10)).foregroundStyle(pal.text3)
-                            }
-                            .frame(maxWidth: .infinity).padding(.vertical, 8)
-                            .background(RoundedRectangle(cornerRadius: 10).fill(pal.panel))
-                            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(pal.hair))
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("LIVE").font(.system(size: 10, weight: .semibold)).foregroundStyle(pal.text2).tracking(0.8)
+                Spacer()
+                Text("\(engine.pulseCount) pulses").font(.system(size: 10, design: .monospaced)).foregroundStyle(pal.text3)
+            }
+            HStack(spacing: 18) {
+                stat("Last event", engine.lastEvent)
+                stat("Last pulse", engine.lastPlayed)
+            }
+            Divider()
+            Text("Waveforms on this mouse \(device.tableFromDevice ? "(read from the device)" : "(measured table; device not read yet)")")
+                .font(.system(size: 11)).foregroundStyle(pal.text2)
+            LazyVGrid(columns: cols, spacing: 8) {
+                ForEach(device.waveforms) { wf in
+                    Button {
+                        engine.play(ordinal: wf.ordinal, intensity: settings.masterIntensity, label: "Test")
+                    } label: {
+                        VStack(spacing: 4) {
+                            Image(systemName: wf.symbol).font(.system(size: 15)).foregroundStyle(pal.accent)
+                            Text(wf.name).font(.system(size: 11, weight: .semibold)).foregroundStyle(pal.text)
+                            Text("\(wf.durationMs) ms").font(.system(size: 10)).foregroundStyle(pal.text3)
                         }
-                        .buttonStyle(.plain).disabled(!device.connected)
-                        .help("Play \(wf.name) at the master intensity")
+                        .frame(maxWidth: .infinity).padding(.vertical, 9)
+                        .glass(pal, radius: 12)
+                        .contentShape(RoundedRectangle(cornerRadius: 12))
                     }
+                    .buttonStyle(.plain).disabled(!device.connected)
+                    .help("Play \(wf.name) at the master intensity")
                 }
-                Spacer(minLength: 0)
-            }.padding(12)
+            }
+            Spacer(minLength: 0)
         }
+        .padding(14)
+        .glass(pal)
     }
 
     private func stat(_ k: String, _ v: String) -> some View {
@@ -445,9 +461,9 @@ struct FeelPresets: View {
     }
 
     private var blurb: String {
-        let l = ClickFeel.all.first { $0.name == settings.clickFeelName(right: false) }?.blurb ?? "Left: custom rules."
-        let w = WheelFeel.all.first { $0.name == settings.wheelFeelName() }?.blurb ?? "Wheel: custom rules."
-        return "Left: " + l + "  Wheel: " + w
+        let l = ClickFeel.all.first { $0.name == settings.clickFeelName(right: false) }?.blurb ?? "custom rules."
+        let w = WheelFeel.all.first { $0.name == settings.wheelFeelName() }?.blurb ?? "custom rules."
+        return "Left click: " + l + "   Wheel: " + w
     }
 
     private func clickPicker(_ label: String, right: Bool) -> some View {
@@ -496,25 +512,37 @@ struct RingPane: View {
                 .buttonStyle(.borderedProminent).disabled(!permissions.accessibility)
             }
             Divider()
-            ForEach(Array(settings.ringItems.enumerated()), id: \.element.id) { i, item in
+            RingEditor(items: $settings.ringItems)
+        }
+    }
+}
+
+/// The chamber rows, shared by the default ring and per-app rings.
+struct RingEditor: View {
+    @Binding var items: [RingItem]
+    @Environment(\.palette) private var pal
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(Array(items.enumerated()), id: \.element.id) { i, item in
                 HStack(spacing: 10) {
                     Image(systemName: item.symbol.isEmpty ? "questionmark" : item.symbol)
                         .font(.system(size: 16)).frame(width: 34, height: 34)
                         .background(Circle().fill(pal.accent.opacity(0.18)))
-                    TextField("Title", text: Binding(get: { item.title }, set: { v in if settings.ringItems.indices.contains(i) { settings.ringItems[i].title = v } }))
+                    TextField("Title", text: Binding(get: { item.title }, set: { v in if items.indices.contains(i) { items[i].title = v } }))
                         .textFieldStyle(.roundedBorder).frame(width: 130)
-                    TextField("SF Symbol", text: Binding(get: { item.symbol }, set: { v in if settings.ringItems.indices.contains(i) { settings.ringItems[i].symbol = v } }))
+                    TextField("SF Symbol", text: Binding(get: { item.symbol }, set: { v in if items.indices.contains(i) { items[i].symbol = v } }))
                         .textFieldStyle(.roundedBorder).frame(width: 150).font(.system(size: 11, design: .monospaced))
-                    ActionPicker(action: Binding(get: { item.action }, set: { v in if settings.ringItems.indices.contains(i) { settings.ringItems[i].action = v } }))
+                    ActionPicker(action: Binding(get: { item.action }, set: { v in if items.indices.contains(i) { items[i].action = v } }))
                     Spacer()
-                    Button { settings.ringItems.remove(at: i) } label: { Image(systemName: "minus.circle") }
-                        .buttonStyle(.plain).foregroundStyle(pal.text2).disabled(settings.ringItems.count <= 2)
+                    Button { if items.indices.contains(i) { items.remove(at: i) } } label: { Image(systemName: "minus.circle") }
+                        .buttonStyle(.plain).foregroundStyle(pal.text2).disabled(items.count <= 2)
                 }
             }
             HStack {
-                Button { settings.ringItems.append(RingItem(title: "New", symbol: "star", action: .none)) } label: { Label("Add chamber", systemImage: "plus") }
-                    .disabled(settings.ringItems.count >= 8)
-                Button("Reset to defaults") { settings.ringItems = RingItem.defaults }
+                Button { items.append(RingItem(title: "New", symbol: "star", action: .none)) } label: { Label("Add chamber", systemImage: "plus") }
+                    .disabled(items.count >= 8)
+                Button("Reset to defaults") { items = RingItem.defaults }
                 Spacer()
                 Text("Symbol names are SF Symbols (e.g. terminal, safari, music.note).").font(.system(size: 11)).foregroundStyle(pal.text3)
             }
@@ -642,6 +670,238 @@ struct PointerPane: View {
     }
 }
 
+// MARK: - Apps pane (per-app profiles)
+
+struct AppsPane: View {
+    @EnvironmentObject var settings: Settings
+    @Environment(\.palette) private var pal
+    @State private var selected: UUID?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 3) {
+                    SectionTitle(text: "Per-app profiles", pal: pal)
+                    Text("Overrides that apply while an app is frontmost: a different click or wheel feel, haptics off, its own ring, its own gestures. "
+                       + "Anything left on Default follows the main tabs.")
+                        .font(.system(size: 11)).foregroundStyle(pal.text2)
+                }
+                Spacer()
+                Menu {
+                    ForEach(runningApps, id: \.bundleIdentifier) { app in
+                        Button { add(bundleID: app.bundleIdentifier ?? "", name: app.localizedName ?? "App") } label: {
+                            Label(app.localizedName ?? "App", systemImage: "app")
+                        }
+                    }
+                    Divider()
+                    Button("Choose an app…") { choose() }
+                } label: { Label("Add app", systemImage: "plus") }
+                .menuStyle(.borderedButton).frame(width: 120)
+            }
+            Divider()
+            if settings.profiles.isEmpty {
+                Text("No profiles yet. Add the apps you want to feel different: a design tool with a fine wheel, a game with haptics off, a DAW with its own ring.")
+                    .font(.system(size: 12)).foregroundStyle(pal.text2).padding(.vertical, 20)
+            } else {
+                HStack(alignment: .top, spacing: 16) {
+                    VStack(spacing: 4) {
+                        ForEach(settings.profiles) { p in
+                            let on = p.id == selected
+                            Button { selected = p.id } label: {
+                                HStack(spacing: 8) {
+                                    Image(nsImage: icon(for: p.bundleID)).resizable().frame(width: 22, height: 22)
+                                    VStack(alignment: .leading, spacing: 0) {
+                                        Text(p.name).font(.system(size: 12, weight: .medium)).foregroundStyle(pal.text).lineLimit(1)
+                                        Text(p.bundleID).font(.system(size: 9)).foregroundStyle(pal.text3).lineLimit(1)
+                                    }
+                                    Spacer()
+                                    if settings.frontBundleID == p.bundleID { Circle().fill(Color.green).frame(width: 6, height: 6) }
+                                }
+                                .padding(.horizontal, 8).padding(.vertical, 6)
+                                .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(on ? pal.accent.opacity(0.18) : Color.clear))
+                                .contentShape(Rectangle())
+                            }.buttonStyle(.plain)
+                        }
+                    }
+                    .frame(width: 230)
+                    if let i = settings.profiles.firstIndex(where: { $0.id == selected }) {
+                        ProfileEditor(profile: $settings.profiles[i]) {
+                            settings.profiles.remove(at: i); selected = nil
+                        }
+                    } else {
+                        Text("Select an app on the left.").font(.system(size: 12)).foregroundStyle(pal.text3).padding(.top, 8)
+                    }
+                }
+            }
+        }
+        .onAppear { if selected == nil { selected = settings.profiles.first?.id } }
+    }
+
+    private var runningApps: [NSRunningApplication] {
+        NSWorkspace.shared.runningApplications
+            .filter { $0.activationPolicy == .regular && $0.bundleIdentifier != nil && $0.bundleIdentifier != Bundle.main.bundleIdentifier }
+            .sorted { ($0.localizedName ?? "") < ($1.localizedName ?? "") }
+    }
+
+    private func icon(for bundleID: String) -> NSImage {
+        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) { return NSWorkspace.shared.icon(forFile: url.path) }
+        return NSImage(systemSymbolName: "app", accessibilityDescription: nil) ?? NSImage()
+    }
+
+    private func add(bundleID: String, name: String) {
+        guard !bundleID.isEmpty else { return }
+        if let existing = settings.profiles.first(where: { $0.bundleID == bundleID }) { selected = existing.id; return }
+        let p = AppProfile(bundleID: bundleID, name: name)
+        settings.profiles.append(p); selected = p.id
+    }
+
+    private func choose() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.applicationBundle]
+        panel.directoryURL = URL(fileURLWithPath: "/Applications")
+        guard panel.runModal() == .OK, let url = panel.url, let b = Bundle(url: url), let id = b.bundleIdentifier else { return }
+        let name = (b.infoDictionary?["CFBundleDisplayName"] as? String) ?? (b.infoDictionary?["CFBundleName"] as? String) ?? url.deletingPathExtension().lastPathComponent
+        add(bundleID: id, name: name)
+    }
+}
+
+struct ProfileEditor: View {
+    @Binding var profile: AppProfile
+    let remove: () -> Void
+    @EnvironmentObject var settings: Settings
+    @Environment(\.palette) private var pal
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(profile.name).font(.system(size: 14, weight: .semibold)).foregroundStyle(pal.text)
+                Spacer()
+                Button(role: .destructive) { remove() } label: { Label("Remove", systemImage: "trash") }
+            }
+            Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 8) {
+                GridRow {
+                    Text("Haptics").font(.system(size: 12)).foregroundStyle(pal.text2)
+                    tri($profile.hapticsEnabled)
+                    Text("Smooth scrolling").font(.system(size: 12)).foregroundStyle(pal.text2)
+                    tri($profile.smoothScroll)
+                }
+                GridRow {
+                    Text("Free-spin").font(.system(size: 12)).foregroundStyle(pal.text2)
+                    tri($profile.freeSpin)
+                    Text("Dynamic ratchet").font(.system(size: 12)).foregroundStyle(pal.text2)
+                    tri($profile.ratchetDynamic)
+                }
+                GridRow {
+                    Text("Left click").font(.system(size: 12)).foregroundStyle(pal.text2)
+                    clickPicker(right: false)
+                    Text("Right click").font(.system(size: 12)).foregroundStyle(pal.text2)
+                    clickPicker(right: true)
+                }
+                GridRow {
+                    Text("Wheel").font(.system(size: 12)).foregroundStyle(pal.text2)
+                    wheelPicker()
+                    Text("").gridCellColumns(2)
+                }
+            }
+            Divider()
+            Toggle(isOn: Binding(get: { profile.gestureUp != nil }, set: { on in
+                if on { profile.gestureUp = settings.gestureUp; profile.gestureDown = settings.gestureDown; profile.gestureLeft = settings.gestureLeft; profile.gestureRight = settings.gestureRight }
+                else { profile.gestureUp = nil; profile.gestureDown = nil; profile.gestureLeft = nil; profile.gestureRight = nil }
+            })) { Text("Own hold-and-move gestures").font(.system(size: 12, weight: .medium)) }.toggleStyle(.switch)
+            if profile.gestureUp != nil {
+                Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 6) {
+                    GridRow { Text("Up").font(.system(size: 11)).foregroundStyle(pal.text2); ActionPicker(action: Binding(get: { profile.gestureUp ?? .none }, set: { profile.gestureUp = $0 })) }
+                    GridRow { Text("Down").font(.system(size: 11)).foregroundStyle(pal.text2); ActionPicker(action: Binding(get: { profile.gestureDown ?? .none }, set: { profile.gestureDown = $0 })) }
+                    GridRow { Text("Left").font(.system(size: 11)).foregroundStyle(pal.text2); ActionPicker(action: Binding(get: { profile.gestureLeft ?? .none }, set: { profile.gestureLeft = $0 })) }
+                    GridRow { Text("Right").font(.system(size: 11)).foregroundStyle(pal.text2); ActionPicker(action: Binding(get: { profile.gestureRight ?? .none }, set: { profile.gestureRight = $0 })) }
+                }
+            }
+            Divider()
+            Toggle(isOn: Binding(get: { profile.ringItems != nil }, set: { on in profile.ringItems = on ? settings.ringItems : nil })) {
+                Text("Own Action Ring").font(.system(size: 12, weight: .medium))
+            }.toggleStyle(.switch)
+            if profile.ringItems != nil {
+                RingEditor(items: Binding(get: { profile.ringItems ?? [] }, set: { profile.ringItems = $0 }))
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Default / On / Off for an optional Bool.
+    private func tri(_ b: Binding<Bool?>) -> some View {
+        Picker("", selection: Binding(get: { b.wrappedValue.map { $0 ? 1 : 2 } ?? 0 }, set: { b.wrappedValue = $0 == 0 ? nil : ($0 == 1) })) {
+            Text("Default").tag(0); Text("On").tag(1); Text("Off").tag(2)
+        }.pickerStyle(.segmented).labelsHidden().frame(width: 170)
+    }
+
+    private func clickPicker(right: Bool) -> some View {
+        let d = right ? HapticEvent.rightDown : .leftDown, u = right ? HapticEvent.rightUp : .leftUp, h = right ? HapticEvent.rightHold : .leftHold
+        let current = profile.rules[d.rawValue] == nil ? "Default"
+            : (ClickFeel.all.first { profile.rules[d.rawValue] == $0.down && profile.rules[u.rawValue] == $0.up && profile.rules[h.rawValue] == $0.hold }?.name ?? "Custom")
+        return Picker("", selection: Binding(get: { current }, set: { n in
+            if n == "Default" { profile.rules[d.rawValue] = nil; profile.rules[u.rawValue] = nil; profile.rules[h.rawValue] = nil }
+            else if let f = ClickFeel.all.first(where: { $0.name == n }) { profile.rules[d.rawValue] = f.down; profile.rules[u.rawValue] = f.up; profile.rules[h.rawValue] = f.hold }
+        })) {
+            Text("Default").tag("Default")
+            ForEach(ClickFeel.all) { Text($0.name).tag($0.name) }
+            if current == "Custom" { Text("Custom").tag("Custom") }
+        }.labelsHidden().frame(width: 170)
+    }
+
+    private func wheelPicker() -> some View {
+        let current = profile.rules[HapticEvent.scrollStep.rawValue] == nil ? "Default"
+            : (WheelFeel.all.first { profile.rules[HapticEvent.scrollStep.rawValue] == $0.step && profile.scrollStepEvery == $0.every && profile.ratchetDynamic == $0.dynamic
+                && profile.ratchetLightRate == $0.lightRate && profile.freeSpin == $0.freeSpin && profile.rules[HapticEvent.freeSpinTexture.rawValue] == $0.texture && profile.freeSpinTextureEvery == $0.textureEvery }?.name ?? "Custom")
+        return Picker("", selection: Binding(get: { current }, set: { n in
+            if n == "Default" {
+                profile.rules[HapticEvent.scrollStep.rawValue] = nil; profile.rules[HapticEvent.freeSpinTexture.rawValue] = nil
+                profile.scrollStepEvery = nil; profile.ratchetDynamic = nil; profile.ratchetLightRate = nil; profile.freeSpin = nil; profile.freeSpinTextureEvery = nil
+            } else if let f = WheelFeel.all.first(where: { $0.name == n }) {
+                profile.rules[HapticEvent.scrollStep.rawValue] = f.step; profile.rules[HapticEvent.freeSpinTexture.rawValue] = f.texture
+                profile.scrollStepEvery = f.every; profile.ratchetDynamic = f.dynamic; profile.ratchetLightRate = f.lightRate; profile.freeSpin = f.freeSpin; profile.freeSpinTextureEvery = f.textureEvery
+            }
+        })) {
+            Text("Default").tag("Default")
+            ForEach(WheelFeel.all) { Text($0.name).tag($0.name) }
+            if current == "Custom" { Text("Custom").tag("Custom") }
+        }.labelsHidden().frame(width: 170)
+    }
+}
+
+/// The local plugin bridge: status, port, token.
+struct BridgeSection: View {
+    @EnvironmentObject var settings: Settings
+    @Environment(\.palette) private var pal
+    @State private var copied = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                SectionTitle(text: "Plugin bridge", pal: pal)
+                Spacer()
+                let running = (NSApp.delegate as? AppDelegate)?.bridge.running ?? false
+                Text(running ? "listening on 127.0.0.1:\(settings.bridgePort)" : "off").font(.system(size: 11, design: .monospaced)).foregroundStyle(running ? .green : pal.text3)
+                Toggle("", isOn: $settings.bridgeEnabled).toggleStyle(.switch).labelsHidden()
+            }
+            Text("App plugins (Photoshop UXP, VS Code, scripts) can request a pulse by name over a loopback HTTP call; the plugin decides when, Thrum plays it under the \u{201c}App plugin pulse\u{201d} rule. Sample plugin and curl example in the repo's plugins folder.")
+                .font(.system(size: 11)).foregroundStyle(pal.text2)
+            HStack(spacing: 10) {
+                Text("Token").font(.system(size: 11)).foregroundStyle(pal.text2)
+                Text(settings.bridgeToken).font(.system(size: 11, design: .monospaced)).foregroundStyle(pal.text).textSelection(.enabled)
+                Button(copied ? "Copied" : "Copy") {
+                    NSPasteboard.general.clearContents(); NSPasteboard.general.setString(settings.bridgeToken, forType: .string)
+                    copied = true; DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copied = false }
+                }
+                Button("New token") { settings.bridgeToken = Settings.newToken(); (NSApp.delegate as? AppDelegate)?.bridge.start(port: UInt16(clamping: settings.bridgePort), token: settings.bridgeToken) }
+                Spacer()
+                Text("Port").font(.system(size: 11)).foregroundStyle(pal.text2)
+                TextField("47337", value: $settings.bridgePort, format: .number).textFieldStyle(.roundedBorder).frame(width: 70)
+                    .onSubmit { (NSApp.delegate as? AppDelegate)?.bridge.start(port: UInt16(clamping: settings.bridgePort), token: settings.bridgeToken) }
+            }
+        }
+    }
+}
+
 // MARK: - Diagnostics pane
 
 struct DiagnosticsPane: View {
@@ -673,6 +933,8 @@ struct DiagnosticsPane: View {
                     }
                 }
             }
+            Divider()
+            BridgeSection()
             Divider()
             Text("Device").font(.system(size: 13, weight: .semibold)).foregroundStyle(pal.text)
             Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 4) {

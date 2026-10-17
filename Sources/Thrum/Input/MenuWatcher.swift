@@ -13,7 +13,10 @@ final class MenuWatcher {
     var onHighlight: (() -> Void)?
     enum SelectionStep { case word, line }
     var onSelectionGrow: ((SelectionStep) -> Void)?
-    struct Config { var menuTicks = false; var textTicks = false }
+    struct Config { var menuTicks = false; var textTicks = false; var controlTicks = false; var dropTicks = false }
+    var onControl: (() -> Void)?
+    var onDropTarget: (() -> Void)?
+    var leftDown: () -> Bool = { false }
     /// Pushed from main whenever settings change; read on the AX queue.
     var config: Config { get { _config.value } set { _config.value = newValue } }
     private let _config = Locked(Config())
@@ -34,6 +37,15 @@ final class MenuWatcher {
     private var timer: DispatchSourceTimer?
     private let queue = DispatchQueue(label: "com.alcybr.thrum.ax", qos: .utility)
     private static let roles: Set<String> = ["AXMenuItem", "AXMenuBarItem", "AXMenuButton"]
+    /// Discrete controls worth one tick when the pointer arrives (Windows: hover over the Close button).
+    private static let controlRoles: Set<String> = ["AXButton", "AXPopUpButton", "AXCheckBox", "AXRadioButton", "AXTab", "AXDockItem",
+                                                    "AXLink", "AXDisclosureTriangle", "AXComboBox", "AXIncrementor", "AXColorWell", "AXSlider"]
+    /// Things a drag can land on.
+    private static let dropRoles: Set<String> = ["AXRow", "AXCell", "AXImage", "AXOutline", "AXTable", "AXList", "AXDockItem", "AXTextArea",
+                                                 "AXTextField", "AXWebArea", "AXGroup", "AXButton", "AXTab", "AXScrollArea", "AXWindow"]
+    private var lastControlKey = ""
+    private var lastDropKey = ""
+    private var lastControlTick: CFTimeInterval = 0
 
     func start() {
         guard timer == nil else { return }
@@ -71,8 +83,12 @@ final class MenuWatcher {
     private func tick() {
         guard AXIsProcessTrusted() else { return }
         let c = config
-        if c.menuTicks, pointerMovedRecently() { menuTick() }
+        let moved = pointerMovedRecently()
+        if c.menuTicks, moved { menuTick() }
         if c.textTicks, selectionGate() { selectionTick() } else { lastWords = -1 }
+        let down = leftDown()
+        if c.controlTicks, moved, !down { controlTick() } else { lastControlKey = "" }
+        if c.dropTicks, moved, down { dropTick() } else { lastDropKey = "" }
     }
 
     // MARK: Menus
@@ -129,6 +145,40 @@ final class MenuWatcher {
         // Clicking a menu-bar title highlights it; that is the click, not a move.
         if wasNone, key.hasPrefix("AXMenuBarItem") { return }
         DispatchQueue.main.async { [weak self] in self?.onHighlight?() }
+    }
+
+    // MARK: Controls under the pointer / drop targets under a drag
+
+    private func hitUnderPointer() -> (AXUIElement, String)? {
+        guard let loc = CGEvent(source: nil)?.location else { return nil }
+        var hit: AXUIElement?
+        guard AXUIElementCopyElementAtPosition(systemWide, Float(loc.x), Float(loc.y), &hit) == .success, let el = hit else { return nil }
+        return (el, role(el))
+    }
+
+    private func controlTick() {
+        guard let (el, r) = hitUnderPointer() else { return }
+        let k = Self.controlRoles.contains(r) && (attr(el, kAXEnabledAttribute) as? Bool ?? true) ? key(el, r) : ""
+        guard k != lastControlKey else { return }
+        lastControlKey = k
+        guard !k.isEmpty else { return }
+        let now = CACurrentMediaTime()
+        guard now - lastControlTick >= 0.06 else { return }
+        lastControlTick = now
+        DispatchQueue.main.async { [weak self] in self?.onControl?() }
+    }
+
+    private func dropTick() {
+        guard let (el, r) = hitUnderPointer() else { return }
+        let k = Self.dropRoles.contains(r) ? key(el, r) : ""
+        let first = lastDropKey.isEmpty
+        guard k != lastDropKey else { return }
+        lastDropKey = k
+        guard !k.isEmpty, !first else { return }          // the element the drag started on is not a target
+        let now = CACurrentMediaTime()
+        guard now - lastControlTick >= 0.08 else { return }
+        lastControlTick = now
+        DispatchQueue.main.async { [weak self] in self?.onDropTarget?() }
     }
 
     // MARK: Text selection (while dragging)

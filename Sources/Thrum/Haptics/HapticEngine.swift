@@ -30,7 +30,7 @@ final class HapticEngine: ObservableObject {
     /// `ordinal` swaps the rule's waveform for this one play; `boost` shifts the rule's
     /// intensity (±) before master scaling, for velocity-dependent feels.
     func play(_ event: HapticEvent, ordinal: Int? = nil, boost: Int = 0) {
-        guard let settings, settings.enabled, settings.hapticsEnabled else { return }
+        guard let settings, settings.enabled, settings.effHapticsEnabled else { return }
         let rule = settings.rule(event)
         guard rule.enabled else { return }
         lastEvent = event.title

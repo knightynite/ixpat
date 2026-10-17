@@ -45,6 +45,16 @@ Windows offers, plus a few Logitech MX-style ones.
   with a tick per step and a bump at the end of the range; left/right swipe to the
   previous/next track (or desktops, or any shortcut). Release without moving and the
   hold's own action runs as usual.
+- **Hover and control ticks**: a tick when the pointer arrives on a button, tab,
+  Dock icon or link (Accessibility hit-test), optionally when the system cursor
+  changes shape (resize edges, I-beam), and when a drag crosses a drop target.
+- **Front-app notifications**: slider detents (20 per range), tab / list / slide
+  selection changes, and an overscroll bump when the scroll bar hits either end,
+  from AXObserver on the frontmost app.
+- **Per-app profiles** (Apps tab): per bundle id, override haptics on/off, click
+  and wheel feel, smooth scrolling, free-spin, the ring and the gestures.
+- **Plugin bridge**: a loopback HTTP endpoint (127.0.0.1:47337, token-gated) so
+  app plugins can request a pulse by waveform name; see `plugins/`.
 - **Diagnostics**: permissions, device identity, haptic table, raw report log.
 
 ## Build and run

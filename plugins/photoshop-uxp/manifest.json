@@ -1,0 +1,15 @@
+{
+  "id": "com.alcybr.thrum.photoshop",
+  "name": "Thrum haptics",
+  "version": "0.1.0",
+  "main": "index.js",
+  "manifestVersion": 5,
+  "host": [{ "app": "PS", "minVersion": "24.0.0" }],
+  "entrypoints": [
+    { "type": "panel", "id": "thrum", "label": { "default": "Thrum" }, "minimumSize": { "width": 230, "height": 120 } }
+  ],
+  "requiredPermissions": {
+    "network": { "domains": ["http://127.0.0.1:47337"] }
+  },
+  "icons": []
+}

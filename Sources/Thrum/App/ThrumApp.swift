@@ -291,6 +291,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Plugin bridge: apps ask for a pulse by waveform name.
         bridge.onPlay = { [weak self] name, intensity in
             guard let self, self.settings.enabled, self.settings.effHapticsEnabled, self.settings.rule(.pluginPulse).enabled,
+                  self.settings.masterIntensity > 0,                       // master "Off" silences plugins too
                   let wf = self.device.waveforms.first(where: { $0.name.lowercased() == name }) else { return }
             let scaled = max(1, Int((Double(intensity) * Double(self.settings.masterIntensity) / 4.0).rounded()))
             self.engine.play(ordinal: wf.ordinal, intensity: scaled, label: "plugin " + name)
@@ -303,7 +304,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Settings → the other threads, as snapshots.
         pushConfig()
         settings.objectWillChange.receive(on: DispatchQueue.main).sink { [weak self] _ in self?.pushConfig() }.store(in: &bag)
-        device.$connected.receive(on: DispatchQueue.main).sink { [weak self] _ in self?.pushConfig() }.store(in: &bag)
+        device.$connected.receive(on: DispatchQueue.main).sink { [weak self] on in
+            guard let self else { return }
+            if !on {                                   // a hold cannot end normally once the mouse is gone
+                self.gestures.end(); self.pendingHoldAction = nil; self.ring.holdEnded()
+            }
+            self.pushConfig()
+        }.store(in: &bag)
         DebugLog.log("event tap running=\(monitor.running) listenOnly=\(monitor.listenOnly)")
 
         button.onGesture = { [weak self] g in
@@ -356,7 +363,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Pointer settings: re-apply whenever the relevant values change.
         settings.$managePointer.dropFirst().sink { [weak self] on in
-            on ? self?.applyPointer() : PointerSettings.restoreSystem()
+            // @Published emits before the property is stored: apply after the store so applyPointer sees the new value.
+            DispatchQueue.main.async { on ? self?.applyPointer() : PointerSettings.restoreSystem() }
         }.store(in: &bag)
         Publishers.CombineLatest3(settings.$pointerSpeed, settings.$noAcceleration, settings.$scrollSpeed)
             .dropFirst()
@@ -367,7 +375,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Run an action; the ring needs app state, everything else is self-contained.
     func run(_ a: ButtonAction, hold: Bool) {
-        DebugLog.log("run action \(a.describe) hold=\(hold) ringOpen=\(ring.isOpen)")
+        DebugLog.log("run action \(a.kind.title) hold=\(hold) ringOpen=\(ring.isOpen)")   // kind only: a shell command may hold private text
         if case .actionRing = a {
             if hold { ring.open(items: settings.effRingItems, holdMode: true) }
             else { ring.toggle(items: settings.effRingItems, holdMode: false) }
@@ -425,6 +433,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if s.bridgeEnabled, !bridge.running { bridge.start(port: UInt16(clamping: s.bridgePort), token: s.bridgeToken) }
         else if !s.bridgeEnabled, bridge.running { bridge.stop() }
         button.swallowEnabled = s.enabled && s.swallowButton
+        if !s.enabled { gestures.end() }
         ring.accentHex = s.accentHex
         gestures.config = GestureController.Config(up: s.effGestureUp, down: s.effGestureDown, left: s.effGestureLeft, right: s.effGestureRight,
                                                    stepPx: s.gestureStepPx, swipePx: s.gestureSwipePx, freezePointer: s.gestureFreezePointer)
@@ -438,6 +447,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         settings.flush()
         if settings.managePointer { PointerSettings.restoreSystem() }
+        gestures.end()                                 // never leave the pointer detached from the cursor
         monitor.stop()
         bridge.stop()
         hover.stop()

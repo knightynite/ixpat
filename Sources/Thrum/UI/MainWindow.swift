@@ -907,11 +907,14 @@ struct BridgeSection: View {
                     NSPasteboard.general.clearContents(); NSPasteboard.general.setString(settings.bridgeToken, forType: .string)
                     copied = true; DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copied = false }
                 }
-                Button("New token") { settings.bridgeToken = Settings.newToken(); AppDelegate.shared?.bridge.start(port: UInt16(clamping: settings.bridgePort), token: settings.bridgeToken) }
+                Button("New token") {
+                    settings.bridgeToken = Settings.newToken()
+                    if settings.bridgeEnabled { AppDelegate.shared?.bridge.start(port: UInt16(clamping: settings.bridgePort), token: settings.bridgeToken) }
+                }
                 Spacer()
                 Text("Port").font(.system(size: 11)).foregroundStyle(pal.text2)
                 TextField("47337", value: $settings.bridgePort, format: .number).textFieldStyle(.roundedBorder).frame(width: 70)
-                    .onSubmit { AppDelegate.shared?.bridge.start(port: UInt16(clamping: settings.bridgePort), token: settings.bridgeToken) }
+                    .onSubmit { if settings.bridgeEnabled { AppDelegate.shared?.bridge.start(port: UInt16(clamping: settings.bridgePort), token: settings.bridgeToken) } }
             }
         }
     }

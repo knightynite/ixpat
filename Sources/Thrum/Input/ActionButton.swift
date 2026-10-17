@@ -98,6 +98,7 @@ final class ActionButtonController: ObservableObject {
 
     func shouldSwallow(_ event: CGEvent, type: CGEventType) -> Bool {
         guard swallowEnabled else { return false }
+        if event.getIntegerValueField(.eventSourceUserData) == EventMonitor.ownTag { return false }   // our own synthesised shortcut
         let s = state.value
         let now = CACurrentMediaTime()
         let chordActive = now < s.deviceKeyUntil || s.chord != nil
@@ -147,7 +148,7 @@ enum ActionRunner {
             NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: path),
                                                configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil)
         case .shortcut(let key, let flags, _):
-            guard key >= 0 else { return }
+            guard key >= 0, key <= Int(CGKeyCode.max) else { return }
             press(CGKeyCode(key), CGEventFlags(rawValue: flags))
         case .shell(let cmd):
             guard !cmd.isEmpty else { return }
@@ -160,6 +161,7 @@ enum ActionRunner {
 
     static func press(_ key: CGKeyCode, _ flags: CGEventFlags) {
         let src = CGEventSource(stateID: .hidSystemState)
+        src?.userData = EventMonitor.ownTag                      // so the chord filter lets it through
         guard let d = CGEvent(keyboardEventSource: src, virtualKey: key, keyDown: true),
               let u = CGEvent(keyboardEventSource: src, virtualKey: key, keyDown: false) else { return }
         d.flags = flags; u.flags = flags

@@ -68,7 +68,7 @@ final class EventMonitor {
     private var screenObserver: Any?
 
     // Smooth scrolling
-    private static let ownTag: Int64 = 0x5448524D   // "THRM": marks events we synthesise
+    static let ownTag: Int64 = 0x5448524D           // "THRM": marks events we synthesise
     private lazy var scrollSource: CGEventSource? = {
         let s = CGEventSource(stateID: .hidSystemState)
         s?.userData = Self.ownTag
@@ -305,7 +305,7 @@ final class EventMonitor {
             let total = s + carry
             let whole = total.rounded(.towardZero)
             carry = total - whole
-            return Int32(whole)
+            return Int32(clamping: Int(max(min(whole, 1e6), -1e6)))
         }
         let dy = step(&velY, &carryY), dx = step(&velX, &carryX)
         guard dy != 0 || dx != 0 else { return }
@@ -379,18 +379,22 @@ final class EventMonitor {
         // skip the click (a click count of 0 does not help: Blink takes the count from the
         // press), so the release after a deep press carries Control.
         if forceStage == 2 { up.flags.insert(.maskControl) }
-        if forceStage > 0 {
-            postForce(stage: 1, pressure: 0.5, phase: 2)
-            postForce(stage: 0, pressure: 0, phase: 4)
-        }
         cancelForce()
+        forceStamped = 0                                             // the press is over: next down starts fresh
     }
 
+    /// Tap thread. Stops the hold or ramp; a press that had begun is ended properly so the
+    /// app never sees a pressure sequence without its end. The device stamp survives until
+    /// the real mouse-up so the up stays on the same device as the down.
     private func cancelForce() {
         if let forceHoldTimer { CFRunLoopTimerInvalidate(forceHoldTimer) }
         if let forceRampTimer { CFRunLoopTimerInvalidate(forceRampTimer) }
         forceHoldTimer = nil; forceRampTimer = nil
-        forceStage = 0; forceStamped = 0
+        if forceStage > 0 {
+            postForce(stage: 1, pressure: 0.5, phase: 2)
+            postForce(stage: 0, pressure: 0, phase: 4)
+        }
+        forceStage = 0
     }
 
     private func postForce(stage: Int64, pressure: Double, phase: Int64) {
@@ -419,14 +423,15 @@ final class EventMonitor {
         var winRef: CFTypeRef?
         guard AXUIElementCopyAttributeValue(axApp, kAXFocusedWindowAttribute as CFString, &winRef) == .success,
               let winRef else { return nil }
+        guard CFGetTypeID(winRef) == AXUIElementGetTypeID() else { return nil }
         let win = winRef as! AXUIElement
         var posRef: CFTypeRef?, sizeRef: CFTypeRef?
         guard AXUIElementCopyAttributeValue(win, kAXPositionAttribute as CFString, &posRef) == .success,
               AXUIElementCopyAttributeValue(win, kAXSizeAttribute as CFString, &sizeRef) == .success,
-              let posRef, let sizeRef else { return nil }
+              let posRef, let sizeRef, CFGetTypeID(posRef) == AXValueGetTypeID(), CFGetTypeID(sizeRef) == AXValueGetTypeID() else { return nil }
         var pos = CGPoint.zero, size = CGSize.zero
-        AXValueGetValue(posRef as! AXValue, .cgPoint, &pos)
-        AXValueGetValue(sizeRef as! AXValue, .cgSize, &size)
+        guard AXValueGetValue(posRef as! AXValue, .cgPoint, &pos), AXValueGetValue(sizeRef as! AXValue, .cgSize, &size),
+              pos.x.isFinite, pos.y.isFinite, size.width.isFinite, size.height.isFinite else { return nil }
         return CGRect(origin: pos, size: size)
     }
 

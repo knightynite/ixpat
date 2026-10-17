@@ -90,6 +90,11 @@ Pointer settings go through Apple's `hidutil` and need no permission.
   serial IOKit queue. The device plays one waveform at a time, so the engine
   rate-limits by each waveform's reported duration.
 
+## Windows
+
+A plan for a Windows counterpart (Raw Input + low-level hooks, HID haptics, UI Automation ticks)
+and for firmware updates (Microsoft's CFU packages) is in [docs/windows-plan.md](docs/windows-plan.md).
+
 ## Files
 
     Sources/Thrum/App          app delegate, wiring, debug log

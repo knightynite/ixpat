@@ -63,13 +63,17 @@ final class AXWatcher {
         return AXUIElementCopyAttributeValue(el, name as CFString, &v) == .success ? v : nil
     }
     private func number(_ v: CFTypeRef?) -> Double? {
-        if let n = v as? NSNumber { return n.doubleValue }
+        if let n = v as? NSNumber, n.doubleValue.isFinite { return n.doubleValue }
         return nil
     }
+    /// Another app's accessibility values are untrusted: never let them trap an Int conversion.
+    private func safeInt(_ d: Double) -> Int { d.isFinite ? Int(max(min(d, 1e9), -1e9)) : 0 }
+    /// Keys are role + position, so a long session in one app can keep adding them: cap the maps.
+    private func trim<V>(_ m: inout [String: V]) { if m.count > 512 { m.removeAll() } }
     private func ident(_ el: AXUIElement) -> String {
         var pt = CGPoint.zero
-        if let pv = attr(el, kAXPositionAttribute) { AXValueGetValue(pv as! AXValue, .cgPoint, &pt) }
-        return "\(attr(el, kAXRoleAttribute) as? String ?? "")|\(Int(pt.x)),\(Int(pt.y))"
+        if let pv = attr(el, kAXPositionAttribute), CFGetTypeID(pv) == AXValueGetTypeID() { AXValueGetValue(pv as! AXValue, .cgPoint, &pt) }
+        return "\(attr(el, kAXRoleAttribute) as? String ?? "")|\(safeInt(pt.x)),\(safeInt(pt.y))"
     }
 
     /// Main thread (observer callback): hop off before touching the element.
@@ -90,8 +94,9 @@ final class AXWatcher {
                 let lo = number(attr(el, kAXMinValueAttribute)) ?? 0
                 let hi = number(attr(el, kAXMaxValueAttribute)) ?? 1
                 guard hi > lo else { return }
-                let bucket = Int(((v - lo) / (hi - lo) * 20).rounded(.down))
+                let bucket = safeInt(((v - lo) / (hi - lo) * 20).rounded(.down))
                 let k = ident(el)
+                trim(&sliderBuckets)
                 if let prev = sliderBuckets[k], prev != bucket, now - lastTick >= 0.04 {
                     lastTick = now
                     DispatchQueue.main.async { [weak self] in self?.onSlider?() }
@@ -100,6 +105,7 @@ final class AXWatcher {
             } else if role == "AXScrollBar", c.scrollEndTicks {
                 // Scroll bar value is 0…1; reaching either end is the overscroll bump.
                 let k = ident(el)
+                trim(&atEnd)
                 let end = v <= 0.0005 || v >= 0.9995
                 if end, atEnd[k] != true, now - lastTick >= 0.15 {
                     lastTick = now

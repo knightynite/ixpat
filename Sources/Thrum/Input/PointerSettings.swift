@@ -7,10 +7,14 @@ import Foundation
 enum PointerSettings {
     static let matching = "{\"VendorID\":\(MouseDevice.vendorID),\"ProductID\":\(MouseDevice.productID)}"
 
+    /// Serial, so an older update can never land after a newer one or after the restore.
+    private static let queue = DispatchQueue(label: "com.alcybr.thrum.pointer", qos: .utility)
+
     static func apply(speed: Double, noAcceleration: Bool, scrollSpeed: Double) {
-        let accel = noAcceleration ? -65536 : Int((speed * 65536).rounded())
-        let scroll = Int((scrollSpeed * 65536).rounded())
-        DispatchQueue.global(qos: .utility).async {
+        func fixed(_ v: Double, _ lo: Double, _ hi: Double) -> Int { Int((max(lo, min(hi, v.isFinite ? v : lo)) * 65536).rounded()) }
+        let accel = noAcceleration ? -65536 : fixed(speed, 0, 3)
+        let scroll = fixed(scrollSpeed, 0.01, 4)
+        queue.async {
             _ = run(["property", "--matching", matching, "--set", "{\"HIDMouseAcceleration\":\(accel)}"])
             _ = run(["property", "--matching", matching, "--set", "{\"HIDScrollAcceleration\":\(scroll)}"])
         }

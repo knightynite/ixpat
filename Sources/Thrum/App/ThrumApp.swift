@@ -28,6 +28,10 @@ struct MenuBarLabel: View {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    /// Views reach the delegate here: under the SwiftUI lifecycle `NSApp.delegate` is
+    /// SwiftUI's own forwarding object, so `NSApp.delegate as? AppDelegate` is nil.
+    private(set) static weak var shared: AppDelegate?
+    override init() { super.init(); AppDelegate.shared = self }
     let settings = Settings()
     let device = MouseDevice()
     let engine = HapticEngine()
@@ -63,6 +67,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// when the status item is hidden by a full menu bar or a notch.
     @MainActor @discardableResult
     func showSettings() -> Bool {
+        DebugLog.log("showSettings existing=\(settingsWindow != nil) windows=\(NSApp.windows.filter { $0.isVisible }.map { String(describing: type(of: $0)) })")
         if settingsWindow == nil {
             let root = MainWindow()
                 .environmentObject(settings).environmentObject(device).environmentObject(engine)
@@ -79,6 +84,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             w.center()
             settingsWindow = w
         }
+        // Opened from the menu popover: dismiss it, or it stays up next to the window.
+        for w in NSApp.windows where w.isVisible && w !== settingsWindow && String(describing: type(of: w)).contains("MenuBarExtra") { w.close() }
         settingsWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         return true

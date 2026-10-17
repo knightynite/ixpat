@@ -50,7 +50,13 @@ final class MenuWatcher {
     /// that resolves to this process is served in-process on the calling thread, which runs
     /// SwiftUI's accessibility tree here instead of on main (measured: crash in AccessibilityNode).
     private let ownFrames = Locked<[CGRect]>([])
+    /// When the set of our visible windows last changed (a popover opening animates into place).
+    private let ownChangedAt = Locked<CFTimeInterval>(0)
+    /// One of our windows is key (the popover is key without activating the app): the system-wide
+    /// focused-element query would then be answered by us, in-process, on this queue.
+    private let ownKey = Locked(false)
     private var frameTimer: Timer?
+    private var windowObservers: [Any] = []
     private let ownPid = ProcessInfo.processInfo.processIdentifier
 
     func start() {
@@ -64,21 +70,31 @@ final class MenuWatcher {
             guard let self, self.frameTimer == nil else { return }
             self.refreshOwnFrames()
             self.frameTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in self?.refreshOwnFrames() }
+            for n in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification, NSWindow.didMoveNotification,
+                      NSWindow.didResizeNotification, NSWindow.didChangeOcclusionStateNotification, NSWindow.willCloseNotification,
+                      NSApplication.didBecomeActiveNotification, NSApplication.didResignActiveNotification] {
+                self.windowObservers.append(NotificationCenter.default.addObserver(forName: n, object: nil, queue: .main) { [weak self] _ in self?.refreshOwnFrames() })
+            }
         }
     }
 
     func stop() {
         timer?.cancel(); timer = nil
-        DispatchQueue.main.async { [weak self] in self?.frameTimer?.invalidate(); self?.frameTimer = nil }
+        DispatchQueue.main.async { [weak self] in
+            self?.frameTimer?.invalidate(); self?.frameTimer = nil
+            self?.windowObservers.forEach { NotificationCenter.default.removeObserver($0) }; self?.windowObservers = []
+        }
     }
 
     /// Main thread: AppKit window frames (bottom-left origin) → CG (top-left), slightly inflated.
     private func refreshOwnFrames() {
         let h = NSScreen.screens.first?.frame.height ?? 0
-        ownFrames.value = NSApp.windows.filter { $0.isVisible }.map { w in
+        let frames = NSApp.windows.filter { $0.isVisible }.map { w in
             let f = w.frame
             return CGRect(x: f.minX, y: h - f.maxY, width: f.width, height: f.height).insetBy(dx: -4, dy: -4)
         }
+        if frames != ownFrames.value { ownFrames.value = frames; ownChangedAt.value = CACurrentMediaTime() }
+        ownKey.value = NSApp.keyWindow != nil || NSApp.isActive
     }
 
     private func attr(_ el: AXUIElement, _ name: String) -> CFTypeRef? {
@@ -106,11 +122,13 @@ final class MenuWatcher {
     private func tick() {
         guard AXIsProcessTrusted() else { return }
         // Never hit-test our own windows from this queue (see ownFrames).
-        if let loc = CGEvent(source: nil)?.location, ownFrames.value.contains(where: { $0.contains(loc) }) {
+        // Also pause right after our window set changed: a popover is still animating into its frame.
+        if let loc = CGEvent(source: nil)?.location, ownFrames.value.contains(where: { $0.contains(loc) })
+            || CACurrentMediaTime() - ownChangedAt.value < 0.4 {
             lastKey = ""; lastControlKey = ""; lastDropKey = ""; lastWords = -1; return
         }
-        // With our own window in front, the focused-element paths would resolve to us too.
-        let ownFront = NSWorkspace.shared.frontmostApplication?.processIdentifier == ownPid
+        // With our own window in front or key, the focused-element paths would resolve to us too.
+        let ownFront = NSWorkspace.shared.frontmostApplication?.processIdentifier == ownPid || ownKey.value
         let c = config
         let moved = pointerMovedRecently()
         if c.menuTicks, moved { menuTick(focusFallbacks: !ownFront) }

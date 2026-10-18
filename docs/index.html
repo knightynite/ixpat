@@ -81,8 +81,12 @@
             border-bottom: 1px solid rgba(255, 255, 255, 0.06);
         }
         .nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 52px; }
-        .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.05rem; letter-spacing: -0.01em; }
-        .brand img { width: 26px; height: 26px; border-radius: 7px; }
+        .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.08rem; letter-spacing: -0.03em; }
+        .brand img { width: 26px; height: 26px; border-radius: 7px; box-shadow: 0 2px 10px rgba(10, 132, 255, 0.35); }
+        .brand span {
+            background: linear-gradient(100deg, #ffffff 0%, #cfe6ff 70%, #9ecbff 100%);
+            -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+        }
         .nav-links { display: flex; gap: 26px; font-size: 0.86rem; color: var(--text-2); }
         .nav-links a:hover { color: var(--text); }
         .nav-links .cta { color: var(--accent); font-weight: 600; }
@@ -102,15 +106,24 @@
                 radial-gradient(520px 380px at 12% 70%, rgba(191, 90, 242, 0.14), transparent 70%),
                 radial-gradient(420px 320px at 88% 60%, rgba(64, 200, 224, 0.12), transparent 70%);
         }
-        .eyebrow {
-            display: inline-flex; align-items: center; gap: 8px;
-            padding: 6px 14px; border-radius: 999px;
-            border: 1px solid var(--card-border-hi);
-            background: rgba(255, 255, 255, 0.05);
-            font-size: 0.8rem; color: var(--text-2); letter-spacing: 0.01em;
-            margin-bottom: 26px;
+        .lockup {
+            display: inline-flex; flex-direction: column; align-items: center; gap: 14px;
+            margin-bottom: 28px;
         }
-        .eyebrow .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px var(--green); }
+        .lockup .app-icon {
+            width: 88px; height: 88px; border-radius: 22px;
+            box-shadow: 0 18px 50px rgba(10, 132, 255, 0.45), 0 2px 0 rgba(255, 255, 255, 0.12) inset;
+            animation: hover 6s ease-in-out infinite;
+        }
+        .lockup .wordmark {
+            font-size: 1.9rem; font-weight: 700; letter-spacing: -0.035em; line-height: 1;
+            background: linear-gradient(100deg, #ffffff 0%, #cfe6ff 60%, #9ecbff 100%);
+            -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        .lockup .tag {
+            font-size: 0.78rem; color: var(--text-3); letter-spacing: 0.18em; text-transform: uppercase; margin-top: -6px;
+        }
+        @keyframes hover { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
         .hero h1 {
             font-size: clamp(2.8rem, 7vw, 5.2rem);
             font-weight: 700; letter-spacing: -0.035em; line-height: 1.02;
@@ -294,7 +307,8 @@
         @media (max-width: 900px) {
             .nav-links { gap: 16px; }
             .nav-links .hide-sm { display: none; }
-            .hero { padding-top: 64px; }
+            .hero { padding-top: 56px; }
+            .lockup .app-icon { width: 72px; height: 72px; border-radius: 18px; }
             .float-menu { width: 140px; right: 4px; }
             .waves { grid-template-columns: repeat(4, 1fr); }
             .bento { grid-template-columns: 1fr 1fr; }
@@ -319,7 +333,7 @@
 <body>
     <nav class="nav">
         <div class="wrap">
-            <a href="#" class="brand"><img src="icon.png" alt="" width="26" height="26">iXpat</a>
+            <a href="#" class="brand"><img src="icon.png" alt="" width="26" height="26"><span>iXpat</span></a>
             <div class="nav-links">
                 <a href="#features">Features</a>
                 <a href="#ring" class="hide-sm">Action Ring</a>
@@ -332,7 +346,11 @@
 
     <header class="hero">
         <div class="wrap">
-            <div class="eyebrow"><span class="dot"></span>For the Microsoft Surface Mouse (2nd Edition) · macOS 14+</div>
+            <div class="lockup">
+                <img class="app-icon" src="icon.png" alt="iXpat icon" width="88" height="88">
+                <div class="wordmark">iXpat</div>
+                <div class="tag">for Surface Mouse</div>
+            </div>
             <h1>Feel every click.<br><span>On your Mac.</span></h1>
             <p class="lead">iXpat brings the Surface Mouse's haptics to macOS, then goes further: an Action Ring under the pointer, scrolling with real momentum, force click, and a feel you can tune for every app.</p>
             <div class="actions">
@@ -342,7 +360,7 @@
                 </a>
                 <a class="btn btn-ghost" href="https://github.com/knightynite/Thrum" target="_blank" rel="noopener">View on GitHub</a>
             </div>
-            <div class="meta"><b>v0.1.0</b> · Free and open source · Apple Silicon · 3.6 MB</div>
+            <div class="meta"><b>v0.1.0</b> · macOS 14 or later · Apple Silicon · Free and open source · 3.6 MB</div>
         </div>
         <div class="showcase reveal">
             <div class="glow"></div>

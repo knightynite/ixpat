@@ -5,30 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>iXpat - Haptics, Action Ring & Force Click for the Surface Mouse on macOS</title>
     <meta name="description" content="Free macOS menu bar app for the Microsoft Surface Mouse (2nd Edition): haptic feedback for clicks, scrolling, menus and text selection, an Action Ring, kinetic scrolling, force click and per-mouse pointer settings.">
-
-    <!-- SEO Meta Tags -->
     <meta name="keywords" content="iXpat, Surface Mouse, Surface Mouse 2nd Edition, macOS, haptic mouse, haptics, Action Ring, action button, kinetic scrolling, force click, Mac app, menu bar app">
     <meta name="author" content="AL">
     <meta name="robots" content="index, follow">
     <link rel="canonical" href="https://knightynite.github.io/Thrum/">
     <link rel="icon" type="image/png" href="icon.png">
+    <meta name="theme-color" content="#0b0b0e">
 
-    <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://knightynite.github.io/Thrum/">
     <meta property="og:title" content="iXpat - Haptics, Action Ring & Force Click for the Surface Mouse on macOS">
     <meta property="og:description" content="Free macOS app that gives the Surface Mouse (2nd Edition) its haptics, an Action Ring, kinetic scrolling and force click.">
     <meta property="og:image" content="https://knightynite.github.io/Thrum/og-image.jpg">
     <meta property="og:site_name" content="iXpat">
-
-    <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:url" content="https://knightynite.github.io/Thrum/">
     <meta name="twitter:title" content="iXpat - Haptics, Action Ring & Force Click for the Surface Mouse on macOS">
     <meta name="twitter:description" content="Free macOS app that gives the Surface Mouse (2nd Edition) its haptics, an Action Ring, kinetic scrolling and force click.">
     <meta name="twitter:image" content="https://knightynite.github.io/Thrum/og-image.jpg">
 
-    <!-- Structured Data for Google -->
     <script type="application/ld+json">
     {
         "@context": "https://schema.org",
@@ -36,524 +30,520 @@
         "name": "iXpat",
         "operatingSystem": "macOS 14+",
         "applicationCategory": "UtilitiesApplication",
-        "offers": {
-            "@type": "Offer",
-            "price": "0",
-            "priceCurrency": "USD"
-        },
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
         "description": "Free macOS menu bar app that gives the Microsoft Surface Mouse (2nd Edition) haptic feedback, an Action Ring, kinetic scrolling, force click and per-mouse pointer settings",
         "downloadUrl": "https://github.com/knightynite/Thrum/releases/latest",
         "softwareVersion": "0.1.0",
-        "author": {
-            "@type": "Person",
-            "name": "AL"
-        }
+        "author": { "@type": "Person", "name": "AL" }
     }
     </script>
 
     <style>
         :root {
-            --bg-dark: #121215;
-            --bg-card: #1d1d21;
-            --bg-inset: #141417;
+            --bg: #0b0b0e;
+            --bg-2: #101014;
+            --card: rgba(255, 255, 255, 0.04);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --card-border-hi: rgba(255, 255, 255, 0.16);
+            --text: #f5f5f7;
+            --text-2: rgba(235, 235, 245, 0.62);
+            --text-3: rgba(235, 235, 245, 0.38);
             --accent: #0a84ff;
-            --accent-hover: #3a9dff;
             --violet: #bf5af2;
             --teal: #40c8e0;
-            --text: #ffffff;
-            --text-muted: #9a9aa8;
-            --success: #4ade80;
-            --warning: #fbbf24;
-            --border: #2c2c33;
+            --green: #30d158;
+            --radius: 22px;
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: var(--bg-dark);
-            color: var(--text);
-            min-height: 100vh;
-            background-image:
-                radial-gradient(520px 420px at -5% -10%, rgba(10, 132, 255, 0.22), transparent 70%),
-                radial-gradient(520px 420px at 105% 110%, rgba(191, 90, 242, 0.16), transparent 70%),
-                radial-gradient(360px 300px at 80% -10%, rgba(64, 200, 224, 0.10), transparent 70%);
-            background-attachment: fixed;
-        }
-
+        html { scroll-behavior: smooth; }
         html, body { max-width: 100%; overflow-x: hidden; }
 
-        main > *, .info-section, .hero { min-width: 0; }
-
-        .page {
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 15px 40px;
-        }
-
-        /* Header */
-        header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding-bottom: 12px;
-            border-bottom: 1px solid var(--border);
-        }
-
-        .logo {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-size: 1.2rem;
-            font-weight: 700;
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: var(--bg);
             color: var(--text);
-            text-decoration: none;
+            -webkit-font-smoothing: antialiased;
+            line-height: 1.5;
         }
 
-        .logo img { width: 28px; height: 28px; border-radius: 7px; }
+        a { color: inherit; text-decoration: none; }
+        img { display: block; max-width: 100%; height: auto; }
 
-        .nav-links { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px 20px; }
+        .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
 
-        .nav-links a {
-            color: var(--text-muted);
-            text-decoration: none;
-            font-size: 0.85rem;
+        /* Nav */
+        .nav {
+            position: sticky; top: 0; z-index: 50;
+            background: rgba(11, 11, 14, 0.72);
+            -webkit-backdrop-filter: saturate(180%) blur(20px);
+            backdrop-filter: saturate(180%) blur(20px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
         }
+        .nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 52px; }
+        .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.05rem; letter-spacing: -0.01em; }
+        .brand img { width: 26px; height: 26px; border-radius: 7px; }
+        .nav-links { display: flex; gap: 26px; font-size: 0.86rem; color: var(--text-2); }
+        .nav-links a:hover { color: var(--text); }
+        .nav-links .cta { color: var(--accent); font-weight: 600; }
 
-        .nav-links a:hover { color: var(--accent); }
-
-        /* Main Layout */
-        main {
-            flex: 1;
-            display: grid;
-            grid-template-columns: 1.05fr 1fr;
-            gap: 44px;
-            padding: 24px 0;
-            align-items: center;
-        }
-
-        /* Left - Hero with screenshots */
+        /* Hero */
         .hero {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .shots {
             position: relative;
-            width: 100%;
-            max-width: 540px;
-            margin-bottom: 26px;
-            padding-right: 70px;
-            padding-bottom: 36px;
-        }
-
-        .shot-main {
-            width: 100%;
-            height: auto;
-            display: block;
-            border-radius: 12px;
-            border: 1px solid var(--border);
-            box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
-        }
-
-        .shot-menu {
-            position: absolute;
-            right: 0;
-            bottom: 0;
-            width: 170px;
-            height: auto;
-            border-radius: 12px;
-            border: 1px solid var(--border);
-            box-shadow: 0 18px 40px rgba(0, 0, 0, 0.6);
-        }
-
-        .hero h1 {
-            font-size: 2.2rem;
-            font-weight: 700;
-            margin-bottom: 8px;
-            background: linear-gradient(135deg, #fff 0%, var(--accent) 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            width: fit-content;
-        }
-
-        .hero .tagline {
-            font-size: 1rem;
-            color: var(--text-muted);
-            margin-bottom: 18px;
-            line-height: 1.5;
-        }
-
-        .hero .tagline strong { color: var(--text); font-weight: 600; }
-
-        .download-btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 10px;
-            background: var(--accent);
-            color: white;
-            padding: 12px 24px;
-            border-radius: 10px;
-            text-decoration: none;
-            font-size: 1rem;
-            font-weight: 600;
-            width: fit-content;
-            transition: all 0.2s;
-            box-shadow: 0 8px 24px rgba(10, 132, 255, 0.35);
-        }
-
-        .download-btn:hover {
-            background: var(--accent-hover);
-            transform: translateY(-1px);
-        }
-
-        .download-info {
-            margin-top: 10px;
-            font-size: 0.8rem;
-            color: var(--text-muted);
-        }
-
-        .version-badge {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            padding: 2px 8px;
-            border-radius: 10px;
-            margin-right: 6px;
-        }
-
-        .brew-label {
-            font-size: 0.7rem;
-            color: var(--text-muted);
-            margin-top: 10px;
-        }
-
-        .brew-cmd {
-            margin-top: 6px;
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 10px 14px;
-            font-family: 'SF Mono', Menlo, Monaco, Consolas, monospace;
-            font-size: 0.8rem;
-            color: var(--text-muted);
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            width: fit-content;
-            max-width: 100%;
-            overflow-x: auto;
-        }
-
-        .brew-cmd code { color: var(--text); white-space: nowrap; }
-
-        /* Right - Info Panel */
-        .info-panel {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-
-        .info-section {
-            background: var(--bg-card);
-            border-radius: 10px;
-            border: 1px solid var(--border);
-            padding: 14px 16px;
-        }
-
-        .info-section h3 {
-            font-size: 0.8rem;
-            color: var(--text-muted);
-            margin-bottom: 10px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        /* Install Steps */
-        .steps-row {
-            display: flex;
-            gap: 8px;
-        }
-
-        .step {
-            flex: 1;
-            background: var(--bg-inset);
-            padding: 10px 12px;
-            border-radius: 6px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .step-num {
-            width: 18px;
-            height: 18px;
-            background: var(--accent);
-            border-radius: 50%;
-            font-size: 0.7rem;
-            font-weight: 700;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-        }
-
-        .step span:last-child {
-            font-size: 0.75rem;
-            color: var(--text-muted);
-        }
-
-        .security-note {
-            margin-top: 8px;
-            font-size: 0.72rem;
-            color: var(--text-muted);
-            padding: 8px 10px;
-            background: rgba(251, 191, 36, 0.08);
-            border: 1px solid rgba(251, 191, 36, 0.3);
-            border-radius: 6px;
-            line-height: 1.5;
-        }
-
-        .security-note strong { color: var(--warning); }
-
-        /* Compatibility */
-        .compat-row {
-            display: flex;
-            gap: 12px;
-        }
-
-        .compat-item {
-            flex: 1;
+            padding: 96px 0 40px;
             text-align: center;
-            padding: 8px;
-            background: var(--bg-inset);
-            border-radius: 6px;
+            overflow: hidden;
+        }
+        .hero::before {
+            content: "";
+            position: absolute; inset: 0; z-index: -1;
+            background:
+                radial-gradient(640px 420px at 50% -8%, rgba(10, 132, 255, 0.30), transparent 70%),
+                radial-gradient(520px 380px at 12% 70%, rgba(191, 90, 242, 0.14), transparent 70%),
+                radial-gradient(420px 320px at 88% 60%, rgba(64, 200, 224, 0.12), transparent 70%);
+        }
+        .eyebrow {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 6px 14px; border-radius: 999px;
+            border: 1px solid var(--card-border-hi);
+            background: rgba(255, 255, 255, 0.05);
+            font-size: 0.8rem; color: var(--text-2); letter-spacing: 0.01em;
+            margin-bottom: 26px;
+        }
+        .eyebrow .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px var(--green); }
+        .hero h1 {
+            font-size: clamp(2.8rem, 7vw, 5.2rem);
+            font-weight: 700; letter-spacing: -0.035em; line-height: 1.02;
+            margin-bottom: 20px;
+        }
+        .hero h1 span {
+            background: linear-gradient(100deg, #ffffff 0%, #9ecbff 45%, var(--violet) 100%);
+            -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        .hero p.lead {
+            font-size: clamp(1.05rem, 2vw, 1.35rem);
+            color: var(--text-2); max-width: 640px; margin: 0 auto 32px; line-height: 1.45;
+        }
+        .actions { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin-bottom: 14px; }
+        .btn {
+            display: inline-flex; align-items: center; gap: 9px;
+            padding: 13px 24px; border-radius: 999px;
+            font-weight: 600; font-size: 1rem;
+            transition: transform 0.2s, background 0.2s, box-shadow 0.2s;
+        }
+        .btn:hover { transform: translateY(-1px); }
+        .btn-primary { background: var(--accent); color: #fff; box-shadow: 0 10px 30px rgba(10, 132, 255, 0.35); }
+        .btn-primary:hover { background: #2b94ff; box-shadow: 0 14px 36px rgba(10, 132, 255, 0.45); }
+        .btn-ghost { background: rgba(255, 255, 255, 0.06); border: 1px solid var(--card-border-hi); color: var(--text); }
+        .btn-ghost:hover { background: rgba(255, 255, 255, 0.10); }
+        .meta { font-size: 0.82rem; color: var(--text-3); }
+        .meta b { color: var(--text-2); font-weight: 500; }
+
+        .showcase {
+            position: relative;
+            max-width: 920px; margin: 56px auto 0;
+            padding: 0 24px 40px;
+        }
+        .showcase .glow {
+            position: absolute; left: 10%; right: 10%; top: 20%; bottom: 10%; z-index: -1;
+            background: radial-gradient(closest-side, rgba(10, 132, 255, 0.35), transparent);
+            filter: blur(40px);
+        }
+        .frame {
+            border-radius: 16px; overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            box-shadow: 0 40px 90px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(0, 0, 0, 0.6);
+            background: #1d1d21;
+        }
+        .float-menu {
+            position: absolute; right: -6px; bottom: 0;
+            width: 200px;
+            border-radius: 16px; overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            box-shadow: 0 30px 60px rgba(0, 0, 0, 0.7);
+            transform: rotate(-2deg);
         }
 
-        .compat-item h4 {
-            font-size: 0.8rem;
-            margin-bottom: 2px;
+        /* Sections */
+        section { padding: 90px 0; }
+        .section-head { text-align: center; max-width: 720px; margin: 0 auto 48px; }
+        .kicker { color: var(--accent); font-weight: 600; font-size: 0.9rem; letter-spacing: 0.02em; text-transform: uppercase; margin-bottom: 12px; }
+        h2 { font-size: clamp(2rem, 4.4vw, 3.1rem); font-weight: 700; letter-spacing: -0.03em; line-height: 1.08; }
+        .section-head p { color: var(--text-2); font-size: 1.12rem; margin-top: 16px; }
+
+        /* Waveform strip */
+        .waves { display: grid; grid-template-columns: repeat(8, 1fr); gap: 10px; }
+        .wave {
+            text-align: center; padding: 18px 8px 14px;
+            border-radius: 16px; background: var(--card); border: 1px solid var(--card-border);
+            transition: border-color 0.2s, transform 0.2s;
+        }
+        .wave:hover { border-color: var(--card-border-hi); transform: translateY(-2px); }
+        .wave svg { width: 100%; height: 34px; display: block; margin-bottom: 8px; }
+        .wave b { display: block; font-size: 0.92rem; font-weight: 600; }
+        .wave span { font-size: 0.72rem; color: var(--text-3); font-variant-numeric: tabular-nums; }
+
+        /* Bento grid */
+        .bento { display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px; }
+        .card {
+            position: relative; overflow: hidden;
+            border-radius: var(--radius);
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.025));
+            border: 1px solid var(--card-border);
+            padding: 28px;
+            min-height: 280px;
+            display: flex; flex-direction: column;
+            transition: border-color 0.25s, transform 0.25s;
+        }
+        .card:hover { border-color: var(--card-border-hi); transform: translateY(-3px); }
+        .card h3 { font-size: 1.35rem; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 8px; }
+        .card p { color: var(--text-2); font-size: 0.98rem; max-width: 40ch; }
+        .card .icon {
+            width: 42px; height: 42px; border-radius: 12px;
+            display: flex; align-items: center; justify-content: center;
+            background: rgba(10, 132, 255, 0.16); color: #7cc0ff;
+            margin-bottom: 18px;
+        }
+        .card .icon svg { width: 22px; height: 22px; }
+        .card.violet .icon { background: rgba(191, 90, 242, 0.16); color: #d79bff; }
+        .card.teal .icon { background: rgba(64, 200, 224, 0.16); color: #8fe3f2; }
+        .card.green .icon { background: rgba(48, 209, 88, 0.16); color: #7fe39c; }
+        .span-3 { grid-column: span 3; }
+        .span-2 { grid-column: span 2; }
+        .span-4 { grid-column: span 4; }
+        .card .art { margin-top: auto; }
+        .card-mouse { min-height: 440px; }
+        .card-mouse .art { position: absolute; right: 24px; bottom: -40px; width: 230px; pointer-events: none; -webkit-mask-image: linear-gradient(180deg, #000 70%, transparent 100%); mask-image: linear-gradient(180deg, #000 70%, transparent 100%); }
+        .card-ring { min-height: 440px; }
+        .card-ring .art { position: absolute; right: -50px; bottom: -90px; width: 330px; pointer-events: none; filter: drop-shadow(0 20px 40px rgba(0, 0, 0, 0.6)); animation: spin 60s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .card-mouse p, .card-ring p { max-width: 100%; }
+        .card-mouse h3, .card-mouse p { position: relative; z-index: 1; padding-right: 0; }
+        .card-ring h3, .card-ring p { position: relative; z-index: 1; }
+        .pulse { position: absolute; left: 50%; top: 50%; width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid rgba(10, 132, 255, 0.7); transform: translate(-50%, -50%); animation: ripple 2.8s ease-out infinite; }
+        .pulse:nth-child(2) { animation-delay: 0.9s; }
+        .pulse:nth-child(3) { animation-delay: 1.8s; }
+        @keyframes ripple { from { width: 20px; height: 20px; opacity: 0.9; } to { width: 360px; height: 360px; opacity: 0; } }
+        .ripples { position: absolute; right: 139px; bottom: 120px; width: 0; height: 0; pointer-events: none; }
+
+        /* Spotlights */
+        .spot { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: center; padding: 56px 0; }
+        .spot:nth-child(even) .copy { order: 2; }
+        .spot .copy h3 { font-size: clamp(1.7rem, 3vw, 2.4rem); font-weight: 700; letter-spacing: -0.03em; line-height: 1.1; margin-bottom: 16px; }
+        .spot .copy p { color: var(--text-2); font-size: 1.08rem; margin-bottom: 14px; }
+        .spot .copy ul { list-style: none; margin-top: 18px; display: grid; gap: 10px; }
+        .spot .copy li { display: flex; gap: 10px; align-items: flex-start; color: var(--text-2); font-size: 0.98rem; }
+        .spot .copy li::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); margin-top: 9px; box-shadow: 0 0 8px rgba(10, 132, 255, 0.8); }
+        .pane {
+            border-radius: 18px; overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.10);
+            background: #1a1a1e;
+            box-shadow: 0 30px 70px rgba(0, 0, 0, 0.6);
+            -webkit-mask-image: linear-gradient(180deg, #000 78%, transparent 100%);
+            mask-image: linear-gradient(180deg, #000 78%, transparent 100%);
+        }
+        .pane.nofade { -webkit-mask-image: none; mask-image: none; }
+        .ring-stage { position: relative; display: flex; justify-content: center; align-items: center; padding: 30px 0; }
+        .ring-stage img { width: min(380px, 80%); filter: drop-shadow(0 30px 50px rgba(0, 0, 0, 0.7)); }
+        .ring-stage::before { content: ""; position: absolute; width: 60%; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(closest-side, rgba(191, 90, 242, 0.30), transparent); filter: blur(30px); }
+
+        /* Pillars */
+        .pillars { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+        .pillar { padding: 26px; border-radius: var(--radius); background: var(--card); border: 1px solid var(--card-border); }
+        .pillar b { display: block; font-size: 1.1rem; margin-bottom: 8px; letter-spacing: -0.01em; }
+        .pillar p { color: var(--text-2); font-size: 0.95rem; }
+        .perm { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 18px; }
+        .perm div { padding: 14px 16px; border-radius: 14px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--card-border); font-size: 0.88rem; color: var(--text-2); }
+        .perm div b { display: block; color: var(--text); font-weight: 600; margin-bottom: 4px; }
+
+        /* Download */
+        .download {
+            text-align: center;
+            padding: 64px 32px;
+            border-radius: 28px;
+            border: 1px solid var(--card-border-hi);
+            background:
+                radial-gradient(500px 260px at 50% 0%, rgba(10, 132, 255, 0.25), transparent 70%),
+                linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
+        }
+        .download img { width: 92px; height: 92px; margin: 0 auto 20px; border-radius: 22px; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5); }
+        .download h2 { margin-bottom: 10px; }
+        .download p { color: var(--text-2); margin-bottom: 26px; }
+        .code {
+            display: inline-flex; align-items: center; gap: 10px; margin-top: 22px;
+            padding: 11px 16px; border-radius: 12px;
+            background: rgba(0, 0, 0, 0.4); border: 1px solid var(--card-border);
+            font-family: "SF Mono", Menlo, Monaco, Consolas, monospace; font-size: 0.82rem; color: var(--text-2);
+            max-width: 100%;
+        }
+        .code code { color: var(--text); white-space: nowrap; overflow-x: auto; }
+
+        footer { padding: 36px 0 44px; border-top: 1px solid rgba(255, 255, 255, 0.06); color: var(--text-3); font-size: 0.85rem; }
+        footer .wrap { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+        footer a { margin-right: 18px; color: var(--text-2); }
+        footer a:hover { color: var(--text); }
+
+        /* Reveal */
+        .reveal { opacity: 0; transform: translateY(22px); transition: opacity 0.7s ease, transform 0.7s ease; }
+        .reveal.in { opacity: 1; transform: none; }
+        @media (prefers-reduced-motion: reduce) {
+            .reveal { opacity: 1; transform: none; transition: none; }
+            .card-ring .art, .pulse { animation: none; }
         }
 
-        .compat-item p {
-            font-size: 0.7rem;
-            color: var(--text-muted);
-        }
-
-        .status {
-            display: inline-block;
-            padding: 2px 6px;
-            border-radius: 8px;
-            font-size: 0.65rem;
-            margin-top: 4px;
-        }
-
-        .status.full { background: rgba(74, 222, 128, 0.2); color: var(--success); }
-        .status.partial { background: rgba(251, 191, 36, 0.2); color: var(--warning); }
-
-        /* Features Table */
-        .features-table {
-            width: 100%;
-            font-size: 0.75rem;
-            border-collapse: collapse;
-            table-layout: fixed;
-        }
-
-        .features-table th:first-child, .features-table td:first-child { width: 96px; }
-
-        .features-table th,
-        .features-table td {
-            padding: 6px 8px;
-            text-align: left;
-            border-bottom: 1px solid var(--border);
-            vertical-align: top;
-        }
-
-        .features-table th {
-            color: var(--text-muted);
-            font-weight: 600;
-            font-size: 0.7rem;
-        }
-
-        .features-table td:first-child { white-space: nowrap; font-weight: 600; }
-        .features-table td:last-child { color: var(--text-muted); line-height: 1.45; }
-        .features-table tr:last-child td { border-bottom: none; }
-
-        /* Notes */
-        .notes-list {
-            font-size: 0.72rem;
-            color: var(--text-muted);
-            margin: 0;
-            padding-left: 14px;
-            line-height: 1.7;
-        }
-
-        .notes-list a { color: var(--accent); text-decoration: none; }
-        .notes-list a:hover { text-decoration: underline; }
-
-        /* Footer */
-        footer {
-            padding: 12px 0;
-            border-top: 1px solid var(--border);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 0.8rem;
-        }
-
-        footer a {
-            color: var(--text-muted);
-            text-decoration: none;
-            margin-right: 16px;
-        }
-
-        footer a:hover { color: var(--accent); }
-
-        .footer-right {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            color: var(--text-muted);
-        }
-
-        /* Responsive */
         @media (max-width: 900px) {
-            .page { padding: 15px 16px; }
-            main { grid-template-columns: 1fr; gap: 20px; }
-            .shots { max-width: 420px; margin: 0 auto 20px; }
-            .hero { text-align: center; align-items: center; }
-            .hero .brew-cmd { margin-left: auto; margin-right: auto; width: auto; max-width: 100%; }
-            .brew-cmd code { white-space: normal; word-break: break-all; text-align: left; }
-            .shots { padding-right: 50px; }
-            .shot-menu { width: 130px; }
-            .nav-links a.nav-plan { display: none; }
-            .steps-row { flex-direction: column; }
-            .compat-row { flex-direction: column; }
-            .features-table td:first-child { white-space: normal; }
-            .features-table th:first-child, .features-table td:first-child { width: 76px; }
-            footer { flex-direction: column; gap: 8px; }
+            .nav-links { gap: 16px; }
+            .nav-links .hide-sm { display: none; }
+            .hero { padding-top: 64px; }
+            .float-menu { width: 140px; right: 4px; }
+            .waves { grid-template-columns: repeat(4, 1fr); }
+            .bento { grid-template-columns: 1fr 1fr; }
+            .span-3, .span-2, .span-4 { grid-column: span 2; }
+            .card-mouse, .card-ring { min-height: 0; }
+            .card-mouse .art, .card-ring .art { position: static; width: 220px; margin: 18px auto 0; -webkit-mask-image: none; mask-image: none; animation: none; }
+            .card-ring .art { margin-bottom: -40px; }
+            .ripples { display: none; }
+            .spot { grid-template-columns: 1fr; gap: 28px; padding: 36px 0; }
+            .spot:nth-child(even) .copy { order: 0; }
+            .pillars, .perm { grid-template-columns: 1fr; }
+            section { padding: 64px 0; }
+        }
+        @media (max-width: 520px) {
+            .waves { grid-template-columns: repeat(2, 1fr); }
+            .bento { grid-template-columns: 1fr; }
+            .span-3, .span-2, .span-4 { grid-column: auto; }
+            .code code { white-space: normal; word-break: break-all; }
         }
     </style>
 </head>
 <body>
-    <div class="page">
-        <header>
-            <a href="#" class="logo"><img src="icon.png" alt="" width="28" height="28">iXpat</a>
-            <nav class="nav-links">
-                <a href="https://github.com/knightynite/Thrum" target="_blank">GitHub</a>
-                <a href="https://github.com/knightynite/Thrum/issues" target="_blank">Issues</a>
-                <a class="nav-plan" href="https://github.com/knightynite/Thrum/blob/main/docs/windows-plan.md" target="_blank">Windows plan</a>
-                <a href="mailto:ixpat@alcybr.com">Contact</a>
-            </nav>
-        </header>
+    <nav class="nav">
+        <div class="wrap">
+            <a href="#" class="brand"><img src="icon.png" alt="" width="26" height="26">iXpat</a>
+            <div class="nav-links">
+                <a href="#features">Features</a>
+                <a href="#ring" class="hide-sm">Action Ring</a>
+                <a href="#scroll" class="hide-sm">Scrolling</a>
+                <a href="https://github.com/knightynite/Thrum" target="_blank" rel="noopener">GitHub</a>
+                <a href="#download" class="cta">Download</a>
+            </div>
+        </div>
+    </nav>
 
-        <main>
-            <div class="hero">
-                <div class="shots">
-                    <img class="shot-main" src="settings.jpg" alt="iXpat settings window: live mouse schematic, event monitor and the Haptics tab" width="1376" height="1165">
-                    <img class="shot-menu" src="menu.jpg" alt="iXpat menu bar popover with Haptics, Reverse scrolling, Start at login, Action Ring and Test pulse" width="600" height="716">
-                </div>
-
-                <h1>iXpat</h1>
-                <p class="tagline">Haptic feedback, an Action Ring, kinetic scrolling and force click for the <strong>Microsoft Surface Mouse (2nd Edition)</strong> on macOS. The feel the mouse has on Windows, and more, from a free and open source menu bar app.</p>
-
-                <a href="https://github.com/knightynite/Thrum/releases/latest" class="download-btn">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                        <polyline points="7 10 12 15 17 10"/>
-                        <line x1="12" y1="15" x2="12" y2="3"/>
-                    </svg>
+    <header class="hero">
+        <div class="wrap">
+            <div class="eyebrow"><span class="dot"></span>For the Microsoft Surface Mouse (2nd Edition) · macOS 14+</div>
+            <h1>Feel every click.<br><span>On your Mac.</span></h1>
+            <p class="lead">iXpat brings the Surface Mouse's haptics to macOS, then goes further: an Action Ring under the pointer, scrolling with real momentum, force click, and a feel you can tune for every app.</p>
+            <div class="actions">
+                <a class="btn btn-primary" href="https://github.com/knightynite/Thrum/releases/latest">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                     Download for macOS
                 </a>
+                <a class="btn btn-ghost" href="https://github.com/knightynite/Thrum" target="_blank" rel="noopener">View on GitHub</a>
+            </div>
+            <div class="meta"><b>v0.1.0</b> · Free and open source · Apple Silicon · 3.6 MB</div>
+        </div>
+        <div class="showcase reveal">
+            <div class="glow"></div>
+            <div class="frame"><img src="settings@2x.jpg" alt="iXpat settings window with the live mouse schematic, the event monitor and the Haptics tab" width="1720" height="1456"></div>
+            <div class="float-menu"><img src="menu.jpg" alt="iXpat menu bar popover" width="600" height="716"></div>
+        </div>
+    </header>
 
-                <div class="download-info">
-                    <span class="version-badge">v0.1.0</span>
-                    macOS 14+ | Apple Silicon | 3.6 MB
+    <section id="waves">
+        <div class="wrap">
+            <div class="section-head reveal">
+                <div class="kicker">Real haptics</div>
+                <h2>Eight waveforms. Straight from the mouse.</h2>
+                <p>The Surface Mouse carries a standard haptic controller with its own waveform table. iXpat reads that table and plays it from user space, at one of five strengths, for whatever you decide deserves a pulse.</p>
+            </div>
+            <div class="waves reveal">
+                <div class="wave"><svg viewBox="0 0 100 34"><path d="M0 17 Q25 0 50 17 T100 17" fill="none" stroke="#7cc0ff" stroke-width="2.5"/></svg><b>Hover</b><span>9 ms</span></div>
+                <div class="wave"><svg viewBox="0 0 100 34"><path d="M0 17 L40 17 45 3 50 31 55 17 100 17" fill="none" stroke="#7cc0ff" stroke-width="2.5"/></svg><b>Collide</b><span>26 ms</span></div>
+                <div class="wave"><svg viewBox="0 0 100 34"><path d="M0 17 L35 17 42 6 50 28 58 6 65 17 100 17" fill="none" stroke="#7cc0ff" stroke-width="2.5"/></svg><b>Align</b><span>9 ms</span></div>
+                <div class="wave"><svg viewBox="0 0 100 34"><path d="M0 24 L40 24 40 8 60 8 60 24 100 24" fill="none" stroke="#7cc0ff" stroke-width="2.5"/></svg><b>Step</b><span>11 ms</span></div>
+                <div class="wave"><svg viewBox="0 0 100 34"><path d="M0 28 C30 28 40 6 100 4" fill="none" stroke="#d79bff" stroke-width="2.5"/></svg><b>Grow</b><span>200 ms</span></div>
+                <div class="wave"><svg viewBox="0 0 100 34"><path d="M0 20 L30 20 38 8 46 24 54 4 62 20 100 20" fill="none" stroke="#7fe39c" stroke-width="2.5"/></svg><b>Success</b><span>70 ms</span></div>
+                <div class="wave"><svg viewBox="0 0 100 34"><path d="M0 17 L20 17 25 4 30 30 35 4 40 30 45 17 100 17" fill="none" stroke="#ff8a80" stroke-width="2.5"/></svg><b>Error</b><span>147 ms</span></div>
+                <div class="wave"><svg viewBox="0 0 100 34"><path d="M0 17 L45 17 48 2 52 32 55 17 100 17" fill="none" stroke="#8fe3f2" stroke-width="2.5"/></svg><b>Click</b><span>11 ms</span></div>
+            </div>
+        </div>
+    </section>
+
+    <section id="features" style="padding-top: 0;">
+        <div class="wrap">
+            <div class="section-head reveal">
+                <div class="kicker">Everything the mouse can do</div>
+                <h2>Built for the hardware you already own.</h2>
+            </div>
+            <div class="bento">
+                <div class="card card-mouse span-3 reveal">
+                    <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 12a8 8 0 0 1 16 0"/><path d="M8 12a4 4 0 0 1 8 0"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg></div>
+                    <h3>Haptics for the whole desktop</h3>
+                    <p>Clicks, wheel detents, menu highlights, text selection by word and by line, screen edges, drag and drop, window tiling, app switches. Each event picks its own waveform and strength.</p>
+                    <div class="ripples"><span class="pulse"></span><span class="pulse"></span><span class="pulse"></span></div>
+                    <div class="art"><img src="mouse.png" alt="Live mouse schematic" width="440" height="490"></div>
                 </div>
-                <div class="brew-label">or build from source:</div>
-                <div class="brew-cmd">
-                    <span>$</span>
-                    <code>git clone https://github.com/knightynite/Thrum.git && cd Thrum && ./build.sh</code>
+                <div class="card card-ring span-3 violet reveal">
+                    <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M12 3v6M12 15v6M3 12h6M15 12h6"/></svg></div>
+                    <h3>Action Ring</h3>
+                    <p>A radial menu that opens under the pointer. Sweep toward a chamber, feel a detent as you cross each one, release to run it. Up to eight chambers, all editable.</p>
+                    <div class="art"><img src="ring.png" alt="The Action Ring with eight chambers" width="720" height="720"></div>
+                </div>
+                <div class="card span-2 teal reveal">
+                    <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v18"/><path d="M8 7l4-4 4 4"/><path d="M8 17l4 4 4-4"/></svg></div>
+                    <h3>Scrolling with momentum</h3>
+                    <p>A slow notch settles crisply. A flick accelerates and coasts. Detents go firm, light or silent with the wheel's speed, and free-spin on a flick.</p>
+                </div>
+                <div class="card span-2 reveal">
+                    <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 21a8 8 0 1 0-8-8"/><path d="M12 7v6l4 2"/></svg></div>
+                    <h3>Force click</h3>
+                    <p>Press and hold the left button for Look Up and link previews, with a pulse the moment it engages. Just like a Force Touch trackpad.</p>
+                </div>
+                <div class="card span-2 green reveal">
+                    <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="5"/><path d="M12 8v8M8 12h8"/></svg></div>
+                    <h3>Action button, remapped</h3>
+                    <p>Press, double-press and hold each run what you choose. Hold and move the mouse for volume, brightness, tracks and desktops while the pointer stays put.</p>
                 </div>
             </div>
+        </div>
+    </section>
 
-            <div class="info-panel">
-                <div class="info-section">
-                    <h3>Quick Install</h3>
-                    <div class="steps-row">
-                        <div class="step"><span class="step-num">1</span><span>Open DMG, drag to Apps</span></div>
-                        <div class="step"><span class="step-num">2</span><span>Launch from the menu bar</span></div>
-                        <div class="step"><span class="step-num">3</span><span>Allow Input Monitoring &amp; Accessibility</span></div>
-                    </div>
-                    <div class="security-note">
-                        <strong>Permissions:</strong> haptics and pointer settings work with none. Input Monitoring reads the mouse's own reports; Accessibility is for kinetic scrolling, the action button, menu and selection ticks. No kernel extension, no private framework.
-                    </div>
-                </div>
-
-                <div class="info-section">
-                    <h3>Compatibility</h3>
-                    <div class="compat-row">
-                        <div class="compat-item">
-                            <h4>macOS</h4>
-                            <p>14+</p>
-                            <span class="status full">Sonoma - Tahoe</span>
-                        </div>
-                        <div class="compat-item">
-                            <h4>Surface Mouse</h4>
-                            <p>2nd Edition</p>
-                            <span class="status full">Full Support</span>
-                        </div>
-                        <div class="compat-item">
-                            <h4>Original Surface Mouse</h4>
-                            <p>2017 model</p>
-                            <span class="status partial">Untested</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="info-section">
-                    <h3>What you get</h3>
-                    <table class="features-table">
-                        <thead>
-                            <tr><th>Feature</th><th>Details</th></tr>
-                        </thead>
-                        <tbody>
-                            <tr><td>Haptics</td><td>The mouse's own eight waveforms and five strengths, per event: clicks, wheel detents, menu highlights, text selection, screen edges, drag &amp; drop, window tiling, app switches</td></tr>
-                            <tr><td>Scrolling</td><td>Dynamic ratchet (firm when slow, light when fast, a bump on reverse, free-spin on a flick) and kinetic scrolling with momentum and acceleration sliders</td></tr>
-                            <tr><td>Force click</td><td>Press and hold for Look Up and link previews, with a pulse when it engages</td></tr>
-                            <tr><td>Action button</td><td>Press, double-press and hold each mapped to an action: Action Ring, Mission Control, Spotlight, screenshot, lock, media, an app, a shortcut, a shell command</td></tr>
-                            <tr><td>Action Ring</td><td>Radial menu under the pointer with up to eight chambers and a detent per chamber</td></tr>
-                            <tr><td>Gestures</td><td>Hold the action button and move: volume, brightness, tracks and desktops, with the pointer held still</td></tr>
-                            <tr><td>Per app</td><td>Profiles per app, pointer speed and scrolling for this mouse only, and a loopback bridge so plugins can request a pulse</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-
-                <div class="info-section">
-                    <h3>Notes</h3>
-                    <ul class="notes-list">
-                        <li>Drives the mouse's standard HID haptic controller from user space; the trackpad is untouched</li>
-                        <li>Click and wheel feel presets, plus a live schematic that shows every report and pulse</li>
-                        <li>Settings and logs live in ~/Library/Application Support/Thrum</li>
-                        <li>A Windows counterpart and firmware updates are planned: <a href="https://github.com/knightynite/Thrum/blob/main/docs/windows-plan.md">read the plan</a></li>
+    <section id="spotlights" style="padding-top: 0;">
+        <div class="wrap">
+            <div class="spot">
+                <div class="copy reveal">
+                    <div class="kicker">Haptics</div>
+                    <h3>A pulse for every moment that deserves one.</h3>
+                    <p>Each rule has its own waveform, strength and a play button to hear it. Feel presets set a whole button or the wheel in one pick, and a rule can carry a second pulse, a swell under a long press, or a faint texture while the wheel free-spins.</p>
+                    <ul>
+                        <li>Clicks and releases, wheel click, scroll detents</li>
+                        <li>Menu and context-menu highlights, text selection by word and by line</li>
+                        <li>Screen edges, drag and drop, window tiling, app switches</li>
                     </ul>
                 </div>
+                <div class="pane reveal"><img src="rules.jpg" alt="Haptic rules with waveform and strength per event" width="1638" height="1140"></div>
             </div>
-        </main>
 
-        <footer>
+            <div class="spot">
+                <div class="copy reveal">
+                    <div class="kicker">Action button</div>
+                    <h3>Three gestures. Any action.</h3>
+                    <p>The mouse's firmware sends a Windows shortcut for each gesture. iXpat recognises them, hides them from your apps, and maps press, double-press and hold to the Action Ring, Mission Control, Spotlight, a screenshot, lock, media keys, an app, a shortcut or a shell command.</p>
+                    <ul>
+                        <li>Hold-and-move gestures with a tick per step and a bump at the end of the range</li>
+                        <li>Test each mapping with one click</li>
+                    </ul>
+                </div>
+                <div class="pane reveal"><img src="button.jpg" alt="Action Button tab with press, double press and hold mappings" width="1638" height="721"></div>
+            </div>
+
+            <div class="spot" id="ring">
+                <div class="copy reveal">
+                    <div class="kicker">Action Ring</div>
+                    <h3>Your shortcuts, in a circle.</h3>
+                    <p>Assign the ring to the action button. Hold and sweep, or press and click a chamber. Every chamber has a name, a symbol and an action, and crossing from one to the next is a detent you can feel.</p>
+                    <ul>
+                        <li>Up to eight chambers, reorderable</li>
+                        <li>Escape or right-click cancels</li>
+                        <li>Per-app rings for the apps that want their own</li>
+                    </ul>
+                </div>
+                <div class="reveal">
+                    <div class="ring-stage"><img src="ring.png" alt="The Action Ring" width="720" height="720"></div>
+                    <div class="pane"><img src="ringedit.jpg" alt="Action Ring editor" width="1638" height="721"></div>
+                </div>
+            </div>
+
+            <div class="spot" id="scroll">
+                <div class="copy reveal">
+                    <div class="kicker">Pointer &amp; Scroll</div>
+                    <h3>Settings that apply to this mouse only.</h3>
+                    <p>Tracking speed, acceleration, scrolling speed and direction for the Surface Mouse, while the trackpad keeps the system values. Smooth kinetic scrolling turns each notch into a glide with momentum and acceleration you can dial in.</p>
+                    <ul>
+                        <li>Dynamic ratchet: firm when slow, light when fast, a bump on reverse</li>
+                        <li>Free-spin on a flick, a soft pulse when the ratchet re-engages</li>
+                        <li>Re-applied every time the mouse reconnects</li>
+                    </ul>
+                </div>
+                <div class="pane reveal"><img src="pointer.jpg" alt="Pointer and Scroll tab" width="1638" height="721"></div>
+            </div>
+
+            <div class="spot">
+                <div class="copy reveal">
+                    <div class="kicker">Per-app profiles</div>
+                    <h3>Every app, its own feel.</h3>
+                    <p>Override haptics, click and wheel feel, smooth scrolling, free-spin, the ring and the gestures for any app while it is frontmost. Everything left on Default follows the main tabs.</p>
+                    <ul>
+                        <li>A loopback bridge lets app plugins request a pulse by name</li>
+                        <li>Sample Photoshop plugin included</li>
+                    </ul>
+                </div>
+                <div class="pane reveal"><img src="apps.jpg" alt="Per-app profiles tab" width="1638" height="721"></div>
+            </div>
+        </div>
+    </section>
+
+    <section id="how" style="padding-top: 0;">
+        <div class="wrap">
+            <div class="section-head reveal">
+                <div class="kicker">Under the hood</div>
+                <h2>No driver. No kernel extension. No private framework.</h2>
+            </div>
+            <div class="pillars reveal">
+                <div class="pillar"><b>Standard HID, user space</b><p>The mouse exposes a Simple Haptic Controller over HID. iXpat talks to it through IOKit, the same way any user-space app may.</p></div>
+                <div class="pillar"><b>Only this mouse</b><p>Every setting keys on the Surface Mouse's own device identity. Your trackpad, other mice and the rest of the system are untouched.</p></div>
+                <div class="pillar"><b>Open source</b><p>Swift, SwiftUI and AppKit. Read it, build it, change it. A plan for a Windows counterpart lives in the repo.</p></div>
+            </div>
+            <div class="perm reveal">
+                <div><b>No permission</b>Haptic playback, test buttons, the waveform table, pointer settings</div>
+                <div><b>Input Monitoring</b>Reading the mouse's own reports: clicks, wheel and the action button</div>
+                <div><b>Accessibility</b>Kinetic and reversed scrolling, hiding the button's shortcut, menu and selection ticks</div>
+            </div>
+        </div>
+    </section>
+
+    <section id="download" style="padding-top: 0;">
+        <div class="wrap">
+            <div class="download reveal">
+                <img src="icon.png" alt="" width="92" height="92">
+                <h2>Get iXpat</h2>
+                <p>Free, open source, for macOS 14 and later on Apple Silicon.<br>Open the DMG, drag to Applications, launch from the menu bar.</p>
+                <div class="actions">
+                    <a class="btn btn-primary" href="https://github.com/knightynite/Thrum/releases/latest">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        Download for macOS
+                    </a>
+                    <a class="btn btn-ghost" href="https://github.com/knightynite/Thrum/releases">All releases</a>
+                </div>
+                <div class="meta"><b>v0.1.0</b> · 3.6 MB</div>
+                <div class="code"><span>$</span><code>git clone https://github.com/knightynite/Thrum.git && cd Thrum && ./build.sh</code></div>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        <div class="wrap">
             <div>
                 <a href="https://github.com/knightynite/Thrum">GitHub</a>
+                <a href="https://github.com/knightynite/Thrum/issues">Issues</a>
                 <a href="https://github.com/knightynite/Thrum/blob/main/docs/windows-plan.md">Windows plan</a>
                 <a href="mailto:ixpat@alcybr.com">ixpat@alcybr.com</a>
             </div>
-            <div class="footer-right">
-                <span>by AL in Dallas</span>
-            </div>
-        </footer>
-    </div>
+            <div>by AL in Dallas · Surface Mouse is a trademark of Microsoft Corporation</div>
+        </div>
+    </footer>
+
+    <script>
+        (function () {
+            var els = document.querySelectorAll('.reveal');
+            if (!('IntersectionObserver' in window)) { els.forEach(function (e) { e.classList.add('in'); }); return; }
+            var io = new IntersectionObserver(function (entries) {
+                entries.forEach(function (en) { if (en.isIntersecting) { en.target.classList.add('in'); io.unobserve(en.target); } });
+            }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
+            els.forEach(function (e) { io.observe(e); });
+        })();
+    </script>
 </body>
 </html>

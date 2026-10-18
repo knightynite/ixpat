@@ -45,7 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let axWatch = AXWatcher()
     let bridge = HapticBridge()
 
-    // Wheel feel: notch rate → free-spin (MX SmartShift style)
+    // Wheel feel: notch rate → free-spin
     private var notchTimes: [CFTimeInterval] = []
     private var freeSpinActive = false
     private var freeSpinTimer: Timer?
@@ -133,7 +133,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.notchTimes.append(now)
             self.notchTimes.removeAll { now - $0 > 0.25 }
             let rate = Double(self.notchTimes.count) / 0.25          // notches per second, recent window
-            // Free-spin (SmartShift): a flick past the threshold silences the ratchet and
+            // Free-spin: a flick past the threshold silences the ratchet and
             // boosts distance until the wheel rests; the ratchet re-engages with a soft Align.
             if self.settings.enabled, self.settings.effFreeSpin {
                 if !self.freeSpinActive, rate >= self.settings.freeSpinThreshold {

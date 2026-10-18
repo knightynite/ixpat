@@ -35,8 +35,7 @@ enum Accents {
     ]
 }
 
-/// Resolved colors for the current theme + accent. Same palette as Knurl so the
-/// two apps look like siblings on the same Mac.
+/// Resolved colors for the current theme + accent.
 struct Palette {
     let isDark: Bool
     let accent: Color

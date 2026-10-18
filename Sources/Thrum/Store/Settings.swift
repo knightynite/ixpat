@@ -66,7 +66,7 @@ enum HapticEvent: String, CaseIterable, Codable, Identifiable {
         case .ringDetent:           return "Crossing from one Action Ring chamber to the next."
         case .ringOpen:             return "The ring appears under the pointer."
         case .ringCommit:           return "A chamber was chosen."
-        case .freeSpinOn:           return "A flick of the wheel switches it to free-spin (MX SmartShift style)."
+        case .freeSpinOn:           return "A flick of the wheel switches it to free-spin."
         case .freeSpinOff:          return "The wheel has come to rest after a free-spin and the notches are back."
         case .leftHold, .rightHold: return "Plays once the button has stayed down for the hold time: a swell under a long press, a second stage to the click."
         case .freeSpinTexture:      return "A faint tick every few notches while the wheel free-spins, so a fast slide still has grain."

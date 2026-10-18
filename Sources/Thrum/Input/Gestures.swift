@@ -4,8 +4,8 @@ import AudioToolbox
 import QuartzCore
 
 /// Hold-and-move gestures: while the action button is held (the firmware's hold
-/// chord is down) the pointer is frozen and its motion drives actions instead,
-/// MX "gesture button" style. Vertical motion steps (volume, brightness) every
+/// chord is down) the pointer is frozen and its motion drives actions instead.
+/// Vertical motion steps (volume, brightness) every
 /// `stepPx`; horizontal motion swipes (track change, desktops) every `swipePx`.
 /// The first 10 px decide the axis, which then stays locked for the hold.
 ///

@@ -2,7 +2,7 @@
 // Developer Tool ("Add plugin" → this folder → Load), paste the token from
 // Thrum's Diagnostics tab, and pulses follow Photoshop's own events.
 //
-// Photoshop does not expose alignment-guide snapping to plugins; Logitech's
+// Photoshop does not expose alignment-guide snapping to plugins; a vendor
 // plugin gets that through a private hook. What the public API does give is
 // below. Add more entries to EVENTS to taste.
 const { action } = require("photoshop");

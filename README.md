@@ -1,14 +1,38 @@
 # iXpat
 
-Haptics, an Action Ring, kinetic scrolling and per-mouse pointer settings for the
-**Microsoft Surface Mouse (2nd Edition)** on macOS. A menu-bar app, in the same
-family as Knurl (the Magic Trackpad one).
+[![Platform: macOS](https://img.shields.io/badge/Platform-macOS%2014%2B-lightgrey.svg)](https://www.apple.com/macos/)
+[![Website](https://img.shields.io/badge/Website-knightynite.github.io%2FThrum-0a84ff.svg)](https://knightynite.github.io/Thrum/)
 
-The mouse exposes a standard HID *Simple Haptic Controller* (usage page 0x0E),
-the same interface the Surface app drives on Windows. macOS has no driver for it,
-but user-space IOKit can read the waveform table and fire triggers with no kernel
-extension and no private framework. iXpat does that and layers on the parts
-Windows offers, plus a few Logitech MX-style ones.
+Menu bar app that gives the **Microsoft Surface Mouse (2nd Edition)** on macOS the
+feel it has on Windows, and more: haptic feedback for clicks, scrolling, menus and
+text selection, an Action Ring, kinetic scrolling, force click, an action button you
+can remap, and pointer settings that apply to this mouse only.
+
+The mouse exposes a standard HID *Simple Haptic Controller* (usage page 0x0E), the
+same interface the Surface app drives on Windows. macOS has no driver for it, but
+user-space IOKit can read the waveform table and fire triggers with no kernel
+extension and no private framework. iXpat does that and layers the rest on top.
+
+![iXpat settings window](docs/settings.jpg)
+
+## Install
+
+### Download
+
+Grab the latest DMG from [Releases](https://github.com/knightynite/Thrum/releases/latest),
+open it, drag iXpat to Applications and launch it from the menu bar. On first launch
+macOS asks for Input Monitoring and Accessibility (see [Permissions](#permissions)).
+
+### Build from source
+
+```bash
+git clone https://github.com/knightynite/Thrum.git
+cd Thrum
+./build.sh
+cp -r iXpat.app /Applications/
+```
+
+Needs Xcode 16+ and macOS 14+.
 
 ## What it does
 
@@ -24,15 +48,17 @@ Windows offers, plus a few Logitech MX-style ones.
   ratchet re-engages.
 - **Kinetic scrolling**: each notch is a velocity impulse with friction that
   follows the wheel speed. A slow notch settles crisply at exactly the set
-  distance; a flick accelerates and coasts, Magic Mouse / Windows style.
+  distance; a flick accelerates and coasts.
   Momentum and acceleration are sliders.
 - **Action button**: the firmware sends keyboard chords (press = Win+Shift+S,
   double = Win plus a synthetic left click, hold = Win+Shift+F23). iXpat
   decodes them, hides them from apps, and maps each gesture to an action:
   Action Ring, Mission Control, Spotlight, screenshot, lock, play/pause,
   show desktop, open an app, a shortcut, a shell command.
-- **Action Ring**: an MX Master 4-style radial menu under the pointer with up to
+- **Action Ring**: a radial menu under the pointer with up to
   eight editable chambers and a haptic detent per chamber.
+- **Force click**: press and hold the left button for Look Up and link previews,
+  with a pulse when it engages (Action Button tab).
 - **Pointer & scroll**: tracking speed, no-acceleration, scroll speed and
   reversed scrolling for *this mouse only*; the trackpad is untouched.
 - **Feel presets**: named click feels for each button (Subtle, Crisp, Mechanical,
@@ -41,7 +67,7 @@ Windows offers, plus a few Logitech MX-style ones.
   second pulse (echo) after a delay; a button held past the hold time plays a swell;
   a free-spinning wheel can keep a faint texture.
 - **Hold-and-move gestures**: keep the action button down and move the mouse (the
-  pointer stays put, MX gesture-button style). Up/down step the volume or brightness
+  pointer stays put). Up/down step the volume or brightness
   with a tick per step and a bump at the end of the range; left/right swipe to the
   previous/next track (or desktops, or any shortcut). Release without moving and the
   hold's own action runs as usual.
@@ -57,12 +83,9 @@ Windows offers, plus a few Logitech MX-style ones.
   app plugins can request a pulse by waveform name; see `plugins/`.
 - **Diagnostics**: permissions, device identity, haptic table, raw report log.
 
-## Build and run
+## Build notes
 
-    ./build.sh          # release build → iXpat.app
-    open iXpat.app
-
-Needs Xcode 16+ / macOS 14+. The first launch opens the settings window
+The first launch opens the settings window
 (set `THRUM_NO_WINDOW=1` to suppress it). `build.sh` signs with a local
 codesigning identity when one is present so TCC grants survive rebuilds;
 set `THRUM_SIGN_ID` to pick one, otherwise it falls back to ad-hoc signing.
@@ -90,8 +113,9 @@ Pointer settings go through Apple's `hidutil` and need no permission.
   serial IOKit queue. The device plays one waveform at a time, so the engine
   rate-limits by each waveform's reported duration.
 
-## Windows
+## Website and Windows
 
+The product page lives in `docs/` and is served at https://knightynite.github.io/Thrum/.
 A plan for a Windows counterpart (Raw Input + low-level hooks, HID haptics, UI Automation ticks)
 and for firmware updates (Microsoft's CFU packages) is in [docs/windows-plan.md](docs/windows-plan.md).
 

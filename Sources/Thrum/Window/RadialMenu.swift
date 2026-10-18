@@ -143,7 +143,7 @@ struct RingSegment: Shape {
     }
 }
 
-/// MX-style Actions Ring: a dark wheel of wedge chambers around a hub that
+/// Action Ring: a dark wheel of wedge chambers around a hub that
 /// names the highlighted action; the chosen wedge lights up in the accent.
 struct RadialMenuView: View {
     @ObservedObject var controller: RadialMenuController

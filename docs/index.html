@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>iXpat - Haptics, Action Ring & Force Click for the Surface Mouse on macOS</title>
+    <meta name="description" content="Free macOS menu bar app for the Microsoft Surface Mouse (2nd Edition): haptic feedback for clicks, scrolling, menus and text selection, an Action Ring, kinetic scrolling, force click and per-mouse pointer settings.">
+
+    <!-- SEO Meta Tags -->
+    <meta name="keywords" content="iXpat, Surface Mouse, Surface Mouse 2nd Edition, macOS, haptic mouse, haptics, Action Ring, action button, kinetic scrolling, force click, Mac app, menu bar app">
+    <meta name="author" content="AL">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://knightynite.github.io/Thrum/">
+    <link rel="icon" type="image/png" href="icon.png">
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://knightynite.github.io/Thrum/">
+    <meta property="og:title" content="iXpat - Haptics, Action Ring & Force Click for the Surface Mouse on macOS">
+    <meta property="og:description" content="Free macOS app that gives the Surface Mouse (2nd Edition) its haptics, an Action Ring, kinetic scrolling and force click.">
+    <meta property="og:image" content="https://knightynite.github.io/Thrum/og-image.jpg">
+    <meta property="og:site_name" content="iXpat">
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:url" content="https://knightynite.github.io/Thrum/">
+    <meta name="twitter:title" content="iXpat - Haptics, Action Ring & Force Click for the Surface Mouse on macOS">
+    <meta name="twitter:description" content="Free macOS app that gives the Surface Mouse (2nd Edition) its haptics, an Action Ring, kinetic scrolling and force click.">
+    <meta name="twitter:image" content="https://knightynite.github.io/Thrum/og-image.jpg">
+
+    <!-- Structured Data for Google -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "iXpat",
+        "operatingSystem": "macOS 14+",
+        "applicationCategory": "UtilitiesApplication",
+        "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD"
+        },
+        "description": "Free macOS menu bar app that gives the Microsoft Surface Mouse (2nd Edition) haptic feedback, an Action Ring, kinetic scrolling, force click and per-mouse pointer settings",
+        "downloadUrl": "https://github.com/knightynite/Thrum/releases/latest",
+        "softwareVersion": "0.1.0",
+        "author": {
+            "@type": "Person",
+            "name": "AL"
+        }
+    }
+    </script>
+
+    <style>
+        :root {
+            --bg-dark: #121215;
+            --bg-card: #1d1d21;
+            --bg-inset: #141417;
+            --accent: #0a84ff;
+            --accent-hover: #3a9dff;
+            --violet: #bf5af2;
+            --teal: #40c8e0;
+            --text: #ffffff;
+            --text-muted: #9a9aa8;
+            --success: #4ade80;
+            --warning: #fbbf24;
+            --border: #2c2c33;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text);
+            min-height: 100vh;
+            background-image:
+                radial-gradient(520px 420px at -5% -10%, rgba(10, 132, 255, 0.22), transparent 70%),
+                radial-gradient(520px 420px at 105% 110%, rgba(191, 90, 242, 0.16), transparent 70%),
+                radial-gradient(360px 300px at 80% -10%, rgba(64, 200, 224, 0.10), transparent 70%);
+            background-attachment: fixed;
+        }
+
+        html, body { max-width: 100%; overflow-x: hidden; }
+
+        main > *, .info-section, .hero { min-width: 0; }
+
+        .page {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 15px 40px;
+        }
+
+        /* Header */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: var(--text);
+            text-decoration: none;
+        }
+
+        .logo img { width: 28px; height: 28px; border-radius: 7px; }
+
+        .nav-links { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px 20px; }
+
+        .nav-links a {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.85rem;
+        }
+
+        .nav-links a:hover { color: var(--accent); }
+
+        /* Main Layout */
+        main {
+            flex: 1;
+            display: grid;
+            grid-template-columns: 1.05fr 1fr;
+            gap: 44px;
+            padding: 24px 0;
+            align-items: center;
+        }
+
+        /* Left - Hero with screenshots */
+        .hero {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .shots {
+            position: relative;
+            width: 100%;
+            max-width: 540px;
+            margin-bottom: 26px;
+            padding-right: 70px;
+            padding-bottom: 36px;
+        }
+
+        .shot-main {
+            width: 100%;
+            height: auto;
+            display: block;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+        }
+
+        .shot-menu {
+            position: absolute;
+            right: 0;
+            bottom: 0;
+            width: 170px;
+            height: auto;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            box-shadow: 0 18px 40px rgba(0, 0, 0, 0.6);
+        }
+
+        .hero h1 {
+            font-size: 2.2rem;
+            font-weight: 700;
+            margin-bottom: 8px;
+            background: linear-gradient(135deg, #fff 0%, var(--accent) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            width: fit-content;
+        }
+
+        .hero .tagline {
+            font-size: 1rem;
+            color: var(--text-muted);
+            margin-bottom: 18px;
+            line-height: 1.5;
+        }
+
+        .hero .tagline strong { color: var(--text); font-weight: 600; }
+
+        .download-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            background: var(--accent);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 10px;
+            text-decoration: none;
+            font-size: 1rem;
+            font-weight: 600;
+            width: fit-content;
+            transition: all 0.2s;
+            box-shadow: 0 8px 24px rgba(10, 132, 255, 0.35);
+        }
+
+        .download-btn:hover {
+            background: var(--accent-hover);
+            transform: translateY(-1px);
+        }
+
+        .download-info {
+            margin-top: 10px;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .version-badge {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            padding: 2px 8px;
+            border-radius: 10px;
+            margin-right: 6px;
+        }
+
+        .brew-label {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-top: 10px;
+        }
+
+        .brew-cmd {
+            margin-top: 6px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-family: 'SF Mono', Menlo, Monaco, Consolas, monospace;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: fit-content;
+            max-width: 100%;
+            overflow-x: auto;
+        }
+
+        .brew-cmd code { color: var(--text); white-space: nowrap; }
+
+        /* Right - Info Panel */
+        .info-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .info-section {
+            background: var(--bg-card);
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            padding: 14px 16px;
+        }
+
+        .info-section h3 {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* Install Steps */
+        .steps-row {
+            display: flex;
+            gap: 8px;
+        }
+
+        .step {
+            flex: 1;
+            background: var(--bg-inset);
+            padding: 10px 12px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .step-num {
+            width: 18px;
+            height: 18px;
+            background: var(--accent);
+            border-radius: 50%;
+            font-size: 0.7rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .step span:last-child {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .security-note {
+            margin-top: 8px;
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            padding: 8px 10px;
+            background: rgba(251, 191, 36, 0.08);
+            border: 1px solid rgba(251, 191, 36, 0.3);
+            border-radius: 6px;
+            line-height: 1.5;
+        }
+
+        .security-note strong { color: var(--warning); }
+
+        /* Compatibility */
+        .compat-row {
+            display: flex;
+            gap: 12px;
+        }
+
+        .compat-item {
+            flex: 1;
+            text-align: center;
+            padding: 8px;
+            background: var(--bg-inset);
+            border-radius: 6px;
+        }
+
+        .compat-item h4 {
+            font-size: 0.8rem;
+            margin-bottom: 2px;
+        }
+
+        .compat-item p {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+        }
+
+        .status {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 8px;
+            font-size: 0.65rem;
+            margin-top: 4px;
+        }
+
+        .status.full { background: rgba(74, 222, 128, 0.2); color: var(--success); }
+        .status.partial { background: rgba(251, 191, 36, 0.2); color: var(--warning); }
+
+        /* Features Table */
+        .features-table {
+            width: 100%;
+            font-size: 0.75rem;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
+
+        .features-table th:first-child, .features-table td:first-child { width: 96px; }
+
+        .features-table th,
+        .features-table td {
+            padding: 6px 8px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+            vertical-align: top;
+        }
+
+        .features-table th {
+            color: var(--text-muted);
+            font-weight: 600;
+            font-size: 0.7rem;
+        }
+
+        .features-table td:first-child { white-space: nowrap; font-weight: 600; }
+        .features-table td:last-child { color: var(--text-muted); line-height: 1.45; }
+        .features-table tr:last-child td { border-bottom: none; }
+
+        /* Notes */
+        .notes-list {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            margin: 0;
+            padding-left: 14px;
+            line-height: 1.7;
+        }
+
+        .notes-list a { color: var(--accent); text-decoration: none; }
+        .notes-list a:hover { text-decoration: underline; }
+
+        /* Footer */
+        footer {
+            padding: 12px 0;
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.8rem;
+        }
+
+        footer a {
+            color: var(--text-muted);
+            text-decoration: none;
+            margin-right: 16px;
+        }
+
+        footer a:hover { color: var(--accent); }
+
+        .footer-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: var(--text-muted);
+        }
+
+        /* Responsive */
+        @media (max-width: 900px) {
+            .page { padding: 15px 16px; }
+            main { grid-template-columns: 1fr; gap: 20px; }
+            .shots { max-width: 420px; margin: 0 auto 20px; }
+            .hero { text-align: center; align-items: center; }
+            .hero .brew-cmd { margin-left: auto; margin-right: auto; width: auto; max-width: 100%; }
+            .brew-cmd code { white-space: normal; word-break: break-all; text-align: left; }
+            .shots { padding-right: 50px; }
+            .shot-menu { width: 130px; }
+            .nav-links a.nav-plan { display: none; }
+            .steps-row { flex-direction: column; }
+            .compat-row { flex-direction: column; }
+            .features-table td:first-child { white-space: normal; }
+            .features-table th:first-child, .features-table td:first-child { width: 76px; }
+            footer { flex-direction: column; gap: 8px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="page">
+        <header>
+            <a href="#" class="logo"><img src="icon.png" alt="" width="28" height="28">iXpat</a>
+            <nav class="nav-links">
+                <a href="https://github.com/knightynite/Thrum" target="_blank">GitHub</a>
+                <a href="https://github.com/knightynite/Thrum/issues" target="_blank">Issues</a>
+                <a class="nav-plan" href="https://github.com/knightynite/Thrum/blob/main/docs/windows-plan.md" target="_blank">Windows plan</a>
+                <a href="mailto:ixpat@alcybr.com">Contact</a>
+            </nav>
+        </header>
+
+        <main>
+            <div class="hero">
+                <div class="shots">
+                    <img class="shot-main" src="settings.jpg" alt="iXpat settings window: live mouse schematic, event monitor and the Haptics tab" width="1376" height="1165">
+                    <img class="shot-menu" src="menu.jpg" alt="iXpat menu bar popover with Haptics, Reverse scrolling, Start at login, Action Ring and Test pulse" width="600" height="716">
+                </div>
+
+                <h1>iXpat</h1>
+                <p class="tagline">Haptic feedback, an Action Ring, kinetic scrolling and force click for the <strong>Microsoft Surface Mouse (2nd Edition)</strong> on macOS. The feel the mouse has on Windows, and more, from a free and open source menu bar app.</p>
+
+                <a href="https://github.com/knightynite/Thrum/releases/latest" class="download-btn">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="7 10 12 15 17 10"/>
+                        <line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                    Download for macOS
+                </a>
+
+                <div class="download-info">
+                    <span class="version-badge">v0.1.0</span>
+                    macOS 14+ | Apple Silicon | 3.6 MB
+                </div>
+                <div class="brew-label">or build from source:</div>
+                <div class="brew-cmd">
+                    <span>$</span>
+                    <code>git clone https://github.com/knightynite/Thrum.git && cd Thrum && ./build.sh</code>
+                </div>
+            </div>
+
+            <div class="info-panel">
+                <div class="info-section">
+                    <h3>Quick Install</h3>
+                    <div class="steps-row">
+                        <div class="step"><span class="step-num">1</span><span>Open DMG, drag to Apps</span></div>
+                        <div class="step"><span class="step-num">2</span><span>Launch from the menu bar</span></div>
+                        <div class="step"><span class="step-num">3</span><span>Allow Input Monitoring &amp; Accessibility</span></div>
+                    </div>
+                    <div class="security-note">
+                        <strong>Permissions:</strong> haptics and pointer settings work with none. Input Monitoring reads the mouse's own reports; Accessibility is for kinetic scrolling, the action button, menu and selection ticks. No kernel extension, no private framework.
+                    </div>
+                </div>
+
+                <div class="info-section">
+                    <h3>Compatibility</h3>
+                    <div class="compat-row">
+                        <div class="compat-item">
+                            <h4>macOS</h4>
+                            <p>14+</p>
+                            <span class="status full">Sonoma - Tahoe</span>
+                        </div>
+                        <div class="compat-item">
+                            <h4>Surface Mouse</h4>
+                            <p>2nd Edition</p>
+                            <span class="status full">Full Support</span>
+                        </div>
+                        <div class="compat-item">
+                            <h4>Original Surface Mouse</h4>
+                            <p>2017 model</p>
+                            <span class="status partial">Untested</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="info-section">
+                    <h3>What you get</h3>
+                    <table class="features-table">
+                        <thead>
+                            <tr><th>Feature</th><th>Details</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>Haptics</td><td>The mouse's own eight waveforms and five strengths, per event: clicks, wheel detents, menu highlights, text selection, screen edges, drag &amp; drop, window tiling, app switches</td></tr>
+                            <tr><td>Scrolling</td><td>Dynamic ratchet (firm when slow, light when fast, a bump on reverse, free-spin on a flick) and kinetic scrolling with momentum and acceleration sliders</td></tr>
+                            <tr><td>Force click</td><td>Press and hold for Look Up and link previews, with a pulse when it engages</td></tr>
+                            <tr><td>Action button</td><td>Press, double-press and hold each mapped to an action: Action Ring, Mission Control, Spotlight, screenshot, lock, media, an app, a shortcut, a shell command</td></tr>
+                            <tr><td>Action Ring</td><td>Radial menu under the pointer with up to eight chambers and a detent per chamber</td></tr>
+                            <tr><td>Gestures</td><td>Hold the action button and move: volume, brightness, tracks and desktops, with the pointer held still</td></tr>
+                            <tr><td>Per app</td><td>Profiles per app, pointer speed and scrolling for this mouse only, and a loopback bridge so plugins can request a pulse</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="info-section">
+                    <h3>Notes</h3>
+                    <ul class="notes-list">
+                        <li>Drives the mouse's standard HID haptic controller from user space; the trackpad is untouched</li>
+                        <li>Click and wheel feel presets, plus a live schematic that shows every report and pulse</li>
+                        <li>Settings and logs live in ~/Library/Application Support/Thrum</li>
+                        <li>A Windows counterpart and firmware updates are planned: <a href="https://github.com/knightynite/Thrum/blob/main/docs/windows-plan.md">read the plan</a></li>
+                    </ul>
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <div>
+                <a href="https://github.com/knightynite/Thrum">GitHub</a>
+                <a href="https://github.com/knightynite/Thrum/blob/main/docs/windows-plan.md">Windows plan</a>
+                <a href="mailto:ixpat@alcybr.com">ixpat@alcybr.com</a>
+            </div>
+            <div class="footer-right">
+                <span>by AL in Dallas</span>
+            </div>
+        </footer>
+    </div>
+</body>
+</html>

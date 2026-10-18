@@ -611,7 +611,7 @@ struct PointerPane: View {
             Text("Wheel feel").font(.system(size: 13, weight: .semibold)).foregroundStyle(pal.text)
             Toggle(isOn: $settings.smoothScroll) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Smooth kinetic scrolling (Magic Mouse / Windows feel)").font(.system(size: 12))
+                    Text("Smooth kinetic scrolling").font(.system(size: 12))
                     Text("Each notch becomes a pixel glide instead of a jump; a fast spin coasts on after the wheel stops. Needs Accessibility.").font(.system(size: 11)).foregroundStyle(pal.text2)
                 }
             }.toggleStyle(.switch).disabled(!permissions.accessibility)
@@ -639,7 +639,7 @@ struct PointerPane: View {
             }.disabled(!settings.smoothScroll || !permissions.accessibility).opacity(settings.smoothScroll ? 1 : 0.5)
             Toggle(isOn: Binding(get: { settings.rule(.scrollStep).enabled }, set: { v in var r = settings.rule(.scrollStep); r.enabled = v; settings.setRule(.scrollStep, r) })) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Ratchet tick per notch (MX feel)").font(.system(size: 12))
+                    Text("Ratchet tick per notch").font(.system(size: 12))
                     Text("A detent pulse for every notch, so the free-spinning wheel feels notched. Waveform and strength are in the Haptics tab.").font(.system(size: 11)).foregroundStyle(pal.text2)
                 }
             }.toggleStyle(.switch)
@@ -656,7 +656,7 @@ struct PointerPane: View {
             }.disabled(!settings.ratchetDynamic || !settings.rule(.scrollStep).enabled).opacity(settings.ratchetDynamic ? 1 : 0.5)
             Toggle(isOn: $settings.freeSpin) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Free-spin on a flick (SmartShift)").font(.system(size: 12))
+                    Text("Free-spin on a flick").font(.system(size: 12))
                     Text("Spin fast and the wheel switches to free-spin: no ticks, boosted distance, one Collide pulse on the switch.").font(.system(size: 11)).foregroundStyle(pal.text2)
                 }
             }.toggleStyle(.switch)

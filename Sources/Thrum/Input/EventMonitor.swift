@@ -200,7 +200,7 @@ final class EventMonitor {
             checkEdge(event.location)
         case .scrollWheel:
             if event.getIntegerValueField(.eventSourceUserData) == Self.ownTag { return event }   // ours
-            // Wheel mice report non-continuous scrolls; trackpads and Magic Mouse are continuous.
+            // Wheel mice report non-continuous scrolls; trackpads and continuous-scroll mice do not.
             guard !listenOnly, event.getIntegerValueField(.scrollWheelEventIsContinuous) == 0 else { break }
             let cfg = smooth
             if cfg.enabled {
@@ -223,7 +223,7 @@ final class EventMonitor {
         return event
     }
 
-    // MARK: Kinetic scrolling (Magic Mouse / Windows precision feel for a notched wheel)
+    // MARK: Kinetic scrolling (momentum for a notched wheel)
     //
     // Every notch is a velocity impulse; the velocity decays with a friction time
     // constant `tau` that follows how fast the wheel is spinning. A lone slow notch

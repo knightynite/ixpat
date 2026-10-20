@@ -21,7 +21,7 @@ final class AXWatcher {
 
     private var observer: AXObserver?
     private var observedPid: pid_t = 0
-    private let queue = DispatchQueue(label: "com.alcybr.thrum.ax-notify", qos: .utility)
+    private let queue = DispatchQueue(label: "com.alcybr.ixpat.ax-notify", qos: .utility)
     private var sliderBuckets: [String: Int] = [:]      // keyed by element description, on `queue`
     private var atEnd: [String: Bool] = [:]
     private var lastTick: CFTimeInterval = 0

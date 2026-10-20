@@ -23,7 +23,7 @@ enum FileLog {
 /// button gestures. No key, menu or text content is written.
 enum DebugLog {
     static let url = Settings.url.deletingLastPathComponent().appendingPathComponent("debug.log")
-    private static let q = DispatchQueue(label: "com.alcybr.thrum.log")
+    private static let q = DispatchQueue(label: "com.alcybr.ixpat.log")
     static func log(_ s: String) {
         FileLog.append("\(ISO8601DateFormatter().string(from: Date())) \(s)\n", to: url, on: q)
     }

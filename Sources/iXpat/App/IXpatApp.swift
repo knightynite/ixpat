@@ -5,7 +5,7 @@ import QuartzCore
 import IOKit.hid
 
 @main
-struct ThrumApp: App {
+struct IXpatApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
     var body: some Scene {
@@ -124,23 +124,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
         DebugLog.log("launch \(Bundle.main.bundlePath) version=\(AboutView.version) (\(AboutView.build)) arch=\(AboutView.arch) inputMonitoring=\(permissions.inputMonitoring) accessibility=\(permissions.accessibility)")
         Updater.shared.start { [weak self] in self?.settings.autoCheckUpdates ?? false }
-        let force = ProcessInfo.processInfo.environment["THRUM_OPEN"] != nil
+        let force = ProcessInfo.processInfo.environment["IXPAT_OPEN"] != nil
         // Open the window on every launch (the status item can be hidden by a
         // full menu bar, so this is the one route the user can always count on).
-        // THRUM_NO_WINDOW=1 suppresses it for scripted launches.
-        if force || ProcessInfo.processInfo.environment["THRUM_NO_WINDOW"] == nil {
+        // IXPAT_NO_WINDOW=1 suppresses it for scripted launches.
+        if force || ProcessInfo.processInfo.environment["IXPAT_NO_WINDOW"] == nil {
             showSettings()
         }
         engine.device = device
         engine.settings = settings
-        // THRUM_MENU_PREVIEW=1: host the menu popover in a plain window (design checks / screenshots).
-        if ProcessInfo.processInfo.environment["THRUM_MENU_PREVIEW"] != nil {
+        // IXPAT_MENU_PREVIEW=1: host the menu popover in a plain window (design checks / screenshots).
+        if ProcessInfo.processInfo.environment["IXPAT_MENU_PREVIEW"] != nil {
             let root = MenuView().environmentObject(settings).environmentObject(device).environmentObject(engine).environmentObject(permissions)
             let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 360), styleMask: [.titled], backing: .buffered, defer: false)
             w.title = "MenuPreview"; w.contentView = NSHostingView(rootView: root); w.isReleasedWhenClosed = false; w.center(); w.orderFront(nil)
             menuPreview = w
         }
-        if ProcessInfo.processInfo.environment["THRUM_ABOUT"] != nil { showAbout() }   // screenshots
+        if ProcessInfo.processInfo.environment["IXPAT_ABOUT"] != nil { showAbout() }   // screenshots
 
         // Mouse → haptic rules and the action button.
         device.onButtons = { [weak self] old, new in

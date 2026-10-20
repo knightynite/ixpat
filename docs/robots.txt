@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://knightynite.github.io/Thrum/sitemap.xml
+Sitemap: https://knightynite.github.io/ixpat/sitemap.xml

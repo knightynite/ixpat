@@ -18,7 +18,7 @@ final class TapThread {
             ready.signal()
             CFRunLoopRun()
         }
-        t.name = "com.alcybr.thrum.eventtap"
+        t.name = "com.alcybr.ixpat.eventtap"
         t.qualityOfService = .userInteractive
         t.start()
         thread = t

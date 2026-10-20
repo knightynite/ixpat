@@ -8,7 +8,7 @@ enum PointerSettings {
     static let matching = "{\"VendorID\":\(MouseDevice.vendorID),\"ProductID\":\(MouseDevice.productID)}"
 
     /// Serial, so an older update can never land after a newer one or after the restore.
-    private static let queue = DispatchQueue(label: "com.alcybr.thrum.pointer", qos: .utility)
+    private static let queue = DispatchQueue(label: "com.alcybr.ixpat.pointer", qos: .utility)
 
     static func apply(speed: Double, noAcceleration: Bool, scrollSpeed: Double) {
         func fixed(_ v: Double, _ lo: Double, _ hi: Double) -> Int { Int((max(lo, min(hi, v.isFinite ? v : lo)) * 65536).rounded()) }

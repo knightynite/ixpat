@@ -2,12 +2,12 @@
 import PackageDescription
 
 let package = Package(
-    name: "Thrum",
+    name: "iXpat",
     platforms: [.macOS(.v14)],
     targets: [
         .executableTarget(
-            name: "Thrum",
-            path: "Sources/Thrum",
+            name: "iXpat",
+            path: "Sources/iXpat",
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
     ]

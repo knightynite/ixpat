@@ -1,7 +1,7 @@
 # iXpat
 
 [![Platform: macOS](https://img.shields.io/badge/Platform-macOS%2014%2B-lightgrey.svg)](https://www.apple.com/macos/)
-[![Website](https://img.shields.io/badge/Website-knightynite.github.io%2FThrum-0a84ff.svg)](https://knightynite.github.io/Thrum/)
+[![Website](https://img.shields.io/badge/Website-knightynite.github.io%2Fixpat-0a84ff.svg)](https://knightynite.github.io/ixpat/)
 
 Menu bar app that gives the **Microsoft Surface Mouse (2nd Edition)** on macOS the
 feel it has on Windows, and more: haptic feedback for clicks, scrolling, menus and
@@ -19,15 +19,15 @@ extension and no private framework. iXpat does that and layers the rest on top.
 
 ### Download
 
-Grab the latest DMG from [Releases](https://github.com/knightynite/Thrum/releases/latest),
+Grab the latest DMG from [Releases](https://github.com/knightynite/ixpat/releases/latest),
 open it, drag iXpat to Applications and launch it from the menu bar. On first launch
 macOS asks for Input Monitoring and Accessibility (see [Permissions](#permissions)).
 
 ### Build from source
 
 ```bash
-git clone https://github.com/knightynite/Thrum.git
-cd Thrum
+git clone https://github.com/knightynite/ixpat.git
+cd ixpat
 ./build.sh
 cp -r iXpat.app /Applications/
 ```
@@ -86,9 +86,9 @@ Needs Xcode 16+ and macOS 14+.
 ## Build notes
 
 The first launch opens the settings window
-(set `THRUM_NO_WINDOW=1` to suppress it). `build.sh` signs with a local
+(set `IXPAT_NO_WINDOW=1` to suppress it). `build.sh` signs with a local
 codesigning identity when one is present so TCC grants survive rebuilds;
-set `THRUM_SIGN_ID` to pick one, otherwise it falls back to ad-hoc signing.
+set `IXPAT_SIGN_ID` to pick one, otherwise it falls back to ad-hoc signing.
 
 ## Permissions
 
@@ -121,7 +121,7 @@ the DMG carries a valid signature from the release Team ID.
 
 ## Website and Windows
 
-The product page lives in `docs/` and is served at https://knightynite.github.io/Thrum/.
+The product page lives in `docs/` and is served at https://knightynite.github.io/ixpat/.
 A plan for a Windows counterpart (Raw Input + low-level hooks, HID haptics, UI Automation ticks)
 and for firmware updates (Microsoft's CFU packages) is in [docs/windows-plan.md](docs/windows-plan.md).
 
@@ -132,16 +132,16 @@ Surface is a trademark of Microsoft Corporation.
 
 ## Files
 
-    Sources/Thrum/App          app delegate, wiring, debug log, update check
-    Sources/Thrum/Device       IOHIDManager device, reports, haptic table
-    Sources/Thrum/Haptics      rule engine
-    Sources/Thrum/Input        event tap, tap thread, action button, menu watcher, hidutil
-    Sources/Thrum/Window       Action Ring panel
-    Sources/Thrum/UI           settings window, schematic, menu, theme
-    Sources/Thrum/Store        settings model and persistence
+    Sources/iXpat/App          app delegate, wiring, debug log, update check
+    Sources/iXpat/Device       IOHIDManager device, reports, haptic table
+    Sources/iXpat/Haptics      rule engine
+    Sources/iXpat/Input        event tap, tap thread, action button, menu watcher, hidutil
+    Sources/iXpat/Window       Action Ring panel
+    Sources/iXpat/UI           settings window, schematic, menu, theme
+    Sources/iXpat/Store        settings model and persistence
     tools/make_icon.swift      renders the app icon
 
-Settings live in `~/Library/Application Support/Thrum/settings.json`; the debug
+Settings live in `~/Library/Application Support/iXpat/settings.json`; the debug
 log and raw report log sit next to it.
 
 ## Measured facts (fw 5.29)

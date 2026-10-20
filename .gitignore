@@ -1,5 +1,4 @@
 .build/
-Thrum.app/
 *.xcodeproj/
 .swiftpm/
 .DS_Store

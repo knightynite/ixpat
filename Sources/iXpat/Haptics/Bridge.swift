@@ -18,7 +18,7 @@ final class HapticBridge {
     var running: Bool { _running.value }
     private let _running = Locked(false)
     private var listener: NWListener?
-    private let queue = DispatchQueue(label: "com.alcybr.thrum.bridge", qos: .utility)
+    private let queue = DispatchQueue(label: "com.alcybr.ixpat.bridge", qos: .utility)
     private let token = Locked("")
     private var port: UInt16 = 0
     private var generation = 0

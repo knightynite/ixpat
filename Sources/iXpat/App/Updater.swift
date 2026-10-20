@@ -6,7 +6,7 @@ import Security
 /// tampered release or a redirected download fails closed.
 final class Updater {
     static let shared = Updater()
-    static let repo = "knightynite/Thrum"
+    static let repo = "knightynite/ixpat"
     /// Team ID on every iXpat release signature. A fork that signs with its own
     /// Developer ID changes this constant and ships its own releases.
     static let releaseTeamID = "D76ZAFG74A"

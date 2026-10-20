@@ -1,9 +1,9 @@
 import SwiftUI
 
 enum AboutLinks {
-    static let site = URL(string: "https://knightynite.github.io/Thrum/")!
-    static let source = URL(string: "https://github.com/knightynite/Thrum")!
-    static let issues = URL(string: "https://github.com/knightynite/Thrum/issues")!
+    static let site = URL(string: "https://knightynite.github.io/ixpat/")!
+    static let source = URL(string: "https://github.com/knightynite/ixpat")!
+    static let issues = URL(string: "https://github.com/knightynite/ixpat/issues")!
     static let author = URL(string: "https://www.linkedin.com/in/alnnajafi/")!
 }
 

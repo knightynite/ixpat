@@ -23,7 +23,7 @@ final class MenuWatcher {
     /// Cheap gates evaluated on the AX queue (they read lock-protected values only).
     var pointerMovedRecently: () -> Bool = { false }
     var selectionGate: () -> Bool = { false }
-    var debug = ProcessInfo.processInfo.environment["THRUM_DEBUG"] != nil   // logs the role of each hit, never titles
+    var debug = ProcessInfo.processInfo.environment["IXPAT_DEBUG"] != nil   // logs the role of each hit, never titles
 
     private var lastKey = ""
     private var lastWords = -1
@@ -34,7 +34,7 @@ final class MenuWatcher {
     private let wordSpacing: CFTimeInterval = 0.09
     private let lineSpacing: CFTimeInterval = 0.05
     private var timer: DispatchSourceTimer?
-    private let queue = DispatchQueue(label: "com.alcybr.thrum.ax", qos: .utility)
+    private let queue = DispatchQueue(label: "com.alcybr.ixpat.ax", qos: .utility)
     private static let roles: Set<String> = ["AXMenuItem", "AXMenuBarItem", "AXMenuButton"]
     /// Discrete controls worth one tick when the pointer arrives (Windows: hover over the Close button).
     private static let controlRoles: Set<String> = ["AXButton", "AXPopUpButton", "AXCheckBox", "AXRadioButton", "AXTab", "AXDockItem",

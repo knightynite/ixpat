@@ -89,7 +89,7 @@ final class MouseDevice: ObservableObject {
     private let manager: IOHIDManager
     private var device: IOHIDDevice?
     private let inputBuffer = UnsafeMutablePointer<UInt8>.allocate(capacity: 1024)
-    private let io = DispatchQueue(label: "com.alcybr.thrum.hid", qos: .userInteractive)
+    private let io = DispatchQueue(label: "com.alcybr.ixpat.hid", qos: .userInteractive)
     private var batteryTimer: Timer?
     private var retryTimer: Timer?
     private var motionReset: DispatchWorkItem?
@@ -327,7 +327,7 @@ final class MouseDevice: ObservableObject {
 /// Diagnostics pane; size-capped like the debug log.
 enum ReportLog {
     static let url = Settings.url.deletingLastPathComponent().appendingPathComponent("reports.log")
-    private static let q = DispatchQueue(label: "com.alcybr.thrum.reports")
+    private static let q = DispatchQueue(label: "com.alcybr.ixpat.reports")
     static func write(_ s: String) {
         FileLog.append("\(ISO8601DateFormatter().string(from: Date())) \(s)\n", to: url, on: q)
     }

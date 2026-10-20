@@ -433,7 +433,7 @@ final class Settings: ObservableObject {
 
     static let url: URL = {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Thrum", isDirectory: true)
+            .appendingPathComponent("iXpat", isDirectory: true)
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         return base.appendingPathComponent("settings.json")
     }()

@@ -79,6 +79,6 @@ final class Permissions: ObservableObject {
     }
 
     func resetCommand(_ kind: PermissionKind) -> String {
-        "tccutil reset \(kind.tccService) \(Bundle.main.bundleIdentifier ?? "com.alcybr.thrum")"
+        "tccutil reset \(kind.tccService) \(Bundle.main.bundleIdentifier ?? "com.alcybr.ixpat")"
     }
 }

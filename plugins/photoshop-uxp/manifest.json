@@ -1,12 +1,12 @@
 {
-  "id": "com.alcybr.thrum.photoshop",
-  "name": "Thrum haptics",
+  "id": "com.alcybr.ixpat.photoshop",
+  "name": "iXpat haptics",
   "version": "0.1.0",
   "main": "index.js",
   "manifestVersion": 5,
   "host": [{ "app": "PS", "minVersion": "24.0.0" }],
   "entrypoints": [
-    { "type": "panel", "id": "thrum", "label": { "default": "Thrum" }, "minimumSize": { "width": 230, "height": 120 } }
+    { "type": "panel", "id": "ixpat", "label": { "default": "iXpat" }, "minimumSize": { "width": 230, "height": 120 } }
   ],
   "requiredPermissions": {
     "network": { "domains": ["http://127.0.0.1:47337"] }

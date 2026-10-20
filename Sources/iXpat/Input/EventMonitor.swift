@@ -62,13 +62,13 @@ final class EventMonitor {
     /// a release lost to a tap restart must not eat the next real one.
     private var swallowLeftUpUntil: CFTimeInterval = 0
     private var swallowRightUpUntil: CFTimeInterval = 0
-    private let axQueue = DispatchQueue(label: "com.alcybr.thrum.ax-window", qos: .utility)
+    private let axQueue = DispatchQueue(label: "com.alcybr.ixpat.ax-window", qos: .utility)
     /// Display frames in CG coordinates (top-left origin), cached on main for the tap thread.
     private let screens = Locked<(frames: [CGRect], visible: [CGRect])>(([], []))
     private var screenObserver: Any?
 
     // Smooth scrolling
-    static let ownTag: Int64 = 0x5448524D           // "THRM": marks events we synthesise
+    static let ownTag: Int64 = 0x49585054           // "IXPT": marks events we synthesise
     private lazy var scrollSource: CGEventSource? = {
         let s = CGEventSource(stateID: .hidSystemState)
         s?.userData = Self.ownTag

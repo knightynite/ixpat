@@ -100,6 +100,12 @@ set `THRUM_SIGN_ID` to pick one, otherwise it falls back to ad-hoc signing.
 
 Pointer settings go through Apple's `hidutil` and need no permission.
 
+## Updates
+
+iXpat asks the GitHub releases API for a newer version once a day (turn it off
+in About iXpat). Nothing else leaves the Mac. A downloaded update opens only if
+the DMG carries a valid signature from the release Team ID.
+
 ## How the tricky parts work
 
 - The CGEvent tap and the 120 Hz scroll timer run on a dedicated
@@ -119,9 +125,14 @@ The product page lives in `docs/` and is served at https://knightynite.github.io
 A plan for a Windows counterpart (Raw Input + low-level hooks, HID haptics, UI Automation ticks)
 and for firmware updates (Microsoft's CFU packages) is in [docs/windows-plan.md](docs/windows-plan.md).
 
+## License
+
+MIT, see [LICENSE](LICENSE). Not affiliated with or endorsed by Microsoft.
+Surface is a trademark of Microsoft Corporation.
+
 ## Files
 
-    Sources/Thrum/App          app delegate, wiring, debug log
+    Sources/Thrum/App          app delegate, wiring, debug log, update check
     Sources/Thrum/Device       IOHIDManager device, reports, haptic table
     Sources/Thrum/Haptics      rule engine
     Sources/Thrum/Input        event tap, tap thread, action button, menu watcher, hidutil

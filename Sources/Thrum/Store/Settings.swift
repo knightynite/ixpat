@@ -355,6 +355,7 @@ final class Settings: ObservableObject {
     @Published var bridgeEnabled = true { didSet { save() } }
     @Published var bridgePort = 47337 { didSet { save() } }
     @Published var bridgeToken = "" { didSet { save() } }
+    @Published var autoCheckUpdates = true { didSet { save() } }   // daily GitHub release check (About window)
     // Click feel extras
     @Published var clickHoldMs = 300 { didSet { save() } }           // when leftHold / rightHold play
     @Published var forceClick = true { didSet { save() } }           // press-and-hold = trackpad Force Click
@@ -427,6 +428,7 @@ final class Settings: ObservableObject {
         var bridgeEnabled: Bool?
         var bridgePort: Int?
         var bridgeToken: String?
+        var autoCheckUpdates: Bool?
     }
 
     static let url: URL = {
@@ -486,6 +488,7 @@ final class Settings: ObservableObject {
         forceClick = s.forceClick ?? true; forceClickMs = s.forceClickMs ?? 350
         profiles = s.profiles ?? []
         bridgeEnabled = s.bridgeEnabled ?? true; bridgePort = s.bridgePort ?? 47337; bridgeToken = s.bridgeToken ?? ""
+        autoCheckUpdates = s.autoCheckUpdates ?? true
         sanitize()
         loading = false
     }
@@ -536,7 +539,8 @@ final class Settings: ObservableObject {
                          gestureStepPx: gestureStepPx, gestureSwipePx: gestureSwipePx, gestureFreezePointer: gestureFreezePointer, gesturesOnHold: gesturesOnHold,
                          clickHoldMs: clickHoldMs, freeSpinTextureEvery: freeSpinTextureEvery,
                          forceClick: forceClick, forceClickMs: forceClickMs,
-                         profiles: profiles, bridgeEnabled: bridgeEnabled, bridgePort: bridgePort, bridgeToken: bridgeToken)
+                         profiles: profiles, bridgeEnabled: bridgeEnabled, bridgePort: bridgePort, bridgeToken: bridgeToken,
+                         autoCheckUpdates: autoCheckUpdates)
         let enc = JSONEncoder(); enc.outputFormatting = [.prettyPrinted, .sortedKeys]
         if let data = try? enc.encode(s) { try? data.write(to: Self.url, options: .atomic) }
     }

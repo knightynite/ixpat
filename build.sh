@@ -107,7 +107,7 @@ if [ "$MODE" = "dist" ]; then
     xcrun stapler staple "$DMG"
     xcrun stapler validate "$DMG"
     spctl -a -vvv -t exec "$APP"
-    echo "✓ $DMG  ($SHORT_VERSION build $BUILD_VERSION, $(lipo -archs "$APP/Contents/MacOS/$EXE"), $(du -h "$DMG" | cut -f1 | tr -d ' '))"
+    echo "✓ $DMG  ($SHORT_VERSION build $BUILD_VERSION, $(lipo -archs "$APP/Contents/MacOS/$EXE"), $(stat -f %z "$DMG" | awk '{printf "%.1f MB", $1/1048576}'))"
     exit 0
 fi
 

@@ -51,6 +51,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var freeSpinTimer: Timer?
 
     private var settingsWindow: NSWindow?
+    private var aboutWindow: NSWindow?
     private var menuPreview: NSWindow?
     private var bag = Set<AnyCancellable>()
     private var wheelAccum = 0
@@ -84,11 +85,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             w.center()
             settingsWindow = w
         }
-        // Opened from the menu popover: dismiss it, or it stays up next to the window.
-        for w in NSApp.windows where w.isVisible && w !== settingsWindow && String(describing: type(of: w)).contains("MenuBarExtra") { w.close() }
+        closeMenuPopover()
         settingsWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         return true
+    }
+
+    @MainActor
+    func showAbout() {
+        if aboutWindow == nil {
+            let host = NSHostingView(rootView: AboutView().environmentObject(settings))
+            let w = NSWindow(contentRect: NSRect(origin: .zero, size: host.fittingSize),
+                             styleMask: [.titled, .closable, .fullSizeContentView], backing: .buffered, defer: false)
+            w.title = "About iXpat"
+            w.titlebarAppearsTransparent = true
+            w.titleVisibility = .hidden
+            w.isMovableByWindowBackground = true
+            w.contentView = host
+            w.isReleasedWhenClosed = false
+            w.center()
+            aboutWindow = w
+        }
+        closeMenuPopover()
+        aboutWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// Opened from the menu popover: dismiss it, or it stays up next to the window.
+    private func closeMenuPopover() {
+        for w in NSApp.windows where w.isVisible && String(describing: type(of: w)).contains("MenuBarExtra") { w.close() }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -97,7 +122,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
-        DebugLog.log("launch \(Bundle.main.bundlePath) inputMonitoring=\(permissions.inputMonitoring) accessibility=\(permissions.accessibility)")
+        DebugLog.log("launch \(Bundle.main.bundlePath) version=\(AboutView.version) (\(AboutView.build)) arch=\(AboutView.arch) inputMonitoring=\(permissions.inputMonitoring) accessibility=\(permissions.accessibility)")
+        Updater.shared.start { [weak self] in self?.settings.autoCheckUpdates ?? false }
         let force = ProcessInfo.processInfo.environment["THRUM_OPEN"] != nil
         // Open the window on every launch (the status item can be hidden by a
         // full menu bar, so this is the one route the user can always count on).
@@ -114,6 +140,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             w.title = "MenuPreview"; w.contentView = NSHostingView(rootView: root); w.isReleasedWhenClosed = false; w.center(); w.orderFront(nil)
             menuPreview = w
         }
+        if ProcessInfo.processInfo.environment["THRUM_ABOUT"] != nil { showAbout() }   // screenshots
 
         // Mouse → haptic rules and the action button.
         device.onButtons = { [weak self] old, new in

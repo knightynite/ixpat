@@ -6,3 +6,5 @@ Thrum.app/
 *.dSYM/
 .sign-id
 iXpat.app/
+.notary-profile
+dist/

@@ -66,6 +66,8 @@ struct MenuView: View {
                 }
                 Divider().padding(.leading, 40)
                 actionRow("Settings…", "slider.horizontal.3", shortcut: ",") { AppDelegate.shared?.showSettings() }
+                Divider().padding(.leading, 40)
+                actionRow("About iXpat", "info.circle") { AppDelegate.shared?.showAbout() }
             }
             .glass(pal, radius: 14)
 

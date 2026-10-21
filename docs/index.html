@@ -325,6 +325,9 @@
             max-width: 100%;
         }
         .code code { color: var(--text); white-space: nowrap; overflow-x: auto; }
+        .codes { display: flex; flex-direction: column; align-items: center; gap: 0; }
+        .codes .code { margin-top: 10px; }
+        .codes .code:first-child { margin-top: 22px; }
 
         footer { padding: 36px 0 44px; border-top: 1px solid rgba(255, 255, 255, 0.06); color: var(--text-3); font-size: 0.85rem; }
         footer .wrap { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
@@ -615,7 +618,10 @@
                     <a class="btn btn-ghost" href="https://github.com/knightynite/ixpat/releases">All releases</a>
                 </div>
                 <div class="meta"><b>v0.1.0</b> · 2.8 MB</div>
-                <div class="code"><span>$</span><code>git clone https://github.com/knightynite/ixpat.git && cd ixpat && ./build.sh</code></div>
+                <div class="codes">
+                    <div class="code"><span>$</span><code>brew install knightynite/ixpat/ixpat</code></div>
+                    <div class="code"><span>$</span><code>git clone https://github.com/knightynite/ixpat.git && cd ixpat && ./build.sh</code></div>
+                </div>
             </div>
         </div>
     </section>

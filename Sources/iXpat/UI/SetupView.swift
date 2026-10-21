@@ -29,7 +29,9 @@ struct SetupView: View {
                 step(1, "Pair the Surface Mouse",
                      done: device.connected,
                      doneText: "Connected.",
-                     todo: "Hold the power and pairing button on the underside until the light pulses, then connect it in Bluetooth settings.",
+                     todo: permissions.inputMonitoring
+                        ? "Not seen yet. Hold the power and pairing button on the underside until the light pulses, then connect it in Bluetooth settings."
+                        : "Hold the power and pairing button on the underside until the light pulses, then connect it in Bluetooth settings. iXpat can confirm the connection after step 2.",
                      button: "Open Bluetooth") { open("x-apple.systempreferences:com.apple.BluetoothSettings") }
                 step(2, "Allow Input Monitoring",
                      done: permissions.inputMonitoring,

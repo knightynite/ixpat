@@ -108,6 +108,10 @@ set `IXPAT_SIGN_ID` to pick one, otherwise it falls back to ad-hoc signing.
 
 Pointer settings go through Apple's `hidutil` and need no permission.
 
+On first launch iXpat opens a setup guide (pair the mouse, allow Input Monitoring,
+allow Accessibility) with a button for each step; it comes back on any later launch
+where a permission is missing, and **Setup guide** in the menu reopens it.
+
 ## Updates
 
 iXpat asks the GitHub releases API for a newer version once a day (turn it off

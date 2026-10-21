@@ -23,6 +23,12 @@ Grab the latest DMG from [Releases](https://github.com/knightynite/ixpat/release
 open it, drag iXpat to Applications and launch it from the menu bar. On first launch
 macOS asks for Input Monitoring and Accessibility (see [Permissions](#permissions)).
 
+### Homebrew
+
+```bash
+brew install knightynite/ixpat/ixpat
+```
+
 ### Build from source
 
 ```bash

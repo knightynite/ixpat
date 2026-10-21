@@ -1,5 +1,7 @@
 # iXpat
 
+**Surface Mouse (2nd Edition) on macOS: haptics, action button, Action Ring, kinetic scrolling and force click.**
+
 [![Platform: macOS](https://img.shields.io/badge/Platform-macOS%2014%2B-lightgrey.svg)](https://www.apple.com/macos/)
 [![Website](https://img.shields.io/badge/Website-knightynite.github.io%2Fixpat-0a84ff.svg)](https://knightynite.github.io/ixpat/)
 

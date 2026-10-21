@@ -52,6 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var settingsWindow: NSWindow?
     private var aboutWindow: NSWindow?
+    private var setupWindow: NSWindow?
     private var menuPreview: NSWindow?
     private var bag = Set<AnyCancellable>()
     private var wheelAccum = 0
@@ -111,6 +112,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    /// The first-run guide (pairing + the two permissions). Reachable from the menu at any time.
+    @MainActor
+    func showSetup() {
+        if setupWindow == nil {
+            let host = NSHostingView(rootView: SetupView().environmentObject(settings).environmentObject(device).environmentObject(permissions))
+            let w = NSWindow(contentRect: NSRect(origin: .zero, size: host.fittingSize),
+                             styleMask: [.titled, .closable, .fullSizeContentView], backing: .buffered, defer: false)
+            w.title = "Set up iXpat"
+            w.titlebarAppearsTransparent = true
+            w.titleVisibility = .hidden
+            w.isMovableByWindowBackground = true
+            w.contentView = host
+            w.isReleasedWhenClosed = false
+            w.center()
+            setupWindow = w
+        }
+        closeMenuPopover()
+        setupWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// Done / Skip in the guide: remember it ran, close it, open the settings window.
+    @MainActor
+    func finishSetup() {
+        UserDefaults.standard.set(true, forKey: "setupShown")
+        setupWindow?.close()
+        showSettings()
+    }
+
+    /// First launch, or a later launch with a permission still missing (unless suppressed).
+    private var setupNeeded: Bool {
+        let d = UserDefaults.standard
+        if !d.bool(forKey: "setupShown") { return true }
+        if d.bool(forKey: "setupSuppressed") { return false }
+        return !(permissions.inputMonitoring && permissions.accessibility)
+    }
+
     /// Opened from the menu popover: dismiss it, or it stays up next to the window.
     private func closeMenuPopover() {
         for w in NSApp.windows where w.isVisible && String(describing: type(of: w)).contains("MenuBarExtra") { w.close() }
@@ -129,7 +167,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // full menu bar, so this is the one route the user can always count on).
         // IXPAT_NO_WINDOW=1 suppresses it for scripted launches.
         if force || ProcessInfo.processInfo.environment["IXPAT_NO_WINDOW"] == nil {
-            showSettings()
+            // The guide first when a permission is missing: without them the app looks
+            // installed but does nothing, and the user may not know why.
+            if ProcessInfo.processInfo.environment["IXPAT_SETUP"] != nil || setupNeeded { showSetup() } else { showSettings() }
         }
         engine.device = device
         engine.settings = settings

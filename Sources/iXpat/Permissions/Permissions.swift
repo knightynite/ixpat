@@ -60,7 +60,11 @@ final class Permissions: ObservableObject {
     /// First press raises the system prompt (macOS shows it once per app); a
     /// second press for the same permission opens the Settings pane instead.
     private var attempts: [PermissionKind: Int] = [:]
+    func attempted(_ kind: PermissionKind) -> Bool {
+        (attempts[kind] ?? 0) > 0 || (kind == .inputMonitoring && UserDefaults.standard.bool(forKey: "inputMonitoringRequested"))
+    }
     func prompt(_ kind: PermissionKind) {
+        objectWillChange.send()
         let n = (attempts[kind] ?? 0) + 1
         attempts[kind] = n
         switch kind {

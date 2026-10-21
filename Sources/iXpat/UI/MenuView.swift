@@ -37,9 +37,10 @@ struct MenuView: View {
             .padding(12)
             .glass(pal, radius: 14, tint: pal.accent)
 
-            if !permissions.inputMonitoring {
-                Button { permissions.prompt(.inputMonitoring) } label: {
-                    Label("Allow Input Monitoring to read the mouse", systemImage: "exclamationmark.triangle.fill").font(.system(size: 11))
+            if !permissions.inputMonitoring || !permissions.accessibility {
+                Button { AppDelegate.shared?.showSetup() } label: {
+                    Label(!permissions.inputMonitoring ? "Allow Input Monitoring so iXpat can feel clicks" : "Allow Accessibility to finish setup",
+                          systemImage: "exclamationmark.triangle.fill").font(.system(size: 11))
                 }.buttonStyle(.plain).foregroundStyle(.orange).padding(.horizontal, 4)
             }
 
@@ -66,6 +67,8 @@ struct MenuView: View {
                 }
                 Divider().padding(.leading, 40)
                 actionRow("Settings…", "slider.horizontal.3", shortcut: ",") { AppDelegate.shared?.showSettings() }
+                Divider().padding(.leading, 40)
+                actionRow("Setup guide", "checklist") { AppDelegate.shared?.showSetup() }
                 Divider().padding(.leading, 40)
                 actionRow("About iXpat", "info.circle") { AppDelegate.shared?.showAbout() }
             }

@@ -69,12 +69,15 @@ public:
     void pulse();
     /// Show the About pane (tray menu, header button).
     void showAbout();
+    /// Drop any native edit / popup / pending state that points into Settings (before the model is replaced).
+    void cancelEditing();
     void applyTheme();
 
 protected:
     void build(ID2D1RenderTarget* rt, const UiInput& input) override;
     void onTimer() override;
     LRESULT onMessage(UINT msg, WPARAM wp, LPARAM lp, bool& handled) override;
+    bool consumeRerun() override;
 
 private:
     void header(Frame& f);
@@ -94,6 +97,7 @@ private:
     void gesturePane(Frame& f);
     void bridgeSection(Frame& f);
     void beginEdit(const Rect& r, const std::string& id, std::string* target, bool numeric);
+    static LRESULT CALLBACK editProc(HWND h, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR id, DWORD_PTR ref);
     void commitEdit();
     void cancelEdit();
     void changed();
@@ -103,7 +107,7 @@ private:
     SettingsActions actions_;
     UiState st_;
     int tab_ = 0;
-    std::vector<float> pulseStarts_;  // GetTickCount64 ms
+    std::vector<double> pulseStarts_;  // GetTickCount64 ms
     std::optional<std::string> selectedProfile_;
     std::string recordingId_;         // shortcut recorder waiting for a key
     std::optional<ButtonAction> pendingShortcut_;  // recorded, to be applied by the picker that asked

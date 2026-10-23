@@ -156,6 +156,10 @@ void RingWindow::close(bool commit) {
     open_ = false;
     KillTimer(hwnd_, kPollTimer);
     std::optional<RingItem> chosen;
+    if (commit) {  // the release can land between two polls: sample the pointer now
+        POINT p{};
+        if (GetCursorPos(&p)) selected_ = ringSelect((p.x - origin_.x) / scale_, (p.y - origin_.y) / scale_, static_cast<int>(items_.size()));
+    }
     if (selected_ && *selected_ >= 0 && *selected_ < static_cast<int>(items_.size())) chosen = items_[*selected_];
     ShowWindow(hwnd_, SW_HIDE);
     selected_.reset();
@@ -167,8 +171,8 @@ void RingWindow::close(bool commit) {
 
 void RingWindow::poll() {
     if (!open_) return;
-    POINT p;
-    GetCursorPos(&p);
+    POINT p{};
+    if (!GetCursorPos(&p)) return;
     const double dx = (p.x - origin_.x) / scale_, dy = (p.y - origin_.y) / scale_;
     const auto sel = ringSelect(dx, dy, static_cast<int>(items_.size()));
     if (sel != selected_) {
@@ -181,6 +185,7 @@ void RingWindow::poll() {
 }
 
 void RingWindow::draw() {
+    if (!surface_.resize(sizePx_, sizePx_)) return;  // a no-op unless the device was lost
     ID2D1RenderTarget* rt = surface_.begin();
     if (!rt) return;
     const float S = static_cast<float>(sizePx_);

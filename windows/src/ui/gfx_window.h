@@ -51,6 +51,8 @@ protected:
     virtual void onClosed() {}
     virtual void onTimer() {}
     virtual LRESULT onMessage(UINT msg, WPARAM wp, LPARAM lp, bool& handled);  // extra messages (native edit, etc.)
+    /// After an input pass: true when the toolkit wants one more empty input pass (a popup selection waits).
+    virtual bool consumeRerun() { return false; }
 
 private:
     static LRESULT CALLBACK wndProc(HWND, UINT, WPARAM, LPARAM);

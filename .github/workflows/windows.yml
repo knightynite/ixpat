@@ -1,0 +1,52 @@
+name: windows
+
+on:
+  push:
+    paths: ['windows/**', '.github/workflows/windows.yml']
+    tags: ['win-v*']
+  pull_request:
+    paths: ['windows/**', '.github/workflows/windows.yml']
+
+jobs:
+  x64:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with: { arch: x64 }
+      - name: Configure
+        run: cmake --preset x64-release
+        working-directory: windows
+      - name: Build
+        run: cmake --build --preset x64-release
+        working-directory: windows
+      - name: Test
+        run: ctest --preset x64-release
+        working-directory: windows
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ixpat-windows-x64
+          path: |
+            windows/build/x64-release/*.exe
+            !windows/build/x64-release/ixpat_tests.exe
+          if-no-files-found: ignore
+
+  arm64:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with: { arch: amd64_arm64 }
+      - name: Configure
+        run: cmake --preset arm64-release
+        working-directory: windows
+      - name: Build
+        run: cmake --build --preset arm64-release
+        working-directory: windows
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ixpat-windows-arm64
+          path: |
+            windows/build/arm64-release/*.exe
+            !windows/build/arm64-release/ixpat_tests.exe
+          if-no-files-found: ignore

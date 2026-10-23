@@ -293,7 +293,8 @@ void App::start() {
     updateState_ = win::loadUpdateState();
     SetTimer(hwnd_, kTimerUpdateFirst, 10 * 1000, nullptr);   // Updater.start: 10 s after launch, then every 6 h
     SetTimer(hwnd_, kTimerUpdate, 6 * 3600 * 1000, nullptr);
-    applyLoginItem();
+    // The Run key is the truth at launch (the installer's "start at login" task, Task Manager); edits write it back.
+    if (!anyMouse_) settings_.windows.startAtLogin = win::loginItemEnabled();
     {
         const auto st = input_.status();
         win::debugLog(std::string("raw input registered=") + (st.rawRegistered ? "yes" : "no") + " hooks installed=" +
@@ -897,6 +898,8 @@ LRESULT App::handle(UINT msg, WPARAM wp, LPARAM lp) {
             if (router_) router_->systemEvent(static_cast<HapticEvent>(wp), now());
             if (window_ && window_->isVisible()) syncModel();
             return 0;
+        case WM_QUERYENDSESSION:
+            return TRUE;  // sign-out, shutdown, or the installer's Restart Manager asking us to close
         case WM_APP_UPDATE: {
             std::unique_ptr<win::UpdateResult> r(reinterpret_cast<win::UpdateResult*>(lp));
             if (r) onUpdateResult(wp != 0, *r);

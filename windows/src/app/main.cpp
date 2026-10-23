@@ -21,6 +21,7 @@
 #include "win/paths.h"
 #include "win/settings_store.h"
 #include "win/tray.h"
+#include "ui/ring_window.h"
 
 #define IDI_IXPAT 101
 
@@ -35,7 +36,8 @@ constexpr UINT WM_APP_BRIDGE = WM_APP + 4;
 constexpr UINT WM_APP_TRAY = WM_APP + 5;
 constexpr UINT WM_APP_SHOW = WM_APP + 6;
 
-constexpr UINT_PTR kTimerFlush = 4, kTimerWatchdog = 5, kTimerSnapCheck = 7, kTimerPointerApply = 8;
+constexpr UINT_PTR kTimerFlush = 4, kTimerWatchdog = 5, kTimerSnapCheck = 7, kTimerPointerApply = 8, kTimerRingCommit = 9,
+                   kTimerDemoClose = 10;
 constexpr UINT_PTR kFirstEchoTimer = 100;
 
 enum MenuId : UINT { kMenuEnabled = 1, kMenuHaptics, kMenuOpenSettings, kMenuOpenLogs, kMenuReload, kMenuAbout, kMenuQuit };
@@ -50,7 +52,7 @@ struct BridgePlay {
 
 class App {
 public:
-    int run(HINSTANCE inst);
+    int run(HINSTANCE inst, bool ringDemo);
 
 private:
     static LRESULT CALLBACK wndProc(HWND, UINT, WPARAM, LPARAM);
@@ -86,6 +88,9 @@ private:
     win::BridgeServer bridge_;
     win::PointerSettings pointer_;
     win::Tray tray_;
+    ui::RingWindow ring_;
+    std::optional<ButtonAction> pendingRingAction_;
+    bool ringDemo_ = false;
 
     win::DeviceInfo device_;
     Seconds lastDetach_ = -1e9;
@@ -124,8 +129,9 @@ LRESULT CALLBACK App::wndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     return self->handle(msg, wp, lp);
 }
 
-int App::run(HINSTANCE inst) {
+int App::run(HINSTANCE inst, bool ringDemo) {
     inst_ = inst;
+    ringDemo_ = ringDemo;
     LARGE_INTEGER f;
     QueryPerformanceFrequency(&f);
     qpcFreq_ = static_cast<double>(f.QuadPart);
@@ -151,6 +157,10 @@ int App::run(HINSTANCE inst) {
     if (!hwnd_) return 1;
 
     start();
+    if (ringDemo_) {  // --ring-demo: show the default ring for 3 s, then quit (a visual check without the mouse)
+        ring_.open(settings_.effRingItems(), false, settings_.accentHex);
+        SetTimer(hwnd_, kTimerDemoClose, 3000, nullptr);
+    }
 
     MSG m;
     while (GetMessageW(&m, nullptr, 0, 0) > 0) {
@@ -202,12 +212,23 @@ void App::start() {
     k.cancelTimer = [this](int id) { KillTimer(hwnd_, static_cast<UINT_PTR>(id)); };
     k.gesturesBegin = [this] { input_.gesturesBegin(); win::debugLog("gesture mode begin"); };
     k.gesturesEnd = [this] { input_.gesturesEnd(); win::debugLog("gesture mode end"); };
-    k.ringOpen = [](bool) { win::debugLog("Action Ring requested (arrives in Plan 3)"); };
-    k.ringToggle = [] { win::debugLog("Action Ring toggle requested (arrives in Plan 3)"); };
-    k.ringIsOpen = [] { return false; };
-    k.ringHoldEnded = [] {};
+    k.ringOpen = [this](bool hold) { ring_.open(settings_.effRingItems(), hold, settings_.accentHex); };
+    k.ringToggle = [this] { ring_.toggle(settings_.effRingItems(), false, settings_.accentHex); };
+    k.ringIsOpen = [this] { return ring_.isOpen(); };
+    k.ringHoldEnded = [this] { ring_.holdEnded(); };
     k.systemVolume = [] { return win::systemVolume(); };
     router_ = std::make_unique<Router>(settings_, std::move(k));
+
+    // Action Ring window and its pulses; a commit runs the action once the ring is gone (80 ms).
+    ring_.create(inst_);
+    ring_.onDetent = [this] { router_->systemEvent(HapticEvent::ringDetent, now()); };
+    ring_.onOpen = [this] { router_->systemEvent(HapticEvent::ringOpen, now()); };
+    ring_.onCommit = [this](const RingItem& item) {
+        router_->systemEvent(HapticEvent::ringCommit, now());
+        pendingRingAction_ = item.action;
+        SetTimer(hwnd_, kTimerRingCommit, 80, nullptr);
+    };
+    ring_.onStateChanged = [this](bool open, bool hold) { input_.setRingState(open, hold); };
 
     // Device thread -> main.
     hid_.onChange = [this](const win::DeviceInfo&) { PostMessageW(hwnd_, WM_APP_HID, 0, 0); };
@@ -261,6 +282,7 @@ void App::shutdown() {
     }
     if (settings_.managePointer) pointer_.restore();
     input_.gesturesEnd();  // never leave the pointer frozen
+    ring_.destroy();
     input_.stop();
     foreground_.stop();
     bridge_.stop();
@@ -356,9 +378,13 @@ void App::onInputEvents() {
                 SetTimer(hwnd_, kTimerSnapCheck, 400, nullptr);
                 break;
             case win::InputEvent::Kind::ringClick:
+                ring_.close(true);
+                break;
             case win::InputEvent::Kind::ringCancel:
+                ring_.close(false);
+                break;
             case win::InputEvent::Kind::ringOpenRequest:
-                win::debugLog("ring event (Plan 3)");
+                ring_.toggle(settings_.effRingItems(), false, settings_.accentHex);
                 break;
             case win::InputEvent::Kind::hookLost:
                 input_.reinstallHooks();
@@ -541,6 +567,17 @@ LRESULT App::handle(UINT msg, WPARAM wp, LPARAM lp) {
             } else if (id == kTimerPointerApply) {
                 KillTimer(hwnd_, kTimerPointerApply);
                 applyPointer();
+            } else if (id == kTimerRingCommit) {
+                KillTimer(hwnd_, kTimerRingCommit);
+                if (pendingRingAction_) {
+                    ButtonAction a = *pendingRingAction_;
+                    pendingRingAction_.reset();
+                    router_->run(a, false);
+                }
+            } else if (id == kTimerDemoClose) {
+                KillTimer(hwnd_, kTimerDemoClose);
+                ring_.close(false);
+                DestroyWindow(hwnd_);
             } else if (id >= kFirstEchoTimer) {
                 KillTimer(hwnd_, id);
                 auto it = echoes_.find(id);
@@ -574,7 +611,8 @@ LRESULT App::handle(UINT msg, WPARAM wp, LPARAM lp) {
 
 }  // namespace
 
-int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
+int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmdLine, int) {
     App app;
-    return app.run(inst);
+    const bool demo = cmdLine && wcsstr(cmdLine, L"--ring-demo") != nullptr;
+    return app.run(inst, demo);
 }

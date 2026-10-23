@@ -21,10 +21,15 @@ file(GLOB WIN_SOURCES CONFIGURE_DEPENDS src/win/*.cpp)
 add_library(ixpat_win STATIC ${WIN_SOURCES})
 target_link_libraries(ixpat_win PUBLIC ixpat_core user32 shell32 ole32 oleaut32 wbemuuid hid cfgmgr32 ws2_32 dwmapi winmm)
 
+# Direct2D UI: foundation, theme, ring window, settings window.
+file(GLOB UI_SOURCES CONFIGURE_DEPENDS src/ui/*.cpp)
+add_library(ixpat_ui STATIC ${UI_SOURCES})
+target_link_libraries(ixpat_ui PUBLIC ixpat_core d2d1 dwrite gdi32 user32 shcore)
+
 # Unit tests (doctest).
 file(GLOB TEST_SOURCES CONFIGURE_DEPENDS tests/*.cpp)
 add_executable(ixpat_tests ${TEST_SOURCES})
-target_link_libraries(ixpat_tests PRIVATE ixpat_core ixpat_win)
+target_link_libraries(ixpat_tests PRIVATE ixpat_core ixpat_win ixpat_ui)
 target_compile_definitions(ixpat_tests PRIVATE IXPAT_TEST_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
 enable_testing()
 add_test(NAME core COMMAND ixpat_tests)
@@ -39,5 +44,5 @@ set_target_properties(ixpat_probe PROPERTIES OUTPUT_NAME ixpat-probe)
 # iXpat.exe: the tray application.
 add_executable(ixpat WIN32 src/app/main.cpp res/ixpat.rc res/app.manifest)
 target_include_directories(ixpat PRIVATE src)
-target_link_libraries(ixpat PRIVATE ixpat_core ixpat_win)
+target_link_libraries(ixpat PRIVATE ixpat_core ixpat_win ixpat_ui)
 set_target_properties(ixpat PROPERTIES OUTPUT_NAME iXpat)

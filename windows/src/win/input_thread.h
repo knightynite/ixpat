@@ -64,7 +64,7 @@ public:
     bool start(HWND mainWindow, UINT message);
     void stop();
     void setConfig(const InputConfig& c);
-    void setRingOpen(bool open);
+    void setRingState(bool open, bool holdMode);
     void gesturesBegin();
     void gesturesEnd();
     /// Main drains the ring buffer after receiving `message`.
@@ -109,6 +109,7 @@ private:
     mutable SRWLOCK cfgLock_ = SRWLOCK_INIT;
     InputConfig cfg_;
     std::atomic<bool> ringOpen_{false};
+    std::atomic<bool> ringHold_{false};
     std::atomic<bool> gestureRequested_{false};
     std::atomic<bool> reinstall_{false};
 

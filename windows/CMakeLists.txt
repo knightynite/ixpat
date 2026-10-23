@@ -16,10 +16,15 @@ add_library(ixpat_core STATIC ${CORE_SOURCES})
 target_include_directories(ixpat_core PUBLIC src)
 target_include_directories(ixpat_core SYSTEM PUBLIC third_party)
 
+# Win32 glue: one responsibility per file, thin, no engine logic.
+file(GLOB WIN_SOURCES CONFIGURE_DEPENDS src/win/*.cpp)
+add_library(ixpat_win STATIC ${WIN_SOURCES})
+target_link_libraries(ixpat_win PUBLIC ixpat_core user32 shell32 ole32 hid cfgmgr32 ws2_32 dwmapi winmm)
+
 # Unit tests (doctest).
 file(GLOB TEST_SOURCES CONFIGURE_DEPENDS tests/*.cpp)
 add_executable(ixpat_tests ${TEST_SOURCES})
-target_link_libraries(ixpat_tests PRIVATE ixpat_core)
+target_link_libraries(ixpat_tests PRIVATE ixpat_core ixpat_win)
 target_compile_definitions(ixpat_tests PRIVATE IXPAT_TEST_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
 enable_testing()
 add_test(NAME core COMMAND ixpat_tests)

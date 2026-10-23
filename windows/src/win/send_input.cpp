@@ -81,12 +81,12 @@ void sendKeyChord(std::initializer_list<WORD> vks) {
     if (!in.empty()) SendInput(static_cast<UINT>(in.size()), in.data(), sizeof(INPUT));
 }
 
-void sendMouseButton(DWORD downFlag, DWORD upFlag, bool down) {
+bool sendMouseButton(DWORD downFlag, DWORD upFlag, bool down) {
     INPUT in{};
     in.type = INPUT_MOUSE;
     in.mi.dwFlags = down ? downFlag : upFlag;
     in.mi.dwExtraInfo = kOwnTag;
-    SendInput(1, &in, sizeof in);
+    return SendInput(1, &in, sizeof in) == 1;
 }
 
 void sendMediaKey(WORD vk) {

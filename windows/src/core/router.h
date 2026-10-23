@@ -53,6 +53,8 @@ public:
     void foregroundChanged(std::string imageName, Seconds now);  // lowercased into settings.frontBundleID
     void deviceConnected(bool on, Seconds now);
     void timer(int id, Seconds now);
+    /// Disabled, or the device went away: end gesture mode, drop the pending hold, close a held ring.
+    void reset();
 
     /// Run an action the way the action button would (ring and gesture kinds need router state).
     void run(const ButtonAction& a, bool hold);

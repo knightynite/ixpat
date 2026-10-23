@@ -220,6 +220,24 @@ TEST_CASE("router: losing the device mid-hold ends gesture mode and clears the p
     CHECK(g.ran.empty());
 }
 
+TEST_CASE("router: a hold mapped to nothing still starts gesture mode, as on the Mac") {
+    Rig g;
+    g.s.action(ButtonGesture::hold) = ButtonAction::blank(ActionKind::none);
+    g.r->chord(ChordOutput::holdBegin, 1.0);
+    CHECK(g.gesturesBegin == 1);
+    g.r->chord(ChordOutput::holdEnd, 2.0);
+    CHECK(g.ran.empty());
+}
+
+TEST_CASE("router: reset ends gesture mode and clears the pending hold") {
+    Rig g;
+    g.r->chord(ChordOutput::holdBegin, 1.0);
+    g.r->reset();
+    CHECK(g.gesturesEnd == 1);
+    g.r->chord(ChordOutput::holdEnd, 2.0);
+    CHECK(g.ran.empty());
+}
+
 TEST_CASE("router: disabled settings ignore the action button") {
     Rig g;
     g.s.enabled = false;

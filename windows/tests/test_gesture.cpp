@@ -5,29 +5,22 @@
 #include "core/gesture.h"
 
 using ixpat::ActionKind;
-using ixpat::ButtonAction;
 using ixpat::GestureAccumulator;
 using ixpat::GestureConfig;
 
 namespace {
 GestureConfig cfg() {
-    GestureConfig c;
-    c.up = ButtonAction::blank(ActionKind::volumeUp);
-    c.down = ButtonAction::blank(ActionKind::volumeDown);
-    c.left = ButtonAction::blank(ActionKind::previousTrack);
-    c.right = ButtonAction::blank(ActionKind::nextTrack);
-    c.stepPx = 24;
-    c.swipePx = 90;
+    GestureConfig c;  // defaults: volume up/down, previous/next track, 24 / 90 px
     return c;
 }
 }  // namespace
 
 TEST_CASE("gesture: the default config is the Mac's: volume up/down, previous/next track") {
     GestureConfig d;
-    CHECK(d.up.kind == ActionKind::volumeUp);
-    CHECK(d.down.kind == ActionKind::volumeDown);
-    CHECK(d.left.kind == ActionKind::previousTrack);
-    CHECK(d.right.kind == ActionKind::nextTrack);
+    CHECK(d.up == ActionKind::volumeUp);
+    CHECK(d.down == ActionKind::volumeDown);
+    CHECK(d.left == ActionKind::previousTrack);
+    CHECK(d.right == ActionKind::nextTrack);
     CHECK(d.stepPx == 24);
     CHECK(d.swipePx == 90);
 }
@@ -37,7 +30,7 @@ TEST_CASE("gesture: inactive accumulator passes motion through untouched") {
     CHECK_FALSE(g.active());
     auto r = g.move(50, 50, cfg());
     CHECK_FALSE(r.consumed);
-    CHECK(r.actions.empty());
+    CHECK(r.count == 0);
 }
 
 TEST_CASE("gesture: the first 10 px decide the axis and fire nothing") {
@@ -46,9 +39,9 @@ TEST_CASE("gesture: the first 10 px decide the axis and fire nothing") {
     CHECK(g.active());
     auto r = g.move(3, 2, cfg());
     CHECK(r.consumed);
-    CHECK(r.actions.empty());
+    CHECK(r.count == 0);
     r = g.move(4, 2, cfg());  // 7,4 -> hypot ~8: still undecided
-    CHECK(r.actions.empty());
+    CHECK(r.count == 0);
     CHECK(g.firedCount() == 0);
 }
 
@@ -57,16 +50,16 @@ TEST_CASE("gesture: vertical travel steps the volume every stepPx, up is negativ
     g.begin();
     g.move(2, -12, cfg());  // axis locked vertical; accumulators reset after the lock
     auto r = g.move(0, -24, cfg());
-    REQUIRE(r.actions.size() == 1);
-    CHECK(r.actions[0].kind == ActionKind::volumeUp);
+    REQUIRE(r.count == 1);
+    CHECK(r.dirs[0] == ixpat::kGestureUp);
     r = g.move(0, 50, cfg());  // 50 px down: two steps
-    REQUIRE(r.actions.size() == 2);
-    CHECK(r.actions[0].kind == ActionKind::volumeDown);
+    REQUIRE(r.count == 2);
+    CHECK(r.dirs[0] == ixpat::kGestureDown);
     CHECK(g.firedCount() == 3);
     r = g.move(0, 10, cfg());  // 2 px carried + 10 = 12 < 24: nothing yet
-    CHECK(r.actions.empty());
+    CHECK(r.count == 0);
     r = g.move(0, 12, cfg());  // 24: one more
-    CHECK(r.actions.size() == 1);
+    CHECK(r.count == 1);
 }
 
 TEST_CASE("gesture: horizontal travel swipes every swipePx and the axis stays locked") {
@@ -74,14 +67,24 @@ TEST_CASE("gesture: horizontal travel swipes every swipePx and the axis stays lo
     g.begin();
     g.move(12, 1, cfg());
     auto r = g.move(90, 0, cfg());
-    REQUIRE(r.actions.size() == 1);
-    CHECK(r.actions[0].kind == ActionKind::nextTrack);
+    REQUIRE(r.count == 1);
+    CHECK(r.dirs[0] == ixpat::kGestureRight);
     r = g.move(0, 300, cfg());  // vertical motion now: ignored but consumed
     CHECK(r.consumed);
-    CHECK(r.actions.empty());
+    CHECK(r.count == 0);
     r = g.move(-180, 0, cfg());
-    REQUIRE(r.actions.size() == 2);
-    CHECK(r.actions[0].kind == ActionKind::previousTrack);
+    REQUIRE(r.count == 2);
+    CHECK(r.dirs[0] == ixpat::kGestureLeft);
+}
+
+TEST_CASE("gesture: a stepped action on a horizontal axis uses the step unit") {
+    GestureAccumulator g;
+    g.begin();
+    auto c = cfg();
+    c.right = ActionKind::brightnessUp;  // stepped: 24 px per step, not 90
+    g.move(12, 0, c);
+    auto r = g.move(48, 0, c);
+    CHECK(r.count == 2);
 }
 
 TEST_CASE("gesture: at most six actions per move") {
@@ -89,7 +92,7 @@ TEST_CASE("gesture: at most six actions per move") {
     g.begin();
     g.move(0, 12, cfg());
     auto r = g.move(0, 24 * 20, cfg());
-    CHECK(r.actions.size() == 6);
+    CHECK(r.count == 6);
 }
 
 TEST_CASE("gesture: a zero unit never loops") {
@@ -100,7 +103,7 @@ TEST_CASE("gesture: a zero unit never loops") {
     g.move(0, 12, c);
     auto r = g.move(0, 500, c);
     CHECK(r.consumed);
-    CHECK(r.actions.empty());
+    CHECK(r.count == 0);
 }
 
 TEST_CASE("gesture: end() stops consuming and begin() starts fresh") {
@@ -115,5 +118,5 @@ TEST_CASE("gesture: end() stops consuming and begin() starts fresh") {
     CHECK_FALSE(g.move(0, 100, cfg()).consumed);
     g.begin();
     CHECK(g.firedCount() == 0);
-    CHECK(g.move(1, 1, cfg()).actions.empty());  // axis undecided again
+    CHECK(g.move(1, 1, cfg()).count == 0);  // axis undecided again
 }

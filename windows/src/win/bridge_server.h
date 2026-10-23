@@ -35,6 +35,8 @@ private:
     std::atomic<bool> running_{false};
     std::atomic<bool> stopping_{false};
     std::uintptr_t listener_ = ~std::uintptr_t{0};  // INVALID_SOCKET
+    std::atomic<std::uintptr_t> client_{~std::uintptr_t{0}};  // the connection being served, closed by stop()
+    bool wsa_ = false;
     std::uint16_t port_ = 0;
     std::string token_;
 };

@@ -1,135 +1,68 @@
-# iXpat for Windows: plan
+# iXpat for Windows: status and plan
 
-Goal: give the Surface Mouse 2nd Edition on Windows the same feature set iXpat gives it
-on macOS. Windows ships the haptics for a handful of system gestures and leaves the rest
-(menu ticks, selection ticks, dynamic ratchet, kinetic scroll, action-button remapping,
-per-app profiles, a plugin bridge) to the firmware defaults. Everything below is scoped
-so the two apps share one settings schema, one haptic-event vocabulary and one bridge API.
+The Windows port lives in [`windows/`](../windows/) and ships as `win-vX.Y.Z` releases
+(zip for x64 and ARM64, a per-user installer for x64). This page is the status of that
+port and the record of what the first plan (October 2026) got wrong once the mouse was
+measured on a Windows PC. The spec is [`windows/docs/design.md`](../windows/docs/design.md);
+the measurements are [`windows/docs/measurements-2026-10.md`](../windows/docs/measurements-2026-10.md).
 
-## 1. What the mouse gives us (measured on macOS, applies to Windows)
+## 1. What shipped (win-v0.2.0)
 
-| Collection | Use |
-|---|---|
-| Mouse (0x01/0x02), report 0x03 | buttons, X/Y, wheel, AC pan |
-| Keyboard (0x01/0x06), report 0x01 | the action button's chords: Win+Shift+S, Win + fake left click, Win+Shift+F23 held |
-| Consumer (0x0C/0x01) | media keys |
-| Simple Haptic Controller (0x0E/0x01) | output 0x43 = [ordinal 3…10, intensity 0…4]; feature 0x42 = waveform table (HOVER, COLLIDE, ALIGN, STEP, GROW, SUCCESS, ERROR, CLICK) |
-| 0xFF07/0x92 vendor | Mouse and Keyboard Center command channel (feature 0x24 / input 0x27, 128 B); protocol unknown |
-| 0xFF0B/0x104 vendor | 60 B buffered report 0x2A in/out/feature, 0x2C, 0x2D; protocol unknown |
+| Area | Windows | Notes |
+|---|---|---|
+| Haptics | yes | Win32 HID on the haptics collection (usage page 0x0E): feature 0x42 reads the waveform table, output 0x43 plays. Nothing else is ever written to the mouse. |
+| Rules, presets, per-app profiles, master gates | yes | Same `settings.json` schema as the Mac, same event vocabulary; `"platform": "windows"` and a `"windows"` object hold the few Windows-only knobs. |
+| Click, wheel, hold, free-spin, dynamic ratchet, kinetic scroll | yes | Raw Input tells the device, the low-level hooks shape (swallow, re-emit through `SendInput`). |
+| Action button chords, gestures, hold action | yes | Win+Shift+S / Win + fake click / Win+Shift+F23 decoded on the input thread; the hold runs a context menu, middle click or the ring. |
+| Action Ring | yes | Layered Direct2D window, click-through, Escape cancels. |
+| Menu, control, drop, text, slider, selection and scroll-end ticks | yes | UI Automation on a worker thread; cursor-shape hover on main. |
+| Pointer settings for this mouse only | yes | Applied while the Surface Mouse drives the pointer, restored when another device does. |
+| Plugin bridge | yes | Same loopback HTTP API and token. |
+| Settings window | yes | Direct2D, light/dark, per-monitor DPI, the Mac's six tabs plus About. |
+| Updates | check only | Asks GitHub daily for a newer `win-v` release and opens the release page. The builds are unsigned, so nothing installs itself. |
+| Start at login | yes | HKCU Run value. |
+| Elevated windows | no | Windows does not deliver input aimed at UAC prompts and admin tools to a normal process; the mouse works there, nothing is shaped. A UIAccess-signed binary would be needed. |
+| Firmware updates | no (see 3) | Windows Update already does this. |
 
-Firmware seen: 5.29.139. Full descriptor notes live in the research folder (`NOTES.md`).
+## 2. What the first plan got wrong
 
-## 2. Windows building blocks
+* **Language and UI.** The plan weighed Rust + WinUI 3 or egui. The port is C++20 with
+  Win32 and Direct2D in one static binary: no runtime, no WebView, one process, and the
+  hook, Raw Input, HID and UIA code is plain Win32 either way.
+* **Device attribution.** "Correlate by arrival order and delta" became: the hooks match
+  raw entries on content (wheel delta, button flag, scan code) in either order, with a
+  fallback when the Surface Mouse is live and no other device acted within 2 s, and
+  injected input is never attributed.
+* **Collections.** On Windows the 2nd Edition exposes six HID collections, not the five
+  read on macOS (see 3).
 
-**Input (per-device).** Raw Input (`RegisterRawInputDevices` + `WM_INPUT`) reports every
-event with the device handle, so the app can tell the Surface Mouse from the trackpad
-or another mouse. Raw Input cannot block or modify events, so shaping needs a low-level
-mouse hook (`WH_MOUSE_LL`) as well. The pairing rule: the hook decides, Raw Input tells
-it which device the event came from (correlate by arrival order and delta; this is the
-same trick MKC-style tools use). Synthetic scrolls and clicks go out through `SendInput`
-tagged with `dwExtraInfo` so the hook ignores its own events (same as the `ownTag`
-on macOS).
+## 3. Firmware updates: the CFU finding
 
-**Haptics.** Open the haptics top-level collection with `CreateFile` on the HID
-interface path (`SetupDi` / `CM_Get_Device_Interface_List` with `GUID_DEVINTERFACE_HID`,
-filter on VID 045E PID 0880 and usage page 0x0E) and send output report 0x43 with
-`HidD_SetOutputReport` or `WriteFile`. Windows keeps the mouse and keyboard collections
-exclusive to the kernel, but vendor and haptics collections are openable from user
-mode. First thing to measure: whether Windows 11's own haptic-mouse support holds the
-collection open; if it does, fall back to the vendor channel once its protocol is known.
+The first plan said the 2nd Edition (PID 0880) had no published firmware package and no
+CFU collection. Both were wrong once the mouse was paired to a Windows 11 PC
+(firmware 5.29, 2026-10-22):
 
-**Menu and selection ticks.** UI Automation replaces the macOS Accessibility API:
-`IUIAutomation::ElementFromPoint` under the pointer for menu-item highlights (Chromium
-and WinUI both expose menus through UIA), `TextPattern` selection ranges for word and
-line ticks, `AddFocusChangedEventHandler` and property-changed handlers for slider and
-tab ticks, `WindowPattern` plus `GetWindowRect` deltas for snap detection. Run UIA on a
-worker thread with a COM MTA, never on the hook thread (hook callbacks must return in
-well under the `LowLevelHooksTimeout`).
+* Collection 05 (usage page 0xFF0B, usage 0x104) is a **Component Firmware Update**
+  interface. Windows binds Microsoft's inbox `HidCfu` driver to it through
+  `SurfaceMouse2ndEditionFwUpdate.inf` 1.0.5.0 (driver-store folder
+  `surfacemouse2ndeditionfwupdate.inf_amd64_…`), with the CFU usages (offer 0x8A/0x8E,
+  payload 0x66/0x61, versions 0x62, `UseHidSetOutputReport=1`) and three payloads:
+  MCU1, MCU2 and HAPTIC.
+* Collection 04 (0xFF07/0x92) remains the Mouse and Keyboard Center channel with no
+  driver bound and an unknown protocol.
 
-**Action button.** The chords arrive as keyboard input. A low-level keyboard hook
-(`WH_KEYBOARD_LL`) recognises the three sequences, swallows them, and runs the mapped
-action; Raw Input confirms the keystrokes came from the mouse's keyboard collection,
-so a real Win+Shift+S from the keyboard still opens Snipping Tool.
+So firmware updates for the 2nd Edition arrive through Windows Update, in the
+background, over the standard CFU protocol, and iXpat has no reason to implement them:
+it never opens the CFU or vendor collections, shows the installed firmware version and
+points at Windows Update. The macOS plan for an in-app updater is withdrawn for the
+same reason: the safe path for Mac-only users is to pair the mouse with any Windows PC
+once.
 
-**Pointer settings.** `SystemParametersInfo(SPI_SETMOUSESPEED)` is global; per-device
-speed needs the vendor channel (what Mouse and Keyboard Center does). Until that
-protocol is captured, apply the speed only while the Surface Mouse is the active
-device (Raw Input tells us) and restore it when another device moves the pointer.
+## 4. What is next
 
-**Force click.** Windows has no system-wide force-click concept. Offer the same hold
-gesture with configurable actions (preview via the app's own Quick Look equivalent is
-not available; sensible defaults are "show context menu", "middle click" or a plugin
-pulse) rather than pretending to be a trackpad.
-
-**Gestures, Action Ring, per-app profiles, feel presets, bridge.** Straight ports: the
-pointer freeze uses `ClipCursor` plus discarding hook deltas, the ring is a layered
-topmost window, per-app profiles key on the foreground process image name
-(`GetForegroundWindow` → `QueryFullProcessImageName`), the bridge keeps the same
-loopback HTTP API and port (47337) so the Photoshop plugin works unchanged.
-
-## 3. Architecture
-
-- **Core service** (`ixpat-core`): Rust with the `windows` crate, or C++20 with Win32.
-  Rust is the recommendation: the hook, Raw Input, HID and UIA code is all unsafe FFI
-  either way, and Rust makes the cross-thread state (the `Locked<T>` pattern) hard to get
-  wrong. Runs as a tray app; no service and no driver needed.
-- **UI**: WinUI 3 (C# or C++/WinRT) talking to the core over a named pipe, or egui in
-  the same process if we want a single binary. Mirror the macOS tabs: Haptics, Action
-  Button, Action Ring, Apps, Pointer & Scroll, Diagnostics.
-- **Shared schema**: the macOS `settings.json` (haptic event names, rules, profiles,
-  ring items, scroll parameters) is the contract. Add a `platform` section for the few
-  Windows-only knobs rather than forking the file.
-- **Signing and install**: MSIX or a signed MSI; the hooks do not need elevation, but
-  interacting with elevated windows needs a UIAccess-signed binary in Program Files.
-
-## 4. Milestones
-
-1. **Probe week.** A command-line tool that enumerates the mouse's HID collections,
-   plays the eight waveforms, and logs Raw Input + hook events with device handles.
-   Measures the two open questions: can user mode open the haptics collection while
-   Windows is using it, and how reliably Raw Input and the hook can be correlated.
-2. **Core input and haptics.** Hook + Raw Input + SendInput; click/wheel/hold rules;
-   dynamic ratchet, free-spin and kinetic scroll ported from `EventMonitor.swift`.
-3. **Ticks.** UIA menu, selection, slider, tab and snap watchers.
-4. **Action button, gestures, ring, profiles, bridge.**
-5. **UI and installer.**
-6. **Vendor channel capture.** With the tool running on Windows, record what Mouse and
-   Keyboard Center sends on 0xFF07 when it changes the action button or pointer speed.
-   That unlocks per-device pointer settings on both platforms.
-
-## 5. Firmware updates
-
-**What Microsoft ships today (measured 2026-10-17).** The only published package,
-"Surface Mouse firmware v2.10" (version 1.2.13, 24 March 2026, Download Center
-id 108581), is an MSI holding an INF plus four files: two 16-byte *offer* files and two
-signed *payload* files (`SurfaceMouse_MCU_Hi`, `SurfaceMouse_MCU_Lo`). The INF binds
-Windows' inbox **HidCfu** driver to `HID\{00001812-…}_Dev_VID&02045e_PID&0854&Col04`
-with the Component Firmware Update usages (offer in 0x8A / out 0x8E, payload in 0x66 /
-out 0x61, versions feature 0x62). That is Microsoft's open CFU protocol, with a public
-specification and reference host implementation, applied over Bluetooth LE HID; the
-"re-pair and keep still for 10 minutes" instruction is the background CFU transfer.
-
-**It does not apply to the 2nd Edition.** PID 0854 is the original Surface Mouse. The
-2nd Edition is PID 0880, shipped on 13 October 2026, has no published firmware package
-yet, and its report descriptor (as read on macOS) exposes no CFU collection: the only
-candidates are the 0xFF07 and 0xFF0B vendor collections, whose protocols are unknown.
-
-**Plan.**
-1. Watch Windows Update and the Download Center for the first 2nd Edition package.
-   The INF will name the collection and usages; if it includes HidCfu, the protocol is
-   CFU and the reference host code can be ported to both apps.
-2. On the first update, capture it on Windows with the probe tool (Raw Input and HID
-   logging) and an ETW HID trace, so the on-the-wire sequence is known rather than
-   inferred from the spec. Record it under coordinated-disclosure-grade notes: offers,
-   responses, chunk size, timing, battery and version checks.
-3. Implement an updater in both apps that only installs Microsoft's signed packages,
-   reads the installed version first, refuses on low battery, checks the offer response
-   before sending any payload, and never writes on the vendor channels without a
-   captured reference. The macOS side waits until the Windows side has completed one
-   verified update.
-4. Until then, the apps show the installed firmware version and point the user at the
-   official update path (Surface app → Help & support → Check for updates).
-
-Sources: Download Center page for Surface Mouse firmware v2.10, its INF
-(`SurfaceMouseFwUpdate.inx`), Microsoft's Surface accessories lifecycle page, and the
-report descriptor notes in the research folder.
+1. Measurements with the mouse on the Windows PC for the parts only hardware can answer
+   (sections 2b and 3 of the measurements doc): the exact report lengths the Windows
+   stack accepts, battery via the Bluetooth LE property, and the waveform durations.
+2. A UIAccess-signed build if elevated windows turn out to matter to enough people.
+3. The vendor channel (0xFF07) capture from Mouse and Keyboard Center, which would give
+   per-device pointer settings on both platforms.

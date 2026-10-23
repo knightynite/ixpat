@@ -1,0 +1,87 @@
+name: windows
+
+on:
+  push:
+    branches: ['**']
+    paths: ['windows/**', '.github/workflows/windows.yml']
+    tags: ['win-v*']
+  pull_request:
+    paths: ['windows/**', '.github/workflows/windows.yml']
+
+jobs:
+  x64:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756  # v1.13.0
+        with: { arch: x64 }
+      - name: Configure
+        run: cmake --preset x64-release
+        working-directory: windows
+      - name: Build
+        run: cmake --build --preset x64-release
+        working-directory: windows
+      - name: Test
+        run: ctest --preset x64-release
+        working-directory: windows
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ixpat-windows-x64
+          path: |
+            windows/build/x64-release/*.exe
+            !windows/build/x64-release/ixpat_tests.exe
+          if-no-files-found: error
+
+  arm64:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756  # v1.13.0
+        with: { arch: amd64_arm64 }
+      - name: Configure
+        run: cmake --preset arm64-release
+        working-directory: windows
+      - name: Build
+        run: cmake --build --preset arm64-release
+        working-directory: windows
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ixpat-windows-arm64
+          path: |
+            windows/build/arm64-release/*.exe
+            !windows/build/arm64-release/ixpat_tests.exe
+          if-no-files-found: error
+
+  # win-v* tags: zips for both architectures plus the x64 installer, attached to a PRE-RELEASE so the Mac app's
+  # updater (which reads releases/latest) keeps resolving the macOS release.
+  release:
+    if: startsWith(github.ref, 'refs/tags/win-v')
+    needs: [x64, arm64]
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: Package zips and installer
+        shell: pwsh
+        run: |
+          $ver = "${{ github.ref_name }}".Substring(5)
+          New-Item -ItemType Directory -Force out | Out-Null
+          foreach ($arch in 'x64', 'arm64') {
+            $src = "dist/ixpat-windows-$arch"
+            Copy-Item windows/README-windows.txt $src/
+            Compress-Archive -Path "$src/*" -DestinationPath "out/iXpat-$ver-windows-$arch.zip" -Force
+          }
+          choco install innosetup --no-progress -y | Out-Null
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$ver" "/DSourceDir=$PWD\dist\ixpat-windows-x64" "/O$PWD\out" windows\installer\ixpat.iss
+          Get-ChildItem out
+          Get-FileHash out\* -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $($_.Path | Split-Path -Leaf)" } | Set-Content out\SHA256SUMS.txt
+      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64  # v3.0.3
+        with:
+          prerelease: true
+          name: iXpat for Windows ${{ github.ref_name }}
+          generate_release_notes: true
+          files: out/*

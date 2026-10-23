@@ -15,6 +15,7 @@
 #include "win/hid_device.h"
 #include "win/input_thread.h"
 #include "win/uia_watch.h"
+#include "core/updater_parse.h"
 
 namespace ixpat::ui {
 
@@ -32,6 +33,9 @@ struct SettingsModel {
     bool bridgeRunning = false;
     std::deque<std::string> reportLog;  // newest last, capped by the app at 150
     std::string frontApp;               // image name of the foreground app
+    std::string updateStatus;           // About pane: "Checking...", "Up to date", "0.3.0 is available", an error
+    std::optional<ReleaseInfo> updateAvailable;
+    bool updateChecking = false;
 };
 
 /// What the window asks the app to do.
@@ -50,6 +54,8 @@ struct SettingsActions {
     std::function<std::vector<std::pair<std::string, std::string>>()> runningApps;  // (image name, title)
     std::function<std::optional<std::string>()> chooseExe;                           // file dialog
     std::function<std::optional<std::string>()> chooseApp;                           // file dialog for an app
+    std::function<void()> checkUpdates;                                              // manual check
+    std::function<void(const std::string&)> openUrl;
 };
 
 /// The settings window (MainWindow.swift): header, hero + live tiles, pill tabs and six panes.
@@ -61,6 +67,8 @@ public:
     void refresh();
     /// A haptic was played: start a pulse ring.
     void pulse();
+    /// Show the About pane (tray menu, header button).
+    void showAbout();
     void applyTheme();
 
 protected:
@@ -78,6 +86,7 @@ private:
     void appsPane(Frame& f);
     void pointerPane(Frame& f);
     void diagnosticsPane(Frame& f);
+    void aboutPane(Frame& f);
     void ruleRow(Frame& f, HapticEvent e);
     void feelPresets(Frame& f);
     void actionPicker(Frame& f, const std::string& id, ButtonAction& action);

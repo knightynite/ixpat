@@ -41,6 +41,7 @@ std::wstring fmti(const wchar_t* f, int v) {
 }
 
 const std::vector<std::wstring> kTabs{L"Haptics", L"Action Button", L"Action Ring", L"Apps", L"Pointer & Scroll", L"Diagnostics"};
+constexpr int kAboutTab = 6;  // reached from the header button and the tray menu, not a pill
 const std::vector<std::wstring> kLevels{L"Off", L"Light", L"Medium", L"Strong", L"Max"};
 const std::vector<std::wstring> kIntensities{L"1", L"2", L"3", L"4"};
 const std::vector<std::wstring> kTri{L"Default", L"On", L"Off"};
@@ -206,7 +207,8 @@ void SettingsWindow::build(ID2D1RenderTarget* rt, const UiInput& in) {
     liveTile(f, std::max(200.0f, contentW - 330 - 16), 300);
     f.endRow();
     f.space(16);
-    f.pillTabs("tabs", tab_, kTabs);
+    int shown = tab_ < kAboutTab ? tab_ : -1;  // the About pane has no pill: none is lit
+    if (f.pillTabs("tabs", shown, kTabs)) tab_ = shown;
     f.space(12);
     f.beginCard(18);
     switch (tab_) {
@@ -215,6 +217,7 @@ void SettingsWindow::build(ID2D1RenderTarget* rt, const UiInput& in) {
         case 2: ringPane(f); break;
         case 3: appsPane(f); break;
         case 4: pointerPane(f); break;
+        case kAboutTab: aboutPane(f); break;
         default: diagnosticsPane(f); break;
     }
     f.endCard();
@@ -241,10 +244,17 @@ void SettingsWindow::header(Frame& f) {
     const Rect tx = f.take(W0 - 40 - 34 - 12 - 60, 40);
     f.drawText(L"iXpat", {tx.x, tx.y - 4, 200, 30}, TextStyle::wordmark, f.pal().text, 1, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_NEAR, false);
     f.drawText(L"Haptics, gestures and feel for the Surface Mouse on Windows", {tx.x, tx.y + 26, tx.w, 16}, TextStyle::detail, f.pal().text2.rgb, f.pal().text2.alpha, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_NEAR, false);
-    f.setX(20 + W0 - 40 - 40);
+    f.setX(20 + W0 - 40 - 40 - 44);
+    if (f.iconButton("hdr/about", 0xE946, true, L"About iXpat")) tab_ = tab_ == kAboutTab ? 0 : kAboutTab;
+    f.gap(8);
     f.toggle("master", settings_.enabled);
     f.endRow();
     f.space(10);
+}
+
+void SettingsWindow::showAbout() {
+    tab_ = kAboutTab;
+    refresh();
 }
 
 void SettingsWindow::heroTile(Frame& f, float width, float height) {
@@ -857,11 +867,76 @@ void SettingsWindow::pointerPane(Frame& f) {
     sliderRow(L"Flick threshold", "ptr/flick", settings_.freeSpinThreshold, 8, 40, 1, L"", L"", fmti(L"%d/s", static_cast<int>(settings_.freeSpinThreshold)), settings_.freeSpin);
     sliderRow(L"Free-spin boost", "ptr/boost", settings_.freeSpinMultiplier, 1.5, 6, 0.5, L"", L"", fmt(L"%.1f×", settings_.freeSpinMultiplier), settings_.freeSpin);
     f.divider();
+    f.label(L"System", TextStyle::title);
+    f.space(6);
+    f.toggle("sys/login", settings_.windows.startAtLogin, L"Start iXpat at login", L"Adds iXpat to your account's startup programs (HKCU Run). Task Manager's Startup tab can veto it.");
+    f.toggle("sys/updates", settings_.autoCheckUpdates, L"Check for updates daily", L"Asks GitHub for a newer Windows release once a day. Nothing is downloaded or installed by itself.");
+    f.divider();
     f.beginRow(30);
     f.label(L"Double-click speed, button swap and the system-wide pointer speed live in Windows Settings.", TextStyle::detail, f.contentWidth() - 220);
     f.setX(f.contentWidth() + 18 - 200);
     if (f.button("ptr/open", L"Open Windows mouse settings", false, true, 200) && actions_.openMouseSettings) actions_.openMouseSettings();
     f.endRow();
+}
+
+// MARK: About pane (AboutView.swift)
+void SettingsWindow::aboutPane(Frame& f) {
+    const Palette& pal = f.pal();
+    const float cw = f.contentWidth();
+    const Rect ic = f.take(0, 88);
+    f.fillRound({ic.x + cw / 2 - 44, ic.y, 88, 88}, 22, pal.accent, 0.9f);
+    f.glyph(0xE962, {ic.x + cw / 2 - 44, ic.y, 88, 88}, 0xFFFFFF, 1, 46);
+    f.space(10);
+    f.drawText(L"iXpat", f.take(0, 34), TextStyle::wordmark, pal.text, 1, DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, false);
+#if defined(_M_ARM64)
+    const wchar_t* arch = L"arm64";
+#else
+    const wchar_t* arch = L"x64";
+#endif
+    f.drawText(L"Version " IXPAT_VERSION_WSTRING L" · " + std::wstring(arch) + L" · Windows", f.take(0, 18), TextStyle::detail, pal.text2.rgb, pal.text2.alpha,
+               DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, false);
+    f.space(8);
+    f.drawText(L"Haptics, an Action Ring, kinetic scrolling and force click for the Microsoft Surface Mouse (2nd Edition) on Windows.",
+               f.take(0, 40), TextStyle::body, pal.text, 1, DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_PARAGRAPH_ALIGNMENT_NEAR, true);
+    f.space(6);
+    f.drawText(L"Created by", f.take(0, 14), TextStyle::footnote, pal.text3.rgb, pal.text3.alpha, DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, false);
+    f.space(4);
+    f.beginRow(28);
+    f.setX(f.areaX() + cw / 2 - 150);
+    if (f.button("about/author", L"AL Najafi", false, true, 120) && actions_.openUrl) actions_.openUrl("https://www.linkedin.com/in/alnnajafi/");
+    f.gap(8);
+    if (f.button("about/mac", L"Mac app", false, true, 90) && actions_.openUrl) actions_.openUrl("https://github.com/knightynite/ixpat#install");
+    f.gap(8);
+    if (f.button("about/measure", L"Measurements", false, true, 118) && actions_.openUrl) actions_.openUrl("https://github.com/knightynite/ixpat/blob/main/windows/docs/measurements-2026-10.md");
+    f.endRow();
+    f.space(6);
+    f.beginRow(28);
+    f.setX(f.areaX() + cw / 2 - 180);
+    if (f.button("about/site", L"Website", false, true, 110) && actions_.openUrl) actions_.openUrl("https://knightynite.github.io/ixpat/");
+    f.gap(8);
+    if (f.button("about/source", L"Source code", false, true, 120) && actions_.openUrl) actions_.openUrl("https://github.com/knightynite/ixpat");
+    f.gap(8);
+    if (f.button("about/issues", L"Report an issue", false, true, 130) && actions_.openUrl) actions_.openUrl("https://github.com/knightynite/ixpat/issues");
+    f.endRow();
+    f.space(12);
+    f.beginCard(12, true);
+    f.toggle("about/auto", settings_.autoCheckUpdates, L"Check for updates daily");
+    f.beginRow(30);
+    const std::wstring status = model_.updateStatus.empty() ? std::wstring() : W(model_.updateStatus);
+    f.drawText(status, f.take(cw - 24 - 130 - 8 - 150 - 8, 30), TextStyle::detail, model_.updateAvailable ? pal.accent : pal.text2.rgb,
+               model_.updateAvailable ? 1 : pal.text2.alpha, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, false);
+    f.gap(8);
+    if (model_.updateAvailable) {
+        if (f.button("about/open", L"Open release page", true, true, 150) && actions_.openUrl) actions_.openUrl(model_.updateAvailable->url);
+        f.gap(8);
+    }
+    if (f.button("about/check", model_.updateChecking ? L"Checking..." : L"Check now", false, !model_.updateChecking, 130) && actions_.checkUpdates)
+        actions_.checkUpdates();
+    f.endRow();
+    f.endCard();
+    f.space(10);
+    f.drawText(L"Free and open source under the MIT License. Not affiliated with or endorsed by Microsoft. Surface is a trademark of Microsoft Corporation. Windows builds are unsigned: updates open the release page instead of installing themselves.",
+               f.take(0, 34), TextStyle::footnote, pal.text3.rgb, pal.text3.alpha, DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_PARAGRAPH_ALIGNMENT_NEAR, true);
 }
 
 // MARK: Diagnostics pane
@@ -944,9 +1019,7 @@ void SettingsWindow::diagnosticsPane(Frame& f) {
         actions_.copyText(s);
     }
     f.gap(8);
-    if (f.button("diag/setup", L"Setup guide") && actions_.showSetup) actions_.showSetup();
-    f.gap(8);
-    if (f.button("diag/about", L"About iXpat") && actions_.showAbout) actions_.showAbout();
+    if (f.button("diag/about", L"About iXpat")) tab_ = kAboutTab;
     f.endRow();
     f.divider();
     f.label(L"Raw input reports (buttons, keys; motion is not logged)", TextStyle::title);

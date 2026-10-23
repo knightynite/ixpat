@@ -131,6 +131,11 @@ bool HidDevice::tryOpen() {
             CloseHandle(h);
             continue;
         }
+        if (caps.OutputReportByteLength < 3) {  // not the descriptor we know: no [id, ordinal, intensity] output
+            debugLog("hid: haptics collection has an output report of " + std::to_string(caps.OutputReportByteLength) + " bytes; unsupported");
+            CloseHandle(h);
+            continue;
+        }
         device_ = h;
         outputLen_ = caps.OutputReportByteLength;
         featureLen_ = caps.FeatureReportByteLength;
@@ -167,7 +172,11 @@ void HidDevice::close(const char* why) {
 
 void HidDevice::readTable() {
     if (device_ == INVALID_HANDLE_VALUE) return;
-    std::vector<std::uint8_t> buf(std::max<std::size_t>(featureLen_, 201), 0);
+    if (featureLen_ < 201) {
+        debugLog("hid: feature report is " + std::to_string(featureLen_) + " bytes, table needs 201; using the measured table");
+        return;
+    }
+    std::vector<std::uint8_t> buf(featureLen_, 0);
     buf[0] = kTableReport;
     if (!HidD_GetFeature(device_, buf.data(), static_cast<ULONG>(buf.size()))) {
         debugLog("hid: HidD_GetFeature(0x42) failed, error " + std::to_string(GetLastError()) + "; using the measured table");
@@ -223,6 +232,16 @@ void HidDevice::loop() {
         const DWORD r = WaitForMultipleObjects(2, waits, FALSE, timeout);
         if (r == WAIT_OBJECT_0) break;
         if (enumerate_.exchange(false) || (r == WAIT_TIMEOUT && device_ == INVALID_HANDLE_VALUE)) {
+            if (device_ != INVALID_HANDLE_VALUE) {
+                // An interface came or went: is ours still there? (A sleeping mouse disappears without a failed write.)
+                std::wstring mine;
+                AcquireSRWLockShared(&lock_);
+                mine = info_.path;
+                ReleaseSRWLockShared(&lock_);
+                bool present = false;
+                for (const auto& p : hapticsPaths()) present |= p == mine;
+                if (!present) close("interface removed");
+            }
             if (device_ == INVALID_HANDLE_VALUE) {
                 if (tryOpen()) loggedAbsent = false;
                 else if (!loggedAbsent) {
@@ -243,7 +262,7 @@ void HidDevice::loop() {
             ReleaseSRWLockExclusive(&lock_);
             if (!have) break;
             if (device_ == INVALID_HANDLE_VALUE) continue;
-            std::vector<std::uint8_t> buf(std::max<std::size_t>(outputLen_, 3), 0);
+            std::vector<std::uint8_t> buf(outputLen_, 0);
             buf[0] = kOutputReport;
             buf[1] = p.ordinal;
             buf[2] = p.intensity;

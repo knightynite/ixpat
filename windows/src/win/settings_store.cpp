@@ -141,7 +141,10 @@ void SettingsStore::watchLoop() {
             break;
         }
     }
-    CancelIoEx(h, &ov);
+    if (CancelIoEx(h, &ov) || GetLastError() != ERROR_NOT_FOUND) {
+        DWORD bytes = 0;
+        GetOverlappedResult(h, &ov, &bytes, TRUE);  // wait for the request to finish before `buf`/`ov` go away
+    }
     CloseHandle(changed);
     CloseHandle(h);
 }

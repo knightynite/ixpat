@@ -26,6 +26,9 @@ std::string_view rawName(ActionKind k);
 std::optional<ActionKind> actionKindFromRaw(std::string_view raw);
 std::string_view title(ActionKind k);
 
+/// Stepped actions repeat every `stepPx` of gesture travel; the rest fire per swipe.
+bool isSteppedKind(ActionKind k);
+
 /// Modifier bits of `ButtonAction::flags` on Windows.
 constexpr std::uint64_t kModCtrl = 1, kModAlt = 2, kModShift = 4, kModWin = 8;
 

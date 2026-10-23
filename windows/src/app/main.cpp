@@ -37,7 +37,7 @@ constexpr UINT WM_APP_TRAY = WM_APP + 5;
 constexpr UINT WM_APP_SHOW = WM_APP + 6;
 
 constexpr UINT_PTR kTimerFlush = 4, kTimerWatchdog = 5, kTimerSnapCheck = 7, kTimerPointerApply = 8, kTimerRingCommit = 9,
-                   kTimerDemoClose = 10;
+                   kTimerDemoClose = 10, kTimerDetachExpiry = 11, kTimerPointerOwner = 12;
 constexpr UINT_PTR kFirstEchoTimer = 100;
 
 enum MenuId : UINT { kMenuEnabled = 1, kMenuHaptics, kMenuOpenSettings, kMenuOpenLogs, kMenuReload, kMenuAbout, kMenuQuit };
@@ -99,9 +99,16 @@ private:
     std::map<UINT_PTR, HapticEngine::Deferred> echoes_;
     UINT_PTR nextEcho_ = kFirstEchoTimer;
     std::optional<IRect> frameBeforeDrag_;
-    std::uint32_t lastHeartbeat_ = 0, lastRaw_ = 0;
+    std::uint32_t lastMouseCalls_ = 0, lastKeyCalls_ = 0, lastRawMouse_ = 0, lastRawKey_ = 0;
     std::string bridgeToken_;
     int bridgePort_ = 0;
+    // Read by the bridge thread: a snapshot replaced under the lock whenever the table changes.
+    mutable SRWLOCK waveformsLock_ = SRWLOCK_INIT;
+    std::string waveformsJson_ = "[]";
+    bool pointerOwnerSurface_ = false;
+    bool quitting_ = false;
+    void quit();
+    void refreshWaveformsJson();
 };
 
 Seconds App::now() const {
@@ -167,7 +174,7 @@ int App::run(HINSTANCE inst, bool ringDemo) {
         TranslateMessage(&m);
         DispatchMessageW(&m);
     }
-    shutdown();
+    quit();
     CoUninitialize();
     if (mutex) CloseHandle(mutex);
     return 0;
@@ -237,10 +244,17 @@ void App::start() {
 
     // Input thread.
     if (!input_.start(hwnd_, WM_APP_INPUT)) win::debugLog("input thread failed to start");
-    win::debugLog(std::string("hooks installed=") + (input_.hooksInstalled() ? "yes" : "no"));
+    {
+        const auto st = input_.status();
+        win::debugLog(std::string("raw input registered=") + (st.rawRegistered ? "yes" : "no") + " hooks installed=" +
+                      ((st.mouseHook && st.keyboardHook) ? "yes" : "NO (haptics-only mode: nothing is shaped or hidden)"));
+    }
 
     // Foreground app -> profiles and the appSwitch pulse.
-    foreground_.start([this](std::string name, DWORD) { router_->foregroundChanged(std::move(name), now()); });
+    foreground_.start([this](std::string name, DWORD) {
+        router_->foregroundChanged(std::move(name), now());
+        pushConfig();  // the front app's profile may change the gestures and the wheel
+    });
     if (HWND fg = GetForegroundWindow()) {
         std::string name = win::ForegroundWatch::imageNameOf(fg);
         if (!name.empty()) {
@@ -249,16 +263,13 @@ void App::start() {
         }
     }
 
-    // Plugin bridge.
+    // Plugin bridge (its thread reads only the JSON snapshot, never the table).
+    refreshWaveformsJson();
     bridge_.waveformsJson = [this] {
-        std::string out = "[";
-        for (const auto& w : device_.table) {
-            std::string n(w.name());
-            for (auto& c : n) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-            if (out.size() > 1) out += ",";
-            out += "{\"name\":\"" + n + "\",\"ordinal\":" + std::to_string(w.ordinal) + ",\"ms\":" + std::to_string(w.durationMs) + "}";
-        }
-        return out + "]";
+        AcquireSRWLockShared(&waveformsLock_);
+        std::string copy = waveformsJson_;
+        ReleaseSRWLockShared(&waveformsLock_);
+        return copy;
     };
     bridge_.onPlay = [this](std::string name, int intensity) {
         auto* p = new BridgePlay{std::move(name), intensity};
@@ -274,14 +285,31 @@ void App::start() {
     onDeviceChanged();
 }
 
-void App::shutdown() {
+void App::refreshWaveformsJson() {
+    std::string out = "[";
+    for (const auto& w : device_.table) {
+        std::string n(w.name());
+        for (auto& c : n) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        if (out.size() > 1) out += ",";
+        out += "{\"name\":\"" + n + "\",\"ordinal\":" + std::to_string(w.ordinal) + ",\"ms\":" + std::to_string(w.durationMs) + "}";
+    }
+    out += "]";
+    AcquireSRWLockExclusive(&waveformsLock_);
+    waveformsJson_ = std::move(out);
+    ReleaseSRWLockExclusive(&waveformsLock_);
+}
+
+/// Stop every producer while the window still exists, then let the window go.
+void App::quit() {
+    if (quitting_) return;
+    quitting_ = true;
     KillTimer(hwnd_, kTimerFlush);
     KillTimer(hwnd_, kTimerWatchdog);
     if (store_) {
         store_->stopWatching();
         store_->flush();
     }
-    if (settings_.managePointer) pointer_.restore();
+    pointer_.restore();
     input_.gesturesEnd();  // never leave the pointer frozen
     ring_.destroy();
     input_.stop();
@@ -289,8 +317,14 @@ void App::shutdown() {
     bridge_.stop();
     hid_.stop();
     tray_.remove();
+    // Payloads posted by the bridge thread before it stopped are ours to free.
+    MSG m;
+    while (PeekMessageW(&m, hwnd_, WM_APP_BRIDGE, WM_APP_BRIDGE, PM_REMOVE)) delete reinterpret_cast<BridgePlay*>(m.lParam);
     win::debugLog("quit");
+    DestroyWindow(hwnd_);
 }
+
+void App::shutdown() { quit(); }
 
 void App::startBridgeIfWanted() {
     if (settings_.bridgeEnabled) {
@@ -324,10 +358,10 @@ void App::pushConfig() {
     c.holdActionEnabled = settings_.enabled && settings_.forceClick;
     c.holdActionMs = settings_.forceClickMs;
     c.holdAction = settings_.windows.holdAction;
-    c.gesture.up = settings_.effGestureUp();
-    c.gesture.down = settings_.effGestureDown();
-    c.gesture.left = settings_.effGestureLeft();
-    c.gesture.right = settings_.effGestureRight();
+    c.gesture.up = settings_.effGestureUp().kind;
+    c.gesture.down = settings_.effGestureDown().kind;
+    c.gesture.left = settings_.effGestureLeft().kind;
+    c.gesture.right = settings_.effGestureRight().kind;
     c.gesture.stepPx = settings_.gestureStepPx;
     c.gesture.swipePx = settings_.gestureSwipePx;
     c.gesture.freezePointer = settings_.gestureFreezePointer;
@@ -371,10 +405,20 @@ void App::onInputEvents() {
                 router_->systemEvent(static_cast<HapticEvent>(e.b), e.now);
                 break;
             case win::InputEvent::Kind::gestureAction: {
-                const ButtonAction& a = e.b == 0 ? settings_.effGestureUp() : e.b == 1 ? settings_.effGestureDown() : e.b == 2 ? settings_.effGestureLeft() : settings_.effGestureRight();
+                if (!router_->gestureModeActive()) break;  // a move that slipped in after the hold ended
+                const ButtonAction& a = e.b == kGestureUp ? settings_.effGestureUp() : e.b == kGestureDown ? settings_.effGestureDown() : e.b == kGestureLeft ? settings_.effGestureLeft() : settings_.effGestureRight();
                 router_->gestureFired(a, e.now);
                 break;
             }
+            case win::InputEvent::Kind::pointerOwner:
+                pointerOwnerSurface_ = e.b != 0;
+                SetTimer(hwnd_, kTimerPointerOwner, 300, nullptr);  // debounced apply / restore
+                break;
+            case win::InputEvent::Kind::overflow:
+                win::debugLog("input ring buffer overflowed; re-synchronising gesture and hold state");
+                router_->reset();
+                input_.gesturesEnd();
+                break;
             case win::InputEvent::Kind::dragEnded:
                 SetTimer(hwnd_, kTimerSnapCheck, 400, nullptr);
                 break;
@@ -387,9 +431,7 @@ void App::onInputEvents() {
             case win::InputEvent::Kind::ringOpenRequest:
                 ring_.toggle(settings_.effRingItems(), false, settings_.accentHex);
                 break;
-            case win::InputEvent::Kind::hookLost:
-                input_.reinstallHooks();
-                break;
+
         }
     }
 }
@@ -416,7 +458,9 @@ void App::onDeviceChanged() {
     if (wasConnected && !device_.connected) {
         lastDetach_ = now();
         router_->deviceConnected(false, now());
+        SetTimer(hwnd_, kTimerDetachExpiry, 1800 * 1000, nullptr);  // the recently-detached allowance ends then
     }
+    refreshWaveformsJson();
     if (!wasConnected && device_.connected) {
         router_->deviceConnected(true, now());
         if (settings_.managePointer) SetTimer(hwnd_, kTimerPointerApply, 1000, nullptr);
@@ -425,12 +469,12 @@ void App::onDeviceChanged() {
     pushConfig();
 }
 
+/// The Surface Mouse's pointer settings apply while it is the device moving the pointer; another
+/// device moving it restores the system values (debounced 300 ms by the pointerOwner timer).
 void App::applyPointer() {
-    if (settings_.managePointer && (device_.connected || anyMouse_)) {
-        pointer_.apply(settings_.pointerSpeed, settings_.noAcceleration, settings_.scrollSpeed);
-    } else {
-        pointer_.restore();
-    }
+    const bool ours = settings_.managePointer && (device_.connected || anyMouse_) && (pointerOwnerSurface_ || anyMouse_);
+    if (ours) pointer_.apply(settings_.pointerSpeed, settings_.noAcceleration, settings_.scrollSpeed);
+    else pointer_.restore();
 }
 
 void App::reloadSettings() {
@@ -442,6 +486,10 @@ void App::reloadSettings() {
 }
 
 void App::settingsChanged() {
+    if (!settings_.enabled) {
+        router_->reset();  // end a hold / gesture mode / held ring at once
+        input_.gesturesEnd();
+    }
     pushConfig();
     startBridgeIfWanted();
     applyPointer();
@@ -497,7 +545,7 @@ void App::showMenu() {
             showAbout();
             break;
         case kMenuQuit:
-            DestroyWindow(hwnd_);
+            quit();
             break;
         default:
             break;
@@ -510,7 +558,11 @@ void App::showAbout() {
     text += L"Firmware: " + std::wstring(device_.firmware.begin(), device_.firmware.end()) + L"\n";
     text += L"Battery: " + (device_.battery ? std::to_wstring(*device_.battery) + L"%" : std::wstring(L"unknown")) + L"\n";
     text += L"Waveform table: " + std::wstring(device_.tableFromDevice ? L"from the device" : L"measured defaults (fw 5.29)") + L"\n";
-    text += L"Hooks: " + std::wstring(input_.hooksInstalled() ? L"installed" : L"NOT installed") + L"\n";
+    {
+        const auto st = input_.status();
+        text += L"Hooks: " + std::wstring((st.mouseHook && st.keyboardHook) ? L"installed" : L"NOT installed") + L", raw input " +
+                (st.rawRegistered ? L"registered" : L"NOT registered") + L"\n";
+    }
     text += L"Bridge: " + (bridge_.running() ? L"127.0.0.1:" + std::to_wstring(bridge_.port()) : std::wstring(L"off")) + L"\n";
     if (!device_.lastError.empty()) text += L"Last error: " + std::wstring(device_.lastError.begin(), device_.lastError.end()) + L"\n";
     text += L"\nSettings and logs: " + win::appDataDir().wstring() + L"\n\nMIT License. Not affiliated with Microsoft.";
@@ -555,13 +607,19 @@ LRESULT App::handle(UINT msg, WPARAM wp, LPARAM lp) {
             if (id == kTimerFlush) {
                 store_->flushIfDue(now());
             } else if (id == kTimerWatchdog) {
-                const std::uint32_t hb = input_.heartbeat(), raw = input_.rawCount();
-                if (raw != lastRaw_ && hb == lastHeartbeat_ && lastRaw_ != 0) {
-                    win::debugLog("watchdog: raw input flowing but no hook callbacks; re-installing hooks");
+                // Each hook is checked against its own raw stream: mouse input without mouse hook calls, or
+                // keyboard input without keyboard hook calls, means Windows dropped that hook.
+                const auto st = input_.status();
+                const bool mouseDead = st.rawMouse != lastRawMouse_ && st.mouseHookCalls == lastMouseCalls_ && lastRawMouse_ != 0;
+                const bool keyDead = st.rawKeyboard != lastRawKey_ && st.keyboardHookCalls == lastKeyCalls_ && lastRawKey_ != 0;
+                if (mouseDead || keyDead) {
+                    win::debugLog(std::string("watchdog: raw input flowing but no ") + (mouseDead ? "mouse" : "keyboard") + " hook callbacks; re-installing hooks");
                     input_.reinstallHooks();
                 }
-                lastHeartbeat_ = hb;
-                lastRaw_ = raw;
+                lastMouseCalls_ = st.mouseHookCalls;
+                lastKeyCalls_ = st.keyboardHookCalls;
+                lastRawMouse_ = st.rawMouse;
+                lastRawKey_ = st.rawKeyboard;
             } else if (id == kTimerSnapCheck) {
                 KillTimer(hwnd_, kTimerSnapCheck);
                 snapCheck();
@@ -578,7 +636,13 @@ LRESULT App::handle(UINT msg, WPARAM wp, LPARAM lp) {
             } else if (id == kTimerDemoClose) {
                 KillTimer(hwnd_, kTimerDemoClose);
                 ring_.close(false);
-                DestroyWindow(hwnd_);
+                quit();
+            } else if (id == kTimerDetachExpiry) {
+                KillTimer(hwnd_, kTimerDetachExpiry);
+                pushConfig();  // shaping stops now unless the mouse came back
+            } else if (id == kTimerPointerOwner) {
+                KillTimer(hwnd_, kTimerPointerOwner);
+                applyPointer();
             } else if (id >= kFirstEchoTimer) {
                 KillTimer(hwnd_, id);
                 auto it = echoes_.find(id);
@@ -596,7 +660,10 @@ LRESULT App::handle(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_DISPLAYCHANGE:
             return 0;
         case WM_ENDSESSION:
-            if (wp) DestroyWindow(hwnd_);
+            if (wp) quit();
+            return 0;
+        case WM_CLOSE:
+            quit();
             return 0;
         case WM_DESTROY:
             PostQuitMessage(0);

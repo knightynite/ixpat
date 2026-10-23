@@ -27,15 +27,14 @@ GestureAccumulator::MoveResult GestureAccumulator::move(double dx, double dy, co
         return r;
     }
     double& acc = axis_ == 1 ? accX_ : accY_;
-    const ButtonAction& action = axis_ == 1 ? (acc < 0 ? c.left : c.right) : (acc < 0 ? c.up : c.down);
-    const double unit = action.isStepped() ? c.stepPx : c.swipePx;
+    const std::uint8_t dir = axis_ == 1 ? (acc < 0 ? kGestureLeft : kGestureRight) : (acc < 0 ? kGestureUp : kGestureDown);
+    const ActionKind kind = dir == kGestureUp ? c.up : dir == kGestureDown ? c.down : dir == kGestureLeft ? c.left : c.right;
+    const double unit = isSteppedKind(kind) ? c.stepPx : c.swipePx;
     if (!(unit > 0)) return r;
-    int fired = 0;
-    while (std::abs(acc) >= unit && fired < kMaxPerMove) {
+    while (std::abs(acc) >= unit && r.count < kMaxPerMove) {
         acc -= acc < 0 ? -unit : unit;
-        ++fired;
+        r.dirs[static_cast<std::size_t>(r.count++)] = dir;
         ++fired_;
-        r.actions.push_back(action);
     }
     return r;
 }

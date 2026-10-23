@@ -129,11 +129,13 @@ Settings defaultSettings() {
 }
 
 std::string newBridgeToken() {
-    static thread_local std::mt19937_64 rng{std::random_device{}()};
+    // The token is a secret: draw it from the OS CSPRNG (std::random_device is BCryptGenRandom on
+    // MSVC), not from a seeded PRNG.
+    std::random_device rd;
     constexpr std::string_view chars = "abcdefghijklmnopqrstuvwxyz0123456789";
     std::uniform_int_distribution<std::size_t> pick(0, chars.size() - 1);
     std::string t(24, ' ');
-    for (auto& c : t) c = chars[pick(rng)];
+    for (auto& c : t) c = chars[pick(rd)];
     return t;
 }
 

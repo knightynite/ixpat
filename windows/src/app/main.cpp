@@ -176,6 +176,8 @@ void App::start() {
 
     store_ = std::make_unique<win::SettingsStore>(win::settingsPath());
     settings_ = store_->load();
+    // First launch: write the file so the bridge token is on disk for plugins (the Mac saves on init too).
+    if (!std::filesystem::exists(win::settingsPath())) store_->save(settings_);
     store_->watch(hwnd_, WM_APP_SETTINGS);
 
     // Engine -> device; echoes come back through one-shot timers.

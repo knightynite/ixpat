@@ -23,3 +23,10 @@ target_link_libraries(ixpat_tests PRIVATE ixpat_core)
 target_compile_definitions(ixpat_tests PRIVATE IXPAT_TEST_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
 enable_testing()
 add_test(NAME core COMMAND ixpat_tests)
+
+# ixpat-probe: the hardware instrument (console tool).
+file(GLOB PROBE_SOURCES CONFIGURE_DEPENDS tools/probe/*.cpp)
+add_executable(ixpat_probe ${PROBE_SOURCES})
+target_include_directories(ixpat_probe PRIVATE tools/probe)
+target_link_libraries(ixpat_probe PRIVATE ixpat_core hid cfgmgr32 user32)
+set_target_properties(ixpat_probe PROPERTIES OUTPUT_NAME ixpat-probe)

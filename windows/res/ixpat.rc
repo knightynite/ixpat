@@ -1,0 +1,35 @@
+#include <windows.h>
+#include "../src/app/version.h"
+
+#define IDI_IXPAT 101
+
+IDI_IXPAT ICON "ixpat.ico"
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION IXPAT_VERSION_MAJOR,IXPAT_VERSION_MINOR,IXPAT_VERSION_PATCH,0
+ PRODUCTVERSION IXPAT_VERSION_MAJOR,IXPAT_VERSION_MINOR,IXPAT_VERSION_PATCH,0
+ FILEFLAGSMASK 0x3fL
+ FILEFLAGS 0x0L
+ FILEOS 0x40004L
+ FILETYPE 0x1L
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"
+        BEGIN
+            VALUE "CompanyName", "AL Najafi"
+            VALUE "FileDescription", "iXpat: haptics, Action Ring and kinetic scrolling for the Surface Mouse (2nd Edition)"
+            VALUE "FileVersion", IXPAT_VERSION_STRING
+            VALUE "InternalName", "iXpat"
+            VALUE "LegalCopyright", "(c) 2026 AL Najafi. MIT License. Not affiliated with Microsoft."
+            VALUE "OriginalFilename", "iXpat.exe"
+            VALUE "ProductName", "iXpat"
+            VALUE "ProductVersion", IXPAT_VERSION_STRING
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

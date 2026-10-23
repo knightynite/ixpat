@@ -118,8 +118,9 @@ std::vector<RingItem> defaultRingItems() {
 }
 
 std::string newUuidUpper() {
-    static thread_local std::mt19937_64 rng{std::random_device{}()};
-    std::uint64_t hi = rng(), lo = rng();
+    std::random_device rd;  // OS CSPRNG; ids are not secrets, but there is no reason to be weaker
+    auto word = [&rd] { return (static_cast<std::uint64_t>(rd()) << 32) | rd(); };
+    std::uint64_t hi = word(), lo = word();
     hi = (hi & 0xFFFFFFFFFFFF0FFFull) | 0x0000000000004000ull;  // version 4
     lo = (lo & 0x3FFFFFFFFFFFFFFFull) | 0x8000000000000000ull;  // variant 10xx
     char buf[37];

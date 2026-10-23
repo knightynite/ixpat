@@ -78,7 +78,8 @@ void LayeredSurface::end(HWND hwnd, POINT screenPos, std::uint8_t alpha) {
     BLENDFUNCTION bf{AC_SRC_OVER, 0, alpha, AC_SRC_ALPHA};
     POINT src{0, 0};
     SIZE size{width_, height_};
-    UpdateLayeredWindow(hwnd, nullptr, &screenPos, &size, dc_, &src, 0, &bf, ULW_ALPHA);
+    if (!UpdateLayeredWindow(hwnd, nullptr, &screenPos, &size, dc_, &src, 0, &bf, ULW_ALPHA)) lastError_ = GetLastError();
+    else lastError_ = 0;
 }
 
 }  // namespace ixpat::ui

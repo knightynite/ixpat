@@ -76,6 +76,9 @@ void RingWindow::create(HINSTANCE inst) {
     RegisterClassW(&wc);
     hwnd_ = CreateWindowExW(WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW | WS_EX_TOPMOST, kClass,
                             L"", WS_POPUP, 0, 0, kRingSize, kRingSize, nullptr, nullptr, inst, this);
+    if (!hwnd_ && onLog) onLog("ring: CreateWindowEx failed, error " + std::to_string(GetLastError()));
+    if (onLog && !Gfx::d2d()) onLog("ring: Direct2D factory unavailable");
+    if (onLog && !Gfx::dwrite()) onLog("ring: DirectWrite factory unavailable");
 }
 
 void RingWindow::destroy() {
@@ -122,8 +125,12 @@ void RingWindow::open(const std::vector<RingItem>& items, bool holdMode, std::ui
     if (HMONITOR mon = MonitorFromPoint(origin_, MONITOR_DEFAULTTONEAREST)) GetDpiForMonitor(mon, MDT_EFFECTIVE_DPI, &dpiX, &dpiY);
     scale_ = std::max(0.5, dpiX / 96.0);
     sizePx_ = static_cast<int>(std::lround(kRingSize * scale_));
-    if (!surface_.resize(sizePx_, sizePx_)) return;
+    if (!surface_.resize(sizePx_, sizePx_)) {
+        if (onLog) onLog("ring: surface resize failed (" + std::to_string(sizePx_) + " px)");
+        return;
+    }
     ensureFormats();
+    if (onLog) onLog("ring: open at " + std::to_string(origin_.x) + "," + std::to_string(origin_.y) + " size " + std::to_string(sizePx_) + " scale " + std::to_string(scale_));
     open_ = true;
     openedAt_ = GetTickCount64();
     drawnAlpha_ = 0;
@@ -233,6 +240,7 @@ void RingWindow::draw() {
     const ULONGLONG elapsed = GetTickCount64() - openedAt_;
     drawnAlpha_ = static_cast<std::uint8_t>(std::min<ULONGLONG>(255, elapsed * 255 / kFadeMs));
     surface_.end(hwnd_, {origin_.x - sizePx_ / 2, origin_.y - sizePx_ / 2}, drawnAlpha_);
+    if (surface_.lastError() && onLog) onLog("ring: UpdateLayeredWindow failed, error " + std::to_string(surface_.lastError()));
 }
 
 }  // namespace ixpat::ui

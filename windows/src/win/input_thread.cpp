@@ -55,7 +55,10 @@ void InputThread::setConfig(const InputConfig& c) {
     raw_.anyMouse = c.anyMouse;  // read on the input thread; a bool, benign
 }
 
-void InputThread::setRingOpen(bool open) { ringOpen_ = open; }
+void InputThread::setRingState(bool open, bool holdMode) {
+    ringHold_ = holdMode;
+    ringOpen_ = open;
+}
 void InputThread::gesturesBegin() { gestureRequested_ = true; }
 void InputThread::gesturesEnd() { gestureRequested_ = false; }
 void InputThread::reinstallHooks() {
@@ -97,6 +100,13 @@ bool InputThread::start(HWND mainWindow, UINT message) {
     timer_ = CreateWaitableTimerExW(nullptr, nullptr, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
     if (!timer_) timer_ = CreateWaitableTimerW(nullptr, FALSE, nullptr);
     instance_ = this;
+    // The ring is open in toggle mode: a press of the action button commits it instead of running its action
+    // (the Mac's `button.pressIntercept`). The decoder hides the chord; main closes the ring on ringClick.
+    chord_.pressIntercept = [this] {
+        if (!(ringOpen_ && !ringHold_)) return false;
+        post({InputEvent::Kind::ringClick, 0, 0, 0, now()});
+        return true;
+    };
     HANDLE ready = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     thread_ = std::thread([this, ready] {
         SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
@@ -458,6 +468,11 @@ bool InputThread::onKey(WPARAM msg, const KBDLLHOOKSTRUCT& k) noexcept {
     drainRawInput();
     const InputConfig cfg = config();
     if (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN) kinetic_.stop();  // a key stops the coast
+    // Escape cancels an open ring (and is swallowed); any other key passes while the ring is open.
+    if (ringOpen_ && k.vkCode == VK_ESCAPE && !(k.flags & LLKHF_INJECTED)) {
+        if (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN) post({InputEvent::Kind::ringCancel, 0, 0, 0, t});
+        return true;
+    }
     if (!cfg.swallowChords || !cfg.enabled) return false;
     if (!isChordKey(k.vkCode)) return false;
     bool surface = false;

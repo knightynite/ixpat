@@ -74,6 +74,9 @@ TEST_CASE("haptic table: names and lookups") {
     CHECK(ixpat::waveformName(0x1003) == "Click");
     CHECK(ixpat::waveformName(0x1015) == "Grow");
     CHECK(ixpat::waveformName(0x1234) == "Waveform 0x1234");
+    std::string a = ixpat::waveformName(0x1111);
+    for (int i = 0; i < 8; ++i) (void)ixpat::waveformName(static_cast<std::uint16_t>(0x2000 + i));
+    CHECK(a == "Waveform 0x1111");  // an owning string, not a view into rotating storage
     CHECK(ixpat::ordinalFor(0x1012, ixpat::measuredWaveforms()) == 4);
     CHECK_FALSE(ixpat::ordinalFor(0x1004, ixpat::measuredWaveforms()).has_value());
     CHECK(ixpat::usageForLowercaseName("click") == 0x1003);

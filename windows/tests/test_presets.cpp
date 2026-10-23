@@ -89,7 +89,7 @@ TEST_CASE("presets: applying a wheel feel sets the ratchet, free-spin and textur
     CHECK(s.baseRule(HapticEvent::scrollStep).echo->delayMs == 30);
 }
 
-TEST_CASE("presets: feel names use the base rules, not a profile override") {
+TEST_CASE("presets: feel names use the effective rules, so a profile override reads Custom (as on the Mac)") {
     auto s = ixpat::defaultSettings();
     ixpat::applyClickFeel(s, clickFeel("Crisp"), false);
     ixpat::AppProfile p;
@@ -99,5 +99,7 @@ TEST_CASE("presets: feel names use the base rules, not a profile override") {
     s.profiles.push_back(p);
     s.frontBundleID = "x.exe";
     CHECK(s.rule(HapticEvent::leftDown).ordinal == 4);
+    CHECK(ixpat::clickFeelName(s, false) == "Custom");
+    s.frontBundleID.reset();
     CHECK(ixpat::clickFeelName(s, false) == "Crisp");
 }

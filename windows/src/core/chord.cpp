@@ -8,9 +8,11 @@ ChordOutput ChordDecoder::key(int vk, bool down, Seconds now) {
     if (down) {
         if (down_[vk]) return ChordOutput::none;  // key repeat
         down_[vk] = true;
-        if (vk == kVkS && winDown() && shiftDown()) return chordDown(Chord::snip, now);
-        if (vk == kVkF23 && winDown() && shiftDown()) return chordDown(Chord::copilot, now);
-        if ((vk == kVkLWin || vk == kVkRWin) && chord_ == Chord::none) return chordDown(Chord::win, now);
+        // Evaluate the whole key set on every make, like the Mac reads each report: kbdhid may emit the
+        // modifiers and the key of one report in any order.
+        if (down_[kVkS] && winDown() && shiftDown()) return chordDown(Chord::snip, now);
+        if (down_[kVkF23] && winDown() && shiftDown()) return chordDown(Chord::copilot, now);
+        if (winDown() && chord_ == Chord::none && !down_[kVkS] && !down_[kVkF23]) return chordDown(Chord::win, now);
         return ChordOutput::none;
     }
     down_[vk] = false;

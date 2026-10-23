@@ -2,7 +2,6 @@
 #include <windows.h>
 
 #include <cstdint>
-#include <map>
 #include <optional>
 
 namespace ixpat::win {
@@ -35,8 +34,13 @@ public:
 
 private:
     bool isSurface(HANDLE device);
-    std::map<HANDLE, bool> devices_;
-    alignas(8) unsigned char buffer_[1024]{};
+    struct Known {
+        HANDLE device = nullptr;
+        bool surface = false;
+    };
+    Known devices_[32]{};  // fixed: resolving a device never allocates (the hooks drain WM_INPUT)
+    int deviceCount_ = 0;
+    std::uint64_t buffer_[128]{};  // 1 KB, naturally aligned for RAWINPUT
 };
 
 bool isSurfaceMouseDevicePath(const wchar_t* path, std::size_t length);

@@ -1,10 +1,11 @@
 #include "win/hid_device.h"
 
+#include <initguid.h>  // first: defines the DEVPKEY_/GUID_ constants used below in this TU
+
 #include <cfgmgr32.h>
 #include <devpkey.h>
-#include <hidsdi.h>
-#include <initguid.h>
 #include <hidclass.h>
+#include <hidsdi.h>
 
 #include <algorithm>
 #include <cwctype>

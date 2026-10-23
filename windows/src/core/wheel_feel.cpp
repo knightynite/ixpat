@@ -6,11 +6,10 @@
 namespace ixpat {
 
 std::vector<WheelPulse> WheelFeelEngine::notch(int delta, Seconds now, const WheelFeelParams& p) {
+    // The wheel state (rate window, direction, accumulators) advances whether or not pulses may play,
+    // as on the Mac where only the haptic engine is gated: re-enabling mid-scroll must not look like a pause.
     std::vector<WheelPulse> out;
-    if (!p.enabled) {
-        freeSpin_ = false;  // nothing plays while disabled; drop out of free-spin silently
-        return out;
-    }
+    const bool emit = p.enabled;
     const Seconds gap = now - lastNotchTime_;
     lastNotchTime_ = now;
     notchTimes_.push_back(now);
@@ -19,7 +18,7 @@ std::vector<WheelPulse> WheelFeelEngine::notch(int delta, Seconds now, const Whe
 
     // Free-spin: a flick past the threshold silences the ratchet and boosts distance until the wheel
     // rests; the ratchet re-engages with a soft Align (see idle()).
-    if (p.freeSpin) {
+    if (emit && p.freeSpin) {
         if (!freeSpin_ && rate >= p.freeSpinThreshold) {
             freeSpin_ = true;
             out.push_back({HapticEvent::freeSpinOn, std::nullopt, 0});
@@ -43,7 +42,7 @@ std::vector<WheelPulse> WheelFeelEngine::notch(int delta, Seconds now, const Whe
     if (p.ratchetDynamic && dir != 0 && lastNotchDir_ != 0 && dir != lastNotchDir_ && gap < 1.0) {
         lastNotchDir_ = dir;
         wheelAccum_ = 0;
-        out.push_back({HapticEvent::scrollStep, p.collideOrdinal, 1});
+        if (emit) out.push_back({HapticEvent::scrollStep, p.collideOrdinal, 1});
         return out;
     }
     lastNotchDir_ = dir;
@@ -52,7 +51,7 @@ std::vector<WheelPulse> WheelFeelEngine::notch(int delta, Seconds now, const Whe
     if (wheelAccum_ < every) return out;
     wheelAccum_ = 0;
     if (!p.ratchetDynamic) {
-        out.push_back({HapticEvent::scrollStep, std::nullopt, 0});
+        if (emit) out.push_back({HapticEvent::scrollStep, std::nullopt, 0});
         return out;
     }
     if (rate >= p.ratchetLightRate) {
@@ -61,11 +60,11 @@ std::vector<WheelPulse> WheelFeelEngine::notch(int delta, Seconds now, const Whe
         lastRatchetTick_ = now;
         // Step, or Hover if the rule itself is Step.
         const int light = p.scrollStepOrdinal == p.stepOrdinal ? p.hoverOrdinal : p.stepOrdinal;
-        out.push_back({HapticEvent::scrollStep, light, -1});
+        if (emit) out.push_back({HapticEvent::scrollStep, light, -1});
     } else {
         // Slow: a firm detent per notch; the first notch after a pause lands a touch harder.
         lastRatchetTick_ = now;
-        out.push_back({HapticEvent::scrollStep, std::nullopt, gap > 0.6 ? 1 : 0});
+        if (emit) out.push_back({HapticEvent::scrollStep, std::nullopt, gap > 0.6 ? 1 : 0});
     }
     return out;
 }

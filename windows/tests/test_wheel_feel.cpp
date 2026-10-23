@@ -177,6 +177,18 @@ TEST_CASE("wheel: disabled returns nothing and leaves free-spin") {
     CHECK_FALSE(e.idle(t + 1, p).has_value());
 }
 
+TEST_CASE("wheel: while disabled the notch history still advances, so re-enabling mid-scroll does not read as a pause") {
+    WheelFeelEngine e;
+    auto p = P();
+    p.enabled = false;
+    for (int i = 0; i < 4; ++i) CHECK(e.notch(1, 5.0 + i * 0.3, p).empty());
+    p.enabled = true;
+    auto out = e.notch(1, 6.2, p);  // 0.3 s after the last (silent) notch
+    REQUIRE(out.size() == 1);
+    CHECK(isFirm(out[0], 0));  // not the harder first-after-a-pause detent
+    CHECK_FALSE(e.freeSpinActive());
+}
+
 TEST_CASE("wheel: with the dynamic ratchet off every detent is the plain rule and reversals do not bump") {
     WheelFeelEngine e;
     auto p = P();

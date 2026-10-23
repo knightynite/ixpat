@@ -22,6 +22,16 @@ GestureConfig cfg() {
 }
 }  // namespace
 
+TEST_CASE("gesture: the default config is the Mac's: volume up/down, previous/next track") {
+    GestureConfig d;
+    CHECK(d.up.kind == ActionKind::volumeUp);
+    CHECK(d.down.kind == ActionKind::volumeDown);
+    CHECK(d.left.kind == ActionKind::previousTrack);
+    CHECK(d.right.kind == ActionKind::nextTrack);
+    CHECK(d.stepPx == 24);
+    CHECK(d.swipePx == 90);
+}
+
 TEST_CASE("gesture: inactive accumulator passes motion through untouched") {
     GestureAccumulator g;
     CHECK_FALSE(g.active());

@@ -25,6 +25,23 @@ TEST_CASE("chord: Win+Shift+S is a press, released cleanly") {
     CHECK_FALSE(d.chordActive(t + 0.6));  // 0.4 s after the last mouse key
 }
 
+TEST_CASE("chord: the chord is recognised whatever order kbdhid emits the makes") {
+    D d;
+    CHECK(d.key(ixpat::kVkLWin, true, 1.0) == O::none);
+    CHECK(d.key(ixpat::kVkS, true, 1.0) == O::none);        // S before Shift: not yet
+    CHECK(d.key(ixpat::kVkLShift, true, 1.0) == O::press);  // the modifier completes it
+    d.key(ixpat::kVkS, false, 1.1);
+    d.key(ixpat::kVkLShift, false, 1.1);
+    CHECK(d.key(ixpat::kVkLWin, false, 1.1) == O::none);    // never a double press
+    D e;
+    e.key(ixpat::kVkLShift, true, 2.0);
+    e.key(ixpat::kVkF23, true, 2.0);
+    CHECK(e.key(ixpat::kVkLWin, true, 2.0) == O::holdBegin);  // Win last
+    e.key(ixpat::kVkF23, false, 3.0);
+    e.key(ixpat::kVkLShift, false, 3.0);
+    CHECK(e.key(ixpat::kVkLWin, false, 3.0) == O::holdEnd);
+}
+
 TEST_CASE("chord: right-hand modifiers count too") {
     D d;
     CHECK(d.key(ixpat::kVkRWin, true, 1.0) == O::none);

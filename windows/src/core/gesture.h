@@ -6,7 +6,10 @@
 namespace ixpat {
 
 struct GestureConfig {
-    ButtonAction up, down, left, right;
+    ButtonAction up = ButtonAction::blank(ActionKind::volumeUp);
+    ButtonAction down = ButtonAction::blank(ActionKind::volumeDown);
+    ButtonAction left = ButtonAction::blank(ActionKind::previousTrack);
+    ButtonAction right = ButtonAction::blank(ActionKind::nextTrack);
     double stepPx = 24;   // pointer travel per volume / brightness step
     double swipePx = 90;  // pointer travel per swipe action
     bool freezePointer = true;

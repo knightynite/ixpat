@@ -130,6 +130,18 @@ TEST_CASE("settings: hand-edited nonsense is clamped") {
     CHECK(r.echo->delayMs == 2000);
 }
 
+TEST_CASE("settings: out-of-range and huge numbers clamp like Swift instead of wrapping") {
+    CHECK(parseOk(R"({"masterIntensity":2147483648})").masterIntensity == 4);
+    CHECK(parseOk(R"({"masterIntensity":1e300})").masterIntensity == 4);
+    CHECK(parseOk(R"({"masterIntensity":-1e300})").masterIntensity == 0);
+    CHECK(parseOk(R"({"clickHoldMs":1e19})").clickHoldMs == 1500);
+    CHECK(parseOk(R"({"bridgePort":-9999999999})").bridgePort == 1024);
+    CHECK(parseOk(R"({"accentHex":-5})").accentHex == 0x0A84FFu);        // negative for an unsigned: default
+    CHECK(parseOk(R"({"accentHex":4294967296})").accentHex == 0x0A84FFu);  // too big: default
+    CHECK(parseOk(R"({"accentHex":16711680})").accentHex == 0xFF0000u);
+    CHECK(parseOk(R"({"masterIntensity":2.7})").masterIntensity == 2);    // a float for an int: truncated
+}
+
 TEST_CASE("settings: NaN and infinity become defaults") {
     auto s = ixpat::defaultSettings();
     s.scrollGlide = std::numeric_limits<double>::quiet_NaN();

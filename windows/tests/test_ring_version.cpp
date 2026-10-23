@@ -41,6 +41,7 @@ TEST_CASE("version: numeric dotted compare") {
     CHECK_FALSE(ixpat::isNewerVersion("0.1.1", "0.1.1.0"));
     CHECK(ixpat::isNewerVersion("0.10.0", "0.9.0"));
     CHECK_FALSE(ixpat::isNewerVersion("garbage", "0.1.0"));  // non-numeric parts count as 0
+    CHECK_FALSE(ixpat::isNewerVersion("2oops", "1.0"));        // a numeric prefix is still not a number
 }
 
 TEST_CASE("version: release tags lose their prefix") {

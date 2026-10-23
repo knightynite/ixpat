@@ -3,14 +3,24 @@
 #include <hidusage.h>
 
 #include <cwctype>
+#include <iterator>
 #include <string>
 
 namespace ixpat::win {
 
 bool isSurfaceMouseDevicePath(const wchar_t* path, std::size_t length) {
-    std::wstring p(path, length);
-    for (auto& c : p) c = static_cast<wchar_t>(std::towlower(c));
-    return p.find(L"vid&02045e_pid&0880") != std::wstring::npos || p.find(L"vid_045e&pid_0880") != std::wstring::npos;
+    // Case-insensitive substring search without allocating (called from the input thread).
+    auto contains = [&](const wchar_t* needle) {
+        const std::size_t n = wcslen(needle);
+        if (length < n) return false;
+        for (std::size_t i = 0; i + n <= length; ++i) {
+            std::size_t k = 0;
+            while (k < n && std::towlower(path[i + k]) == needle[k]) ++k;
+            if (k == n) return true;
+        }
+        return false;
+    };
+    return contains(L"vid&02045e_pid&0880") || contains(L"vid_045e&pid_0880");
 }
 
 bool RawInput::registerOn(HWND hwnd) {
@@ -31,8 +41,9 @@ void RawInput::unregister() {
 
 bool RawInput::isSurface(HANDLE device) {
     if (!device) return false;
-    auto it = devices_.find(device);
-    if (it != devices_.end()) return it->second;
+    for (int i = 0; i < deviceCount_; ++i) {
+        if (devices_[i].device == device) return devices_[i].surface;
+    }
     bool surface = false;
     UINT size = 0;
     GetRawInputDeviceInfoW(device, RIDI_DEVICENAME, nullptr, &size);
@@ -43,7 +54,13 @@ bool RawInput::isSurface(HANDLE device) {
             surface = isSurfaceMouseDevicePath(name, len);
         }
     }
-    devices_[device] = surface;
+    // A handle set that changes is rare (plug/unplug); when the table is full the oldest entry goes.
+    if (deviceCount_ < static_cast<int>(std::size(devices_))) {
+        devices_[deviceCount_++] = {device, surface};
+    } else {
+        for (int i = 1; i < deviceCount_; ++i) devices_[i - 1] = devices_[i];
+        devices_[deviceCount_ - 1] = {device, surface};
+    }
     return surface;
 }
 

@@ -22,6 +22,7 @@
 #include "win/paths.h"
 #include "win/settings_store.h"
 #include "win/tray.h"
+#include "win/uia_watch.h"
 #include "ui/ring_window.h"
 #include "ui/settings_window.h"
 
@@ -37,9 +38,11 @@ constexpr UINT WM_APP_SETTINGS = WM_APP + 3;
 constexpr UINT WM_APP_BRIDGE = WM_APP + 4;
 constexpr UINT WM_APP_TRAY = WM_APP + 5;
 constexpr UINT WM_APP_SHOW = WM_APP + 6;
+constexpr UINT WM_APP_UIA = WM_APP + 7;
 
 constexpr UINT_PTR kTimerFlush = 4, kTimerWatchdog = 5, kTimerSnapCheck = 7, kTimerPointerApply = 8, kTimerRingCommit = 9,
-                   kTimerDemoClose = 10, kTimerDetachExpiry = 11, kTimerPointerOwner = 12;
+                   kTimerDemoClose = 10, kTimerDetachExpiry = 11, kTimerPointerOwner = 12,
+                   kTimerCursor = 13;
 constexpr UINT_PTR kFirstEchoTimer = 100;
 
 enum MenuId : UINT { kMenuEnabled = 1, kMenuHaptics, kMenuSettings, kMenuOpenSettings, kMenuOpenLogs, kMenuReload, kMenuAbout, kMenuQuit };
@@ -90,6 +93,10 @@ private:
     win::BridgeServer bridge_;
     win::PointerSettings pointer_;
     win::Tray tray_;
+    win::UiaWatch uia_;
+    HCURSOR arrowCursor_ = nullptr, waitCursor_ = nullptr, appStartingCursor_ = nullptr, lastCursor_ = nullptr;
+    Seconds lastCursorTick_ = 0;
+    void cursorTick();
     ui::RingWindow ring_;
     std::optional<ButtonAction> pendingRingAction_;
     bool ringDemo_ = false;
@@ -114,6 +121,7 @@ private:
     std::string waveformsJson_ = "[]";
     bool pointerOwnerSurface_ = false;
     bool quitting_ = false;
+    unsigned flushTicks_ = 0;
     void quit();
     void refreshWaveformsJson();
 };
@@ -254,6 +262,14 @@ void App::start() {
 
     // Input thread.
     if (!input_.start(hwnd_, WM_APP_INPUT)) win::debugLog("input thread failed to start");
+    uia_.now = [this] { return now(); };
+    uia_.lastPointerMove = [this] { return input_.lastPointerMove(); };
+    uia_.leftButtonDown = [this] { return input_.leftButtonDown(); };
+    uia_.start(hwnd_, WM_APP_UIA);
+    arrowCursor_ = LoadCursorW(nullptr, IDC_ARROW);
+    waitCursor_ = LoadCursorW(nullptr, IDC_WAIT);
+    appStartingCursor_ = LoadCursorW(nullptr, IDC_APPSTARTING);
+    SetTimer(hwnd_, kTimerCursor, 50, nullptr);
     {
         const auto st = input_.status();
         win::debugLog(std::string("raw input registered=") + (st.rawRegistered ? "yes" : "no") + " hooks installed=" +
@@ -405,6 +421,7 @@ void App::syncModel() {
     model_.lastEvent = engine_.lastEvent();
     model_.lastPlayed = engine_.lastPlayed();
     model_.input = input_.status();
+    model_.uia = uia_.stats();
     model_.bridgeRunning = bridge_.running();
     model_.frontApp = settings_.frontBundleID.value_or("");
     if (window_) window_->refresh();
@@ -417,6 +434,7 @@ void App::quit() {
     window_.reset();
     KillTimer(hwnd_, kTimerFlush);
     KillTimer(hwnd_, kTimerWatchdog);
+    KillTimer(hwnd_, kTimerCursor);
     if (store_) {
         store_->stopWatching();
         store_->flush();
@@ -425,6 +443,7 @@ void App::quit() {
     input_.gesturesEnd();  // never leave the pointer frozen
     ring_.destroy();
     input_.stop();
+    uia_.stop();
     foreground_.stop();
     bridge_.stop();
     hid_.stop();
@@ -480,6 +499,51 @@ void App::pushConfig() {
     c.anyMouse = anyMouse_;
     input_.setConfig(c);
     lastFreeSpin_ = router_ && router_->freeSpinActive();
+    // Accessibility ticks poll only while a rule wants them and the mouse can play them.
+    const bool ticks = live && settings_.effHapticsEnabled();
+    win::UiaConfig u;
+    u.menuTicks = ticks && settings_.rule(HapticEvent::menuHighlight).enabled;
+    u.textTicks = ticks && (settings_.rule(HapticEvent::textSelect).enabled || settings_.rule(HapticEvent::textLine).enabled);
+    u.controlTicks = ticks && settings_.rule(HapticEvent::controlHover).enabled;
+    u.dropTicks = ticks && settings_.rule(HapticEvent::dropTarget).enabled;
+    u.sliderTicks = ticks && settings_.rule(HapticEvent::sliderTick).enabled;
+    u.selectionTicks = ticks && settings_.rule(HapticEvent::selectionChange).enabled;
+    u.scrollEndTicks = ticks && settings_.rule(HapticEvent::scrollEnd).enabled;
+    uia_.setConfig(u);
+}
+
+/// Hover affordance from the cursor shape (HoverWatcher.swift): arrow -> hand / I-beam / resize ticks once
+/// on arrival, leaving is silent; under a drag any change (the drop badge) ticks. Busy cursors and our own
+/// windows never tick.
+void App::cursorTick() {
+    const bool hover = settings_.rule(HapticEvent::hoverAffordance).enabled;
+    const bool drop = settings_.rule(HapticEvent::dropTarget).enabled;
+    const bool live = settings_.enabled && settings_.effHapticsEnabled() && (device_.connected || now() - lastDetach_ < 1800 || anyMouse_);
+    if (!live || !(hover || drop)) return;
+    const Seconds t = now();
+    if (t - input_.lastPointerMove() > 0.5) return;
+    CURSORINFO ci{};
+    ci.cbSize = sizeof ci;
+    if (!GetCursorInfo(&ci) || !(ci.flags & CURSOR_SHOWING)) return;
+    if (ci.hCursor == lastCursor_) return;
+    const HCURSOR prev = lastCursor_;
+    lastCursor_ = ci.hCursor;
+    if (prev == nullptr) return;  // the first sample is the baseline
+    if (t - lastCursorTick_ < 0.08) return;
+    if (ci.hCursor == waitCursor_ || ci.hCursor == appStartingCursor_) return;
+    HWND under = WindowFromPoint(ci.ptScreenPos);
+    DWORD pid = 0;
+    if (under) GetWindowThreadProcessId(under, &pid);
+    if (pid == GetCurrentProcessId()) return;
+    if (input_.leftButtonDown()) {
+        if (!drop) return;
+        lastCursorTick_ = t;
+        router_->systemEvent(HapticEvent::dropTarget, t);
+    } else {
+        if (!hover || ci.hCursor == arrowCursor_) return;
+        lastCursorTick_ = t;
+        router_->systemEvent(HapticEvent::hoverAffordance, t);
+    }
 }
 
 void App::onInputEvents() {
@@ -495,6 +559,7 @@ void App::onInputEvents() {
                     if (auto r = win::foregroundFrame()) frameBeforeDrag_ = IRect{r->left, r->top, r->right, r->bottom};
                 }
                 router_->buttons(oldMask, newMask, e.now);
+                if ((oldMask & ~newMask) & 0x01) uia_.noteClick();  // a release: did a tab / row become selected?
                 char buf[48];
                 std::snprintf(buf, sizeof buf, "mouse buttons %02x -> %02x", oldMask, newMask);
                 win::reportLog(buf);
@@ -505,6 +570,7 @@ void App::onInputEvents() {
             case win::InputEvent::Kind::rawWheel:
                 model_.wheelTotal += e.b;
                 router_->wheel(e.b, e.now);
+                uia_.noteWheel();
                 if (router_->freeSpinActive() != lastFreeSpin_) pushConfig();
                 break;
             case win::InputEvent::Kind::rawKey: {
@@ -705,6 +771,10 @@ LRESULT App::handle(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_APP_INPUT:
             onInputEvents();
             return 0;
+        case WM_APP_UIA:
+            if (router_) router_->systemEvent(static_cast<HapticEvent>(wp), now());
+            if (window_ && window_->isVisible()) syncModel();
+            return 0;
         case WM_APP_HID:
             onDeviceChanged();
             return 0;
@@ -737,6 +807,7 @@ LRESULT App::handle(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_TIMER: {
             const UINT_PTR id = wp;
             if (id == kTimerFlush) {
+                if (++flushTicks_ % 5 == 0 && window_ && window_->isVisible()) syncModel();  // counters move without events
                 store_->flushIfDue(now());
             } else if (id == kTimerWatchdog) {
                 // Each hook is checked against its own raw stream: mouse input without mouse hook calls, or
@@ -752,6 +823,8 @@ LRESULT App::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 lastKeyCalls_ = st.keyboardHookCalls;
                 lastRawMouse_ = st.rawMouse;
                 lastRawKey_ = st.rawKeyboard;
+            } else if (id == kTimerCursor) {
+                cursorTick();
             } else if (id == kTimerSnapCheck) {
                 KillTimer(hwnd_, kTimerSnapCheck);
                 snapCheck();

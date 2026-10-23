@@ -93,11 +93,15 @@ Exactly the split the Mac app has (IOHID reports vs. the CGEvent tap):
   firmware's fake left click, pointer motion in gesture mode, clicks while the ring is open, the hold
   action's release.
 - **Attribution.** Inside the hook callback we first drain pending `WM_INPUT` messages
-  (`PeekMessage(..., WM_INPUT, WM_INPUT, PM_REMOVE)`), which the system posted before it called the hook,
-  into a small FIFO of (device, kind, data). The hook event takes the oldest FIFO entry of its kind. If
-  the FIFO is empty the fallback is the Mac's time-window rule: treat the event as the Surface Mouse's if
-  that mouse produced a report of the same kind within the last 50 ms. The probe tool measures how often
-  the fallback is needed.
+  (`PeekMessage(..., WM_INPUT, WM_INPUT, PM_REMOVE)`) into a small FIFO of (device, kind, content).
+  The hook event is matched on **content** (wheel delta, button flag, key scan code), never on kind
+  alone, because injected input showed the hook can fire before its `WM_INPUT` and a kind-only match
+  pairs event N with event N-1 (see `measurements-2026-10.md`). A raw entry that arrives after its hook
+  event is matched retroactively for the device-side state (schematic, rules); a hook event that must
+  be decided before its raw entry arrives uses the Mac's rule: a non-injected wheel notch is shaped
+  while the Surface Mouse is connected and no other pointing device sent a wheel report in the last
+  2 s, and the chord keys are swallowed while the chord decoder reports `chordActive`. The probe tool
+  measures the real device's ordering and the fallback rate.
 - **Our own events** go out through `SendInput` with `dwExtraInfo = 0x49585054` ("IXPT"); the hooks let
   anything carrying that tag pass untouched (the Mac's `ownTag`).
 - **Hook hygiene.** Hook procedures are `noexcept`, allocate nothing, take one uncontended lock at most,

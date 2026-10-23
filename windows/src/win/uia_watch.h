@@ -60,6 +60,7 @@ private:
     UiaStats stats_;
     std::atomic<bool> clickPending_{false}, wheelPending_{false};
     std::atomic<std::int64_t> clickAtMs_{0}, wheelAtMs_{0};
+    std::atomic<int> wheelStage_{0};
     struct Impl;
     Impl* impl_ = nullptr;
 };

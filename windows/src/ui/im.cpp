@@ -38,6 +38,7 @@ FontSpec spec(TextStyle s) {
 }
 
 constexpr float kPt = 96.0f / 72.0f;  // points -> DIPs
+constexpr float kPopupRowH = 26, kPopupPad = 4;
 
 std::wstring wide(std::string_view s) {
     if (s.empty()) return {};
@@ -53,6 +54,23 @@ Frame::Frame(ID2D1RenderTarget* rt, const Palette& pal, const UiInput& in, UiSta
     : rt_(rt), pal_(pal), in_(in), st_(st), scale_(dpiScale), winW_(winW), winH_(winH) {
     st_.anyDirty = false;
     st_.consumed = false;
+    st_.wheelPending = false;
+    // A click while a popup is up belongs to the popup: a row selects (applied by that dropdown on the rerun pass),
+    // anywhere else just closes it. Either way nothing underneath sees the click.
+    if (!rt_ && in.kind == UiInput::Kind::down && !st_.openDropdown.empty()) {
+        for (const auto& p : st_.popups) {
+            const Rect box = popupBox(p);
+            if (!box.contains(in.x, in.y)) continue;
+            const int i = static_cast<int>((in.y - box.y - kPopupPad) / kPopupRowH);
+            if (i >= 0 && i < static_cast<int>(p.options.size())) {
+                st_.pendingPopupId = p.id;
+                st_.pendingPopupIndex = i;
+                st_.rerun = true;
+            }
+        }
+        st_.openDropdown.clear();
+        st_.consumed = true;
+    }
     st_.popups.clear();
     if (in.kind == UiInput::Kind::move || in.kind == UiInput::Kind::down || in.kind == UiInput::Kind::up || in.kind == UiInput::Kind::wheel) {
         st_.mouseX = in.x;
@@ -61,12 +79,6 @@ Frame::Frame(ID2D1RenderTarget* rt, const Palette& pal, const UiInput& in, UiSta
         st_.mouseX = st_.mouseY = -1;
     }
     if (rt_) rt_->CreateSolidColorBrush(D2D1::ColorF(0, 0, 0, 1), brush_.put());
-    // An open dropdown eats the event if it lands in its popup (resolved by drawPopups at finish);
-    // a click anywhere else closes it. We evaluate that first so widgets underneath ignore the click.
-    if (!st_.openDropdown.empty() && in.kind == UiInput::Kind::down) {
-        // Handled in finish(): we need the popup rect, which the dropdown widget records this frame.
-        popupHandled_ = false;
-    }
     if (in.kind == UiInput::Kind::key && in.key == VK_ESCAPE && !st_.openDropdown.empty()) {
         st_.openDropdown.clear();
         st_.consumed = true;
@@ -204,9 +216,7 @@ void Frame::gap(float w) { cx_ += w; }
 void Frame::beginScroll(Rect viewport) {
     scrollViewport_ = viewport;
     inScroll_ = true;
-    if (in_.kind == UiInput::Kind::wheel && viewport.contains(in_.x, in_.y) && st_.openDropdown.empty()) {
-        st_.scrollY = std::clamp(st_.scrollY - in_.wheel * 0.5f, 0.0f, std::max(0.0f, st_.contentHeight - viewport.h));
-    }
+    st_.wheelPending = !rt_ && in_.kind == UiInput::Kind::wheel && viewport.contains(in_.x, in_.y) && st_.openDropdown.empty();
     st_.viewHeight = viewport.h;
     if (rt_) rt_->PushAxisAlignedClip(viewport.d2d(), D2D1_ANTIALIAS_MODE_ALIASED);
     stack_.push_back({area_, cx_, cy_, inRow_, rowY_, rowH_, rowMaxH_});
@@ -219,6 +229,10 @@ void Frame::beginScroll(Rect viewport) {
 
 void Frame::endScroll() {
     st_.contentHeight = cy_ - scrollStartY_;
+    if (st_.wheelPending && !st_.consumed) {  // no slider under the pointer took the notch
+        st_.scrollY = std::clamp(st_.scrollY - in_.wheel * 0.5f, 0.0f, std::max(0.0f, st_.contentHeight - scrollViewport_.h));
+    }
+    st_.wheelPending = false;
     if (rt_) rt_->PopAxisAlignedClip();
     // Scroll bar
     if (rt_ && st_.contentHeight > scrollViewport_.h) {
@@ -520,7 +534,7 @@ bool Frame::slider(const std::string& id, double& value, double lo, double hi, d
             }
         }
         if (in_.kind == UiInput::Kind::up && st_.active == id) st_.active.clear();
-        if (in_.kind == UiInput::Kind::wheel && over && st_.openDropdown.empty()) {
+        if (in_.kind == UiInput::Kind::wheel && over && st_.openDropdown.empty() && !st_.consumed) {
             const double s = step > 0 ? step : (hi - lo) / 20;
             const double v = std::clamp(value + (in_.wheel > 0 ? s : -s), lo, hi);
             if (v != value) {
@@ -614,9 +628,17 @@ bool Frame::dropdown(const std::string& id, int& index, std::span<const std::wst
     const Rect r = take(width, h + 2);
     const Rect b{r.x, r.y + 1, width, h};
     bool changed = false;
+    if (!rt_ && st_.pendingPopupId == id) {  // the popup row clicked on the previous pass
+        st_.pendingPopupId.clear();
+        if (index != st_.pendingPopupIndex && st_.pendingPopupIndex >= 0 && st_.pendingPopupIndex < static_cast<int>(options.size())) {
+            index = st_.pendingPopupIndex;
+            changed = true;
+            st_.anyDirty = true;
+        }
+    }
     if (!rt_ && enabled && !st_.consumed) {
         if (in_.kind == UiInput::Kind::down && hovered(b) && !in_.rightButton) {
-            st_.openDropdown = st_.openDropdown == id ? std::string() : id;
+            st_.openDropdown = id;
             st_.focus.clear();
             st_.consumed = true;
         }
@@ -626,7 +648,7 @@ bool Frame::dropdown(const std::string& id, int& index, std::span<const std::wst
         p.id = id;
         p.anchor = b;
         p.options.assign(options.begin(), options.end());
-        p.index = &index;
+        p.current = index;
         p.width = width;
         st_.popups.push_back(std::move(p));
     }
@@ -639,7 +661,16 @@ bool Frame::dropdown(const std::string& id, int& index, std::span<const std::wst
         drawText(text, {b.x + 10, b.y, b.w - 32, b.h}, TextStyle::body, pal_.text, a, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, false);
         glyph(0xE70D, {b.right() - 24, b.y, 20, b.h}, pal_.text2.rgb, pal_.text2.alpha * a, 9);
     }
-    return changed;  // selection changes are applied by finish() when the popup is clicked
+    return changed;
+}
+
+Rect Frame::popupBox(const UiState::Popup& p) const {
+    const float h = kPopupPad * 2 + kPopupRowH * static_cast<float>(p.options.size());
+    float y = p.anchor.bottom() + 2;
+    if (y + h > winH_ - 8) y = std::max(8.0f, p.anchor.y - 2 - h);  // flip up near the bottom edge
+    const float w = std::max(p.width, 120.0f);
+    const float x = std::min(p.anchor.x, winW_ - w - 8);
+    return {x, y, w, h};
 }
 
 bool Frame::textField(const std::string& id, std::string& value, float width, std::wstring_view placeholder, bool mono, bool enabled) {
@@ -651,9 +682,9 @@ bool Frame::textField(const std::string& id, std::string& value, float width, st
         st_.focus = id;
         st_.openDropdown.clear();
         st_.consumed = true;
-        if (st_.beginEdit) st_.beginEdit(nullptr, b, id);
         st_.editTarget = &value;
         st_.editId = id;
+        if (st_.beginEdit) st_.beginEdit(nullptr, b, id);
     }
     if (st_.editId == id && st_.editCommitted) {
         st_.editCommitted = false;
@@ -727,36 +758,17 @@ bool Frame::listRow(const std::string& id, bool selected, float height) {
 // MARK: popups and finish
 
 void Frame::drawPopups() {
+    if (!rt_) return;  // input against popups is resolved at the start of the next pass (Frame::Frame)
     for (auto& p : st_.popups) {
-        const float rowH = 26, pad = 4;
-        const float h = pad * 2 + rowH * static_cast<float>(p.options.size());
-        float y = p.anchor.bottom() + 2;
-        if (y + h > winH_ - 8) y = std::max(8.0f, p.anchor.y - 2 - h);  // flip up near the bottom edge
-        const float w = std::max(p.width, 120.0f);
-        float x = std::min(p.anchor.x, winW_ - w - 8);
-        const Rect box{x, y, w, h};
-        if (!rt_) {
-            if (in_.kind == UiInput::Kind::down) {
-                if (box.contains(in_.x, in_.y)) {
-                    const int i = static_cast<int>((in_.y - box.y - pad) / rowH);
-                    if (i >= 0 && i < static_cast<int>(p.options.size()) && p.index) {
-                        if (*p.index != i) {
-                            *p.index = i;
-                            st_.anyDirty = true;
-                        }
-                    }
-                }
-                st_.openDropdown.clear();
-                st_.consumed = true;
-            }
-            continue;
-        }
+        const float rowH = kPopupRowH, pad = kPopupPad;
+        const Rect box = popupBox(p);
+        const float w = box.w;
         rt_->FillRoundedRectangle(D2D1::RoundedRect({box.x + 2, box.y + 6, box.right() + 2, box.bottom() + 6}, 10, 10), brush(0x000000, 0.25f));
         fillRound(box, 10, pal_.isDark ? 0x2C2C2E : 0xFFFFFF, 1);
         strokeRound(box, 10, pal_.hair.rgb, pal_.hair.alpha * 2);
         for (std::size_t i = 0; i < p.options.size(); ++i) {
             const Rect row{box.x + pad, box.y + pad + rowH * static_cast<float>(i), w - 2 * pad, rowH};
-            const bool on = p.index && *p.index == static_cast<int>(i);
+            const bool on = p.current == static_cast<int>(i);
             const bool hot = row.contains(st_.mouseX, st_.mouseY);
             if (hot) fillRound(row, 6, pal_.accent, 0.85f);
             drawText(p.options[i], {row.x + 10, row.y, row.w - 20, row.h}, TextStyle::body, hot ? 0xFFFFFF : pal_.text, 1, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, false);
@@ -767,7 +779,6 @@ void Frame::drawPopups() {
 
 void Frame::finish() {
     drawPopups();
-    if (!rt_ && !st_.popups.empty() && in_.kind == UiInput::Kind::down && !st_.consumed) st_.openDropdown.clear();
     if (!rt_ && st_.anyDirty && st_.onChanged) st_.onChanged();
 }
 

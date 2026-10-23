@@ -1,5 +1,7 @@
 #include "ui/settings_window.h"
 
+#include <commctrl.h>
+
 #include <windowsx.h>
 
 #include <algorithm>
@@ -65,13 +67,29 @@ void SettingsWindow::applyTheme() { setPalette(resolve(settings_.theme, systemPr
 void SettingsWindow::refresh() { invalidate(); }
 
 void SettingsWindow::pulse() {
-    pulseStarts_.push_back(static_cast<float>(GetTickCount64()));
+    pulseStarts_.push_back(static_cast<double>(GetTickCount64()));
     animate(true);
 }
 
+bool SettingsWindow::consumeRerun() {
+    const bool r = st_.rerun;
+    st_.rerun = false;
+    return r;
+}
+
+void SettingsWindow::cancelEditing() {
+    cancelEdit();
+    st_.openDropdown.clear();
+    st_.popups.clear();
+    st_.pendingPopupId.clear();
+    pendingShortcut_.reset();
+    recordingId_.clear();
+    invalidate();
+}
+
 void SettingsWindow::onTimer() {
-    const float now = static_cast<float>(GetTickCount64());
-    std::erase_if(pulseStarts_, [&](float s) { return now - s > 700; });
+    const double now = static_cast<double>(GetTickCount64());
+    std::erase_if(pulseStarts_, [&](double s) { return now - s > 700; });
     if (pulseStarts_.empty()) animate(false);
 }
 
@@ -97,6 +115,7 @@ void SettingsWindow::beginEdit(const Rect& r, const std::string& id, std::string
     font = CreateFontW(fontPx, 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
     SendMessageW(edit_, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
     SendMessageW(edit_, EM_SETSEL, 0, -1);
+    SetWindowSubclass(edit_, &SettingsWindow::editProc, 1, reinterpret_cast<DWORD_PTR>(this));
     SetFocus(edit_);
     editTarget_ = target;
     editId_ = id;
@@ -105,14 +124,42 @@ void SettingsWindow::beginEdit(const Rect& r, const std::string& id, std::string
     st_.editId = id;
 }
 
+namespace {
+constexpr UINT kEditCommandMsg = WM_APP + 60;  // wParam 1 = commit, 2 = cancel (posted from the EDIT subclass)
+}
+
+LRESULT CALLBACK SettingsWindow::editProc(HWND h, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DWORD_PTR ref) {
+    auto* self = reinterpret_cast<SettingsWindow*>(ref);
+    switch (msg) {
+        case WM_GETDLGCODE:
+            return DLGC_WANTALLKEYS | DLGC_WANTCHARS;
+        case WM_KEYDOWN:
+            if (wp == VK_RETURN || wp == VK_ESCAPE) {
+                if (self) PostMessageW(self->hwnd(), kEditCommandMsg, wp == VK_RETURN ? 1 : 2, 0);
+                return 0;
+            }
+            break;
+        case WM_CHAR:
+            if (wp == L'\r' || wp == L'\n' || wp == 27) return 0;  // no beep for the keys handled above
+            break;
+        case WM_NCDESTROY:
+            RemoveWindowSubclass(h, &SettingsWindow::editProc, 1);
+            break;
+        default:
+            break;
+    }
+    return DefSubclassProc(h, msg, wp, lp);
+}
+
 void SettingsWindow::commitEdit() {
     if (!edit_) return;
-    wchar_t buf[2048];
-    GetWindowTextW(edit_, buf, 2048);
-    const std::string text = N(buf);
-    DestroyWindow(edit_);
-    edit_ = nullptr;
+    HWND h = edit_;
+    edit_ = nullptr;  // detached first: DestroyWindow raises EN_KILLFOCUS synchronously
     st_.edit = nullptr;
+    wchar_t buf[2048];
+    GetWindowTextW(h, buf, 2048);
+    const std::string text = N(buf);
+    DestroyWindow(h);
     if (editTarget_ && *editTarget_ != text) {
         *editTarget_ = text;
         st_.editCommitted = true;
@@ -123,15 +170,16 @@ void SettingsWindow::commitEdit() {
     editId_.clear();
     st_.editId.clear();
     st_.focus.clear();
-    SetFocus(hwnd());
+    if (GetActiveWindow() == hwnd()) SetFocus(hwnd());  // never pull focus back from another window
     invalidate();
 }
 
 void SettingsWindow::cancelEdit() {
     if (!edit_) return;
-    DestroyWindow(edit_);
+    HWND h = edit_;
     edit_ = nullptr;
     st_.edit = nullptr;
+    DestroyWindow(h);
     editTarget_ = nullptr;
     editId_.clear();
     st_.editId.clear();
@@ -143,7 +191,13 @@ LRESULT SettingsWindow::onMessage(UINT msg, WPARAM wp, LPARAM lp, bool& handled)
     (void)lp;
     handled = false;
     if (msg == WM_COMMAND && LOWORD(wp) == kEditId && HIWORD(wp) == EN_KILLFOCUS) {
-        commitEdit();
+        if (edit_) commitEdit();
+        handled = true;
+        return 0;
+    }
+    if (msg == kEditCommandMsg) {
+        if (wp == 1) commitEdit();
+        else cancelEdit();
         handled = true;
         return 0;
     }
@@ -154,10 +208,14 @@ LRESULT SettingsWindow::onMessage(UINT msg, WPARAM wp, LPARAM lp, bool& handled)
             invalidate();
         }
     }
-    if (msg == WM_KEYDOWN && !recordingId_.empty()) {
+    if ((msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN) && !recordingId_.empty()) {
         // Shortcut recorder: the next key (with its modifiers) becomes the shortcut; Escape cancels.
         const int vk = static_cast<int>(wp);
-        if (vk != VK_ESCAPE && vk != VK_SHIFT && vk != VK_CONTROL && vk != VK_MENU && vk != VK_LWIN && vk != VK_RWIN) {
+        if (vk == VK_SHIFT || vk == VK_CONTROL || vk == VK_MENU || vk == VK_LWIN || vk == VK_RWIN) {
+            handled = true;  // a modifier pressed first: keep recording
+            return 0;
+        }
+        if (vk != VK_ESCAPE) {
             std::uint64_t flags = 0;
             std::wstring label;
             if (GetKeyState(VK_CONTROL) & 0x8000) { flags |= kModCtrl; label += L"Ctrl+"; }
@@ -177,6 +235,8 @@ LRESULT SettingsWindow::onMessage(UINT msg, WPARAM wp, LPARAM lp, bool& handled)
             pendingShortcut_->label = N(label);
         }
         recordingId_.clear();
+        UiInput none;
+        build(nullptr, none);  // the picker applies the recording inside an input pass, so it is saved and pushed once
         invalidate();
         handled = true;
         return 0;
@@ -277,8 +337,8 @@ void SettingsWindow::heroTile(Frame& f, float width, float height) {
     s.buttons = model_.buttons;
     s.wheelTotal = model_.wheelTotal;
     s.actionPressed = model_.actionPressed;
-    const float now = static_cast<float>(GetTickCount64());
-    for (float start : pulseStarts_) s.pulseAges.push_back((now - start) / 1000.0f);
+    const double now = static_cast<double>(GetTickCount64());
+    for (double start : pulseStarts_) s.pulseAges.push_back(static_cast<float>((now - start) / 1000.0));
     drawSchematic(f, {r.x, r.y + 30, r.w, r.h - 60}, s);
     // Battery + firmware
     const std::wstring batt = model_.device.battery ? fmti(L"%d%%", *model_.device.battery) : L"—";
@@ -699,6 +759,7 @@ void SettingsWindow::appsPane(Frame& f) {
     if (!selectedProfile_) selectedProfile_ = settings_.profiles.front().id;
     // Left: profile list; right: editor
     const float listW = 230;
+    const float fullW = f.contentWidth();  // before the list sub-area narrows the frame
     f.beginRow(0);
     const float x0 = f.cursorX(), y0 = f.cursorY();
     f.endRow();
@@ -717,7 +778,7 @@ void SettingsWindow::appsPane(Frame& f) {
     }
     const float listBottom = f.cursorY();
     // editor
-    f.begin({x0 + listW + 16, y0, f.contentWidth() - listW - 16, 100000});
+    f.begin({x0 + listW + 16, y0, fullW - listW - 16, 100000});
     auto it = std::find_if(settings_.profiles.begin(), settings_.profiles.end(), [&](const AppProfile& p) { return p.id == *selectedProfile_; });
     if (it == settings_.profiles.end()) {
         f.label(L"Select an app on the left.", TextStyle::body);

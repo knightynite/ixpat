@@ -42,10 +42,14 @@ struct UiState {
         std::string id;
         Rect anchor;
         std::vector<std::wstring> options;
-        int* index = nullptr;
+        int current = -1;
         float width = 0;
     };
-    std::vector<Popup> popups;
+    std::vector<Popup> popups;        // what the last pass showed; the next input pass hit-tests them first
+    std::string pendingPopupId;       // a popup row was clicked: the dropdown with this id takes pendingPopupIndex
+    int pendingPopupIndex = -1;
+    bool rerun = false;               // the owner should run one more input pass (a pending selection waits)
+    bool wheelPending = false;        // a wheel event inside the scroll viewport, applied at endScroll unless a child took it
     std::function<void()> onChanged;  // called once per frame when anyDirty
     std::function<void(HWND, const Rect&, const std::string&)> beginEdit;  // owner creates the native edit
 };
@@ -146,7 +150,7 @@ private:
     bool inScroll_ = false;
     Rect last_{};
     Com<ID2D1SolidColorBrush> brush_;
-    bool popupHandled_ = false;
+    Rect popupBox(const UiState::Popup& p) const;
 };
 
 /// Helper: a string id with an index suffix.

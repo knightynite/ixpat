@@ -60,6 +60,7 @@ public:
     void end(HWND hwnd, POINT screenPos, std::uint8_t alpha = 255);
     int width() const { return width_; }
     int height() const { return height_; }
+    unsigned long lastError() const { return lastError_; }  // from the last UpdateLayeredWindow
 
 private:
     void release();
@@ -68,6 +69,7 @@ private:
     HGDIOBJ oldBitmap_ = nullptr;
     Com<ID2D1DCRenderTarget> target_;
     int width_ = 0, height_ = 0;
+    unsigned long lastError_ = 0;
 };
 
 inline D2D1_COLOR_F color(std::uint32_t rgb, float alpha = 1.0f) {

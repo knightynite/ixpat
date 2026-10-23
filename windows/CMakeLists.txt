@@ -24,7 +24,7 @@ target_link_libraries(ixpat_win PUBLIC ixpat_core user32 shell32 ole32 oleaut32 
 # Direct2D UI: foundation, theme, ring window, settings window.
 file(GLOB UI_SOURCES CONFIGURE_DEPENDS src/ui/*.cpp)
 add_library(ixpat_ui STATIC ${UI_SOURCES})
-target_link_libraries(ixpat_ui PUBLIC ixpat_core d2d1 dwrite gdi32 user32 shcore)
+target_link_libraries(ixpat_ui PUBLIC ixpat_core d2d1 dwrite gdi32 user32 shcore dwmapi comdlg32)
 
 # Unit tests (doctest).
 file(GLOB TEST_SOURCES CONFIGURE_DEPENDS tests/*.cpp)

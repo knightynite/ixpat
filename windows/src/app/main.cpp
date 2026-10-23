@@ -141,6 +141,8 @@ private:
     bool pointerOwnerSurface_ = false;
     bool quitting_ = false;
     unsigned flushTicks_ = 0;
+    int modalDepth_ = 0;
+    bool reloadPending_ = false;
     void quit();
     void refreshWaveformsJson();
 };
@@ -435,7 +437,11 @@ std::optional<std::string> App::pickFile(const wchar_t* filter) {
     ofn.lpstrFile = path;
     ofn.nMaxFile = MAX_PATH;
     ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
-    if (!GetOpenFileNameW(&ofn)) return std::nullopt;
+    ++modalDepth_;
+    const BOOL ok = GetOpenFileNameW(&ofn);
+    --modalDepth_;
+    if (reloadPending_ && modalDepth_ == 0) PostMessageW(hwnd_, WM_APP_SETTINGS, 0, 0);  // after the caller is done with its references
+    if (!ok) return std::nullopt;
     int n = WideCharToMultiByte(CP_UTF8, 0, path, -1, nullptr, 0, nullptr, nullptr);
     std::string s(static_cast<std::size_t>(std::max(0, n - 1)), '\0');
     if (n > 1) WideCharToMultiByte(CP_UTF8, 0, path, -1, s.data(), n, nullptr, nullptr);
@@ -708,6 +714,8 @@ void App::applyPointer() {
 }
 
 void App::reloadSettings() {
+    reloadPending_ = false;
+    if (window_) window_->cancelEditing();  // native edit / popups point into the model being replaced
     Settings fresh = store_->load();
     fresh.frontBundleID = settings_.frontBundleID;
     settings_ = fresh;
@@ -909,7 +917,8 @@ LRESULT App::handle(UINT msg, WPARAM wp, LPARAM lp) {
             onDeviceChanged();
             return 0;
         case WM_APP_SETTINGS:
-            reloadSettings();
+            if (modalDepth_ > 0) reloadPending_ = true;  // a file dialog is pumping messages with references into settings_
+            else reloadSettings();
             return 0;
         case WM_APP_BRIDGE: {
             std::unique_ptr<BridgePlay> p(reinterpret_cast<BridgePlay*>(lp));

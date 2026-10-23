@@ -23,6 +23,18 @@ constexpr Seconds kSliderSpacing = 0.04, kSelectionSpacing = 0.10, kScrollEndSpa
 template <class T>
 struct Com {
     T* p = nullptr;
+    Com() = default;
+    Com(const Com&) = delete;
+    Com& operator=(const Com&) = delete;
+    Com(Com&& o) noexcept : p(o.p) { o.p = nullptr; }
+    Com& operator=(Com&& o) noexcept {
+        if (this != &o) {
+            if (p) p->Release();
+            p = o.p;
+            o.p = nullptr;
+        }
+        return *this;
+    }
     ~Com() { if (p) p->Release(); }
     T** put() { if (p) p->Release(); p = nullptr; return &p; }
     T* operator->() const { return p; }
@@ -67,7 +79,6 @@ struct UiaWatch::Impl {
     DWORD ownPid = GetCurrentProcessId();
     // Identity of what was under the pointer last time, per detector.
     std::string menuKey, controlKey, dropKey, selectionKey;
-    bool dropFirst = true;
     int lastWords = -1, lastLines = 0;
     std::map<std::string, int> sliderBuckets;
     std::map<std::string, bool> atEnd;
@@ -78,7 +89,7 @@ struct UiaWatch::Impl {
         if (FAILED(CoCreateInstance(CLSID_CUIAutomation8, nullptr, CLSCTX_INPROC_SERVER, IID_IUIAutomation, reinterpret_cast<void**>(uia.put())))) {
             if (FAILED(CoCreateInstance(CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER, IID_IUIAutomation, reinterpret_cast<void**>(uia.put())))) return false;
         }
-        if (FAILED(uia->CreateCacheRequest(cache.put()))) return false;
+        if (FAILED(uia->CreateCacheRequest(cache.put())) || !cache) return false;
         cache->AddProperty(UIA_ControlTypePropertyId);
         cache->AddProperty(UIA_BoundingRectanglePropertyId);
         cache->AddProperty(UIA_IsEnabledPropertyId);
@@ -88,7 +99,7 @@ struct UiaWatch::Impl {
         cache->AddPattern(UIA_RangeValuePatternId);
         cache->AddPattern(UIA_ScrollPatternId);
         cache->put_TreeScope(TreeScope_Element);
-        uia->get_ControlViewWalker(walker.put());
+        if (FAILED(uia->get_ControlViewWalker(walker.put())) || !walker) return false;
         return true;
     }
 
@@ -148,6 +159,7 @@ void UiaWatch::noteClick() {
 }
 void UiaWatch::noteWheel() {
     wheelAtMs_ = static_cast<std::int64_t>(GetTickCount64());
+    wheelStage_ = 0;
     wheelPending_ = true;
 }
 
@@ -168,17 +180,20 @@ void UiaWatch::stop() {
 }
 
 void UiaWatch::loop() {
-    CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-    Impl impl;
-    impl_ = &impl;
-    if (!impl.init()) {
-        debugLog("uia: CUIAutomation unavailable; menu, control and selection ticks are off");
-        CoUninitialize();
-        impl_ = nullptr;
+    if (FAILED(CoInitializeEx(nullptr, COINIT_MULTITHREADED))) {
+        debugLog("uia: CoInitializeEx failed; accessibility ticks are off");
         return;
     }
-    while (WaitForSingleObject(stopEvent_, kPollMs) == WAIT_TIMEOUT) tick();
-    impl_ = nullptr;
+    {
+        Impl impl;  // released inside the apartment, before CoUninitialize
+        impl_ = &impl;
+        if (impl.init()) {
+            while (WaitForSingleObject(stopEvent_, kPollMs) == WAIT_TIMEOUT) tick();
+        } else {
+            debugLog("uia: CUIAutomation unavailable; menu, control and selection ticks are off");
+        }
+        impl_ = nullptr;
+    }
     CoUninitialize();
 }
 
@@ -195,9 +210,11 @@ void UiaWatch::tick() {
     const std::int64_t nowMs = static_cast<std::int64_t>(GetTickCount64());
     const bool clickCheck = clickPending_ && nowMs - clickAtMs_ >= 80;
     const bool wheelCheck = wheelPending_ && nowMs - wheelAtMs_ >= 100;
-    if (!moved && !down && !clickCheck && !wheelCheck) {
+    const bool dragMatters = cfg.dropTicks || cfg.textTicks || cfg.sliderTicks;  // only these watch a held button
+    if (!moved && !(down && dragMatters) && !clickCheck && !wheelCheck) {
         im.menuKey.clear();
         im.controlKey.clear();
+        im.wasLeftDown = down;
         return;
     }
     auto post = [&](HapticEvent e) { PostMessageW(hwnd_, message_, static_cast<WPARAM>(e), 0); };
@@ -211,8 +228,8 @@ void UiaWatch::tick() {
     ++stats_.polls;
     ReleaseSRWLockExclusive(&lock_);
 
-    POINT pt;
-    GetCursorPos(&pt);
+    POINT pt{};
+    if (!GetCursorPos(&pt)) return;  // no pointer on this desktop (lock screen, UAC)
     Com<IUIAutomationElement> el = im.elementUnder(pt);
     CONTROLTYPEID type = 0;
     BOOL enabled = TRUE;
@@ -255,19 +272,20 @@ void UiaWatch::tick() {
     // Drop targets: while dragging, the element under the pointer changes (the first one is where the drag began).
     if (cfg.dropTicks && down) {
         const std::string k = el && isDropType(type) ? key : std::string();
-        if (!im.wasLeftDown) { im.dropKey = k; im.dropFirst = true; }
+        if (!im.wasLeftDown) im.dropKey = k;  // where the drag began is the baseline, not a target
         else if (k != im.dropKey) {
             im.dropKey = k;
-            if (!k.empty() && !im.dropFirst && t - im.lastDrop >= kDropSpacing) {
+            if (!k.empty() && t - im.lastDrop >= kDropSpacing) {
                 im.lastDrop = t;
                 post(HapticEvent::dropTarget);
                 bump(&UiaStats::drop, "drop");
             }
-            im.dropFirst = false;
         }
     }
     // Text selection while the left button is down: words and lines of the focused element's selection.
-    if (cfg.textTicks && down) {
+    DWORD fgPid = 0;
+    if (HWND fg = GetForegroundWindow()) GetWindowThreadProcessId(fg, &fgPid);
+    if (cfg.textTicks && down && fgPid != im.ownPid) {  // never our own settings window / native edit
         Com<IUIAutomationElement> focused;
         if (SUCCEEDED(im.uia->GetFocusedElement(focused.put())) && focused) {
             Com<IUIAutomationTextPattern> text;
@@ -310,10 +328,8 @@ void UiaWatch::tick() {
         Com<IUIAutomationRangeValuePattern> rv;
         if (SUCCEEDED(el->GetCachedPatternAs(UIA_RangeValuePatternId, IID_IUIAutomationRangeValuePattern, reinterpret_cast<void**>(rv.put()))) && rv) {
             double v = 0, lo = 0, hi = 1;
-            rv->get_CurrentValue(&v);
-            rv->get_CurrentMinimum(&lo);
-            rv->get_CurrentMaximum(&hi);
-            if (hi > lo && std::isfinite(v)) {
+            const bool got = SUCCEEDED(rv->get_CurrentValue(&v)) && SUCCEEDED(rv->get_CurrentMinimum(&lo)) && SUCCEEDED(rv->get_CurrentMaximum(&hi));
+            if (got && std::isfinite(v) && std::isfinite(lo) && std::isfinite(hi) && hi > lo && std::isfinite(hi - lo)) {
                 const int bucket = static_cast<int>(std::floor(std::clamp((v - lo) / (hi - lo), 0.0, 1.0) * 20));
                 if (im.sliderBuckets.size() > 512) im.sliderBuckets.clear();
                 auto it = im.sliderBuckets.find(key);
@@ -345,7 +361,13 @@ void UiaWatch::tick() {
     }
     // Scroll end: after a wheel notch, the nearest scrollable ancestor sits at 0% or 100%.
     if (wheelCheck) {
-        wheelPending_ = false;
+        if (wheelStage_ == 0) {  // first look 100 ms after the last notch; a second one 500 ms later catches a glide
+            wheelStage_ = 1;
+            wheelAtMs_ = nowMs + 400;
+        } else {
+            wheelStage_ = 0;
+            wheelPending_ = false;
+        }
         if (cfg.scrollEndTicks && el) {
             Com<IUIAutomationElement> node;
             node.p = el.p;

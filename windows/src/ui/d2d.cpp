@@ -74,7 +74,10 @@ ID2D1RenderTarget* LayeredSurface::begin() {
 
 void LayeredSurface::end(HWND hwnd, POINT screenPos, std::uint8_t alpha) {
     if (!target_) return;
-    target_->EndDraw();
+    if (target_->EndDraw() == D2DERR_RECREATE_TARGET) {  // device lost: the next resize() rebuilds the surface
+        release();
+        return;
+    }
     BLENDFUNCTION bf{AC_SRC_OVER, 0, alpha, AC_SRC_ALPHA};
     POINT src{0, 0};
     SIZE size{width_, height_};

@@ -19,8 +19,10 @@ GfxWindow::~GfxWindow() {
 
 LRESULT CALLBACK GfxWindow::wndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     if (msg == WM_NCCREATE) {
-        SetWindowLongPtrW(h, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(reinterpret_cast<CREATESTRUCTW*>(lp)->lpCreateParams));
-        return TRUE;
+        auto* created = reinterpret_cast<GfxWindow*>(reinterpret_cast<CREATESTRUCTW*>(lp)->lpCreateParams);
+        SetWindowLongPtrW(h, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(created));
+        if (created) created->hwnd_ = h;  // creation-time messages (WM_NCCALCSIZE, WM_CREATE, WM_SIZE) need the real handle
+        return DefWindowProcW(h, msg, wp, lp);
     }
     auto* self = reinterpret_cast<GfxWindow*>(GetWindowLongPtrW(h, GWLP_USERDATA));
     if (!self) return DefWindowProcW(h, msg, wp, lp);
@@ -141,6 +143,10 @@ void GfxWindow::paint() {
 
 void GfxWindow::dispatch(const UiInput& in) {
     build(nullptr, in);
+    if (consumeRerun()) {
+        UiInput none;
+        build(nullptr, none);
+    }
     invalidate();
 }
 
@@ -271,8 +277,23 @@ LRESULT GfxWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
             hide();
             onClosed();
             return 0;
+        case WM_CAPTURECHANGED:
+            if (leftDown_ && reinterpret_cast<HWND>(lp) != hwnd_) {  // capture taken away mid-drag: end the drag
+                leftDown_ = false;
+                POINT pt{};
+                GetCursorPos(&pt);
+                ScreenToClient(hwnd_, &pt);
+                UiInput in;
+                in.kind = UiInput::Kind::up;
+                in.x = pt.x / s;
+                in.y = pt.y / s;
+                dispatch(in);
+            }
+            return 0;
         case WM_DESTROY:
             target_.reset();
+            return 0;
+        case WM_NCDESTROY:
             hwnd_ = nullptr;
             return 0;
         default:

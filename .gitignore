@@ -7,3 +7,5 @@
 iXpat.app/
 .notary-profile
 dist/
+windows/build/
+.superpowers/

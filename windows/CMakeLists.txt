@@ -19,7 +19,7 @@ target_include_directories(ixpat_core SYSTEM PUBLIC third_party)
 # Win32 glue: one responsibility per file, thin, no engine logic.
 file(GLOB WIN_SOURCES CONFIGURE_DEPENDS src/win/*.cpp)
 add_library(ixpat_win STATIC ${WIN_SOURCES})
-target_link_libraries(ixpat_win PUBLIC ixpat_core user32 shell32 ole32 hid cfgmgr32 ws2_32 dwmapi winmm)
+target_link_libraries(ixpat_win PUBLIC ixpat_core user32 shell32 ole32 oleaut32 wbemuuid hid cfgmgr32 ws2_32 dwmapi winmm)
 
 # Unit tests (doctest).
 file(GLOB TEST_SOURCES CONFIGURE_DEPENDS tests/*.cpp)
@@ -35,3 +35,9 @@ add_executable(ixpat_probe ${PROBE_SOURCES})
 target_include_directories(ixpat_probe PRIVATE tools/probe)
 target_link_libraries(ixpat_probe PRIVATE ixpat_core hid cfgmgr32 user32)
 set_target_properties(ixpat_probe PROPERTIES OUTPUT_NAME ixpat-probe)
+
+# iXpat.exe: the tray application.
+add_executable(ixpat WIN32 src/app/main.cpp res/ixpat.rc res/app.manifest)
+target_include_directories(ixpat PRIVATE src)
+target_link_libraries(ixpat PRIVATE ixpat_core ixpat_win)
+set_target_properties(ixpat PROPERTIES OUTPUT_NAME iXpat)

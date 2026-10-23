@@ -1,0 +1,38 @@
+{
+  "enabled": true,
+  "hapticsEnabled": true,
+  "masterIntensity": 3,
+  "rules": [
+    "leftDown",
+    {
+      "enabled": true,
+      "ordinal": 10,
+      "intensity": 2
+    },
+    "leftUp",
+    {
+      "enabled": true,
+      "ordinal": 3,
+      "intensity": 1
+    }
+  ],
+  "scrollStepEvery": 1,
+  "managePointer": false,
+  "pointerSpeed": 3,
+  "noAcceleration": false,
+  "scrollSpeed": 0.3125,
+  "reverseScroll": false,
+  "actions": [
+    "press",
+    {
+      "actionRing": {}
+    },
+    "hold",
+    {
+      "lockScreen": {}
+    }
+  ],
+  "swallowButton": true,
+  "theme": "dark",
+  "accentHex": 689407
+}

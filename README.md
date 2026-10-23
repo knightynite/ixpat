@@ -1,12 +1,15 @@
 # iXpat
 
-**Surface Mouse (2nd Edition) on macOS: haptics, action button, Action Ring, kinetic scrolling and force click.**
+**Surface Mouse (2nd Edition) on macOS and Windows: haptics, action button, Action Ring, kinetic scrolling and force click.**
 
 [![Platform: macOS](https://img.shields.io/badge/Platform-macOS%2014%2B-lightgrey.svg)](https://www.apple.com/macos/)
+[![Platform: Windows](https://img.shields.io/badge/Platform-Windows%2010%2F11-0078d4.svg)](#windows)
+[![Windows build](https://github.com/knightynite/ixpat/actions/workflows/windows.yml/badge.svg)](https://github.com/knightynite/ixpat/actions/workflows/windows.yml)
 [![Website](https://img.shields.io/badge/Website-knightynite.github.io%2Fixpat-0a84ff.svg)](https://knightynite.github.io/ixpat/)
 
 Menu bar app that gives the **Microsoft Surface Mouse (2nd Edition)** on macOS the
-feel it has on Windows, and more: haptic feedback for clicks, scrolling, menus and
+feel it has on Windows, and more (and, since 0.2, a native Windows port that gives
+Windows the parts Microsoft never shipped, see [Windows](#windows)): haptic feedback for clicks, scrolling, menus and
 text selection, an Action Ring, kinetic scrolling, force click, an action button you
 can remap, and pointer settings that apply to this mouse only.
 
@@ -41,6 +44,23 @@ cp -r iXpat.app /Applications/
 ```
 
 Needs Xcode 16+ and macOS 14+.
+
+### Windows
+
+Windows builds are separate releases tagged `win-vX.Y.Z` (marked pre-release so the
+Mac updater ignores them). From the [latest Windows release](https://github.com/knightynite/ixpat/releases?q=win-v&expanded=true):
+
+* `iXpat-Setup-<version>-x64.exe`: per-user installer, no elevation, optional start at login.
+* `iXpat-<version>-windows-x64.zip` / `-arm64.zip`: a single `iXpat.exe`, run it from anywhere.
+
+The binaries are not code-signed: SmartScreen shows *More info > Run anyway* once.
+Build from source with Visual Studio 2022 Build Tools (C++ workload):
+
+```powershell
+git clone https://github.com/knightynite/ixpat.git
+cd ixpat
+windows\build.ps1 -Preset x64-release -Test
+```
 
 ## What it does
 
@@ -131,11 +151,32 @@ the DMG carries a valid signature from the release Team ID.
   serial IOKit queue. The device plays one waveform at a time, so the engine
   rate-limits by each waveform's reported duration.
 
-## Website and Windows
+## Website
 
 The product page lives in `docs/` and is served at https://knightynite.github.io/ixpat/.
-A plan for a Windows counterpart (Raw Input + low-level hooks, HID haptics, UI Automation ticks)
-and for firmware updates (Microsoft's CFU packages) is in [docs/windows-plan.md](docs/windows-plan.md).
+
+## Windows
+
+`windows/` holds the Windows port: C++20, Win32 + Direct2D, one unsigned `iXpat.exe`
+with no driver, no service and no elevation. It is a tray app with the same settings
+file layout as the Mac (`%LOCALAPPDATA%\iXpat\settings.json`), the same rules,
+presets, per-app profiles, Action Ring, kinetic wheel, chords and plugin bridge.
+
+| | macOS | Windows |
+|---|---|---|
+| Haptics | IOKit HID, usage page 0x0E | Win32 HID, the same output report (0x43); the CFU firmware interface is never touched |
+| Input | CGEvent tap | Raw Input (device side) + low-level hooks (system side); input aimed at elevated windows is not shaped |
+| Menus, controls, selection, sliders, scroll end | Accessibility API | UI Automation on a worker thread, cursor shape on main |
+| Force click / hold | hold timer on the tap thread | the same, with a `holdAction` (context menu, middle click, ring) |
+| Pointer settings | hidutil | SPI_SETMOUSE / SPI_SETMOUSESPEED while this mouse drives the pointer |
+| UI | SwiftUI | Direct2D immediate-mode toolkit, light/dark, per-monitor DPI |
+| Updates | signed DMG | opens the release page (unsigned builds never self-install) |
+
+Docs: [windows/docs/design.md](windows/docs/design.md) (spec), the plans beside it,
+[windows/docs/measurements-2026-10.md](windows/docs/measurements-2026-10.md) (what the mouse
+exposes on Windows, measured), and [docs/windows-plan.md](docs/windows-plan.md) (status and
+what differs from the original plan). CI builds x64 and ARM64 and runs the test suite
+(`.github/workflows/windows.yml`); `win-v*` tags publish the zips and the installer.
 
 ## License
 
@@ -152,6 +193,12 @@ Surface is a trademark of Microsoft Corporation.
     Sources/iXpat/UI           settings window, schematic, menu, theme
     Sources/iXpat/Store        settings model and persistence
     tools/make_icon.swift      renders the app icon
+    windows/src/core           portable logic shared by nothing but tests: rules, presets, kinetic, chords, gestures, router
+    windows/src/win            HID, Raw Input + hooks, actions, bridge, tray, UI Automation, updater, login item
+    windows/src/ui             Direct2D toolkit, ring window, settings window, schematic
+    windows/src/app            main.cpp wiring
+    windows/tools/probe        ixpat-probe.exe (HID collections, waveform table, play)
+    windows/installer          Inno Setup script
 
 Settings live in `~/Library/Application Support/iXpat/settings.json`; the debug
 log and raw report log sit next to it.

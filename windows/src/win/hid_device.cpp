@@ -111,6 +111,11 @@ void HidDevice::refreshBattery() {
     if (wake_) SetEvent(wake_);
 }
 
+void HidDevice::refreshTable() {
+    table_ = true;
+    if (wake_) SetEvent(wake_);
+}
+
 bool HidDevice::tryOpen() {
     for (const auto& path : hapticsPaths()) {
         HANDLE h = CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
@@ -277,6 +282,10 @@ void HidDevice::loop() {
                 info_.lastError = "haptic SetOutputReport failed, error " + std::to_string(e);
                 ReleaseSRWLockExclusive(&lock_);
             }
+        }
+        if (device_ != INVALID_HANDLE_VALUE && table_.exchange(false)) {
+            readTable();
+            publish();
         }
         if (device_ != INVALID_HANDLE_VALUE && (battery_.exchange(false) || GetTickCount64() >= nextBattery)) {
             readBattery();

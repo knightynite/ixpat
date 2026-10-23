@@ -68,6 +68,7 @@ public:
     float cursorX() const { return cx_; }
     float cursorY() const { return cy_; }
     float contentWidth() const { return area_.w; }
+    float areaX() const { return area_.x; }
     void setX(float x) { cx_ = x; }
     Rect take(float w, float h);         // next widget rect in the current flow
 

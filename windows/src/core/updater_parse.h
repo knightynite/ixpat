@@ -13,6 +13,11 @@ struct ReleaseInfo {
     std::string url;      // html_url of the release page
 };
 
+/// "win-v" followed by digits and dots only: the only tags the updater will ever open a page for.
+bool isWindowsReleaseTag(std::string_view tag);
+/// The release page for a valid tag, built here rather than taken from the response body.
+std::string canonicalReleaseUrl(std::string_view tag);
+
 /// Parses the body of GET /repos/<repo>/releases. Malformed JSON, a non-array body (an API error object) or no
 /// Windows release gives nothing; an entry missing its tag or url is skipped.
 std::optional<ReleaseInfo> newestWindowsRelease(std::string_view releasesJson);

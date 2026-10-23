@@ -1,5 +1,6 @@
 #pragma once
 #include <windows.h>
+#include <winhttp.h>
 
 #include <atomic>
 #include <cstdint>
@@ -27,9 +28,20 @@ UpdateState loadUpdateState();
 void saveUpdateState(const UpdateState& s);
 std::int64_t unixNow();
 
+/// The WinHTTP session handle of a request in flight, shared with whoever wants to abort it: closing the session
+/// from another thread makes the synchronous calls fail at once.
+struct SessionSlot {
+    SRWLOCK lock = SRWLOCK_INIT;
+    HINTERNET handle = nullptr;
+    bool closed = false;
+    void set(HINTERNET h);  // closes h at once if close() already ran
+    void close();           // idempotent
+};
+
 /// GET https://<host><path> with WinHTTP (system proxy, 10 s timeouts). HTTP 200 fills body; anything else fills
-/// error with a sentence for the user.
-bool httpsGet(const wchar_t* host, const wchar_t* path, const wchar_t* userAgent, std::string& body, std::string& error);
+/// error with a sentence for the user. `slot`, when given, owns the session handle so the call can be aborted.
+bool httpsGet(const wchar_t* host, const wchar_t* path, const wchar_t* userAgent, std::string& body, std::string& error,
+              SessionSlot* slot = nullptr);
 
 /// The GitHub release check on a worker thread (Updater.swift): never downloads or runs anything; the release page
 /// is opened in the browser because Windows builds are unsigned.
@@ -48,6 +60,7 @@ private:
     std::wstring userAgent_;
     std::thread thread_;
     std::atomic<bool> busy_{false};
+    SessionSlot session_;
 };
 
 }  // namespace ixpat::win

@@ -8,11 +8,14 @@ on:
   pull_request:
     paths: ['windows/**', '.github/workflows/windows.yml']
 
+permissions:
+  contents: read  # the release job raises this for itself
+
 jobs:
   x64:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756  # v1.13.0
         with: { arch: x64 }
       - name: Configure
@@ -24,7 +27,7 @@ jobs:
       - name: Test
         run: ctest --preset x64-release
         working-directory: windows
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           name: ixpat-windows-x64
           path: |
@@ -35,7 +38,7 @@ jobs:
   arm64:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756  # v1.13.0
         with: { arch: amd64_arm64 }
       - name: Configure
@@ -44,7 +47,7 @@ jobs:
       - name: Build
         run: cmake --build --preset arm64-release
         working-directory: windows
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           name: ixpat-windows-arm64
           path: |
@@ -61,8 +64,8 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
         with:
           path: dist
       - name: Package zips and installer

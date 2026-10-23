@@ -220,6 +220,7 @@ void App::start() {
     router_ = std::make_unique<Router>(settings_, std::move(k));
 
     // Action Ring window and its pulses; a commit runs the action once the ring is gone (80 ms).
+    ring_.onLog = [](const std::string& s) { win::debugLog(s); };
     ring_.create(inst_);
     ring_.onDetent = [this] { router_->systemEvent(HapticEvent::ringDetent, now()); };
     ring_.onOpen = [this] { router_->systemEvent(HapticEvent::ringOpen, now()); };

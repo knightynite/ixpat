@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "core/actions.h"
@@ -22,6 +23,7 @@ public:
     std::function<void()> onOpen;
     std::function<void(const RingItem&)> onCommit;
     std::function<void(bool open, bool holdMode)> onStateChanged;
+    std::function<void(const std::string&)> onLog;  // diagnostics (debug.log)
 
     void create(HINSTANCE inst);
     void destroy();

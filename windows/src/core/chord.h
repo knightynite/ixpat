@@ -1,0 +1,60 @@
+#pragma once
+#include <bitset>
+#include <cstdint>
+#include <functional>
+
+#include "core/clock.h"
+
+namespace ixpat {
+
+// Virtual-key codes the mouse's keyboard collection sends (Raw Input reports VK_SHIFT for both shifts).
+constexpr int kVkShift = 0x10, kVkLWin = 0x5B, kVkRWin = 0x5C, kVkLShift = 0xA0, kVkRShift = 0xA1;
+constexpr int kVkS = 0x53, kVkF23 = 0x86;
+
+enum class ChordOutput : std::uint8_t { none, press, doublePress, holdBegin, holdEnd };
+
+/// Recognises the action button from the mouse's own keyboard and mouse reports, ported from
+/// ActionButtonController. The firmware decides the gesture and sends a Windows chord for each:
+///   press        -> Win+Shift+S            (Snipping Tool)
+///   double press -> Win + a fake LEFT CLICK (Click to Do)
+///   hold         -> Win+Shift+F23 held     (Copilot key), released when the button is
+/// Feed it only keys that Raw Input attributes to the mouse's keyboard collection, never the user's
+/// keyboard, and only left-button presses from the mouse's own mouse collection.
+class ChordDecoder {
+public:
+    /// Asked when a chord is recognised; return true to consume it (the Action Ring is open in
+    /// toggle mode and this press commits it). The chord's keys and fake click stay hidden.
+    std::function<bool()> pressIntercept;
+
+    ChordOutput key(int vk, bool down, Seconds now);
+    ChordOutput mouseLeftDown(Seconds now);
+    /// Consume the chord in flight (or the next one while these keys stay down) without firing it.
+    void consumePress(Seconds now);
+
+    /// A recognised chord is held (schematic glow).
+    bool pressed() const { return chord_ != Chord::none && !consumed_; }
+    /// Keys from the mouse are in flight: the hook swallows Win-chord key events.
+    bool chordActive(Seconds now) const { return now < deviceKeyUntil_ || chord_ != Chord::none; }
+    /// The fake click of the double-press chord is pending or recent: the hook swallows left clicks.
+    bool swallowLeftClick(Seconds now) const { return chord_ == Chord::win || now < swallowClicksUntil_; }
+    void reset();
+
+private:
+    enum class Chord : std::uint8_t { none, snip, win, copilot };
+    static constexpr Seconds kKeyWindow = 0.4;    // after any mouse key event
+    static constexpr Seconds kClickWindow = 0.5;  // after the fake click (or the chord that promised it)
+
+    ChordOutput chordDown(Chord c, Seconds now);
+    ChordOutput chordUp();
+    bool winDown() const { return down_[kVkLWin] || down_[kVkRWin]; }
+    bool shiftDown() const { return down_[kVkShift] || down_[kVkLShift] || down_[kVkRShift]; }
+
+    std::bitset<256> down_;
+    Chord chord_ = Chord::none;
+    bool clickSeen_ = false;
+    bool consumed_ = false;
+    Seconds deviceKeyUntil_ = 0;
+    Seconds swallowClicksUntil_ = 0;
+};
+
+}  // namespace ixpat

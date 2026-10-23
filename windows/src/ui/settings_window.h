@@ -14,6 +14,7 @@
 #include "ui/schematic.h"
 #include "win/hid_device.h"
 #include "win/input_thread.h"
+#include "win/uia_watch.h"
 
 namespace ixpat::ui {
 
@@ -27,6 +28,7 @@ struct SettingsModel {
     std::uint8_t buttons = 0;
     int wheelTotal = 0;
     win::InputStatus input;
+    win::UiaStats uia;
     bool bridgeRunning = false;
     std::deque<std::string> reportLog;  // newest last, capped by the app at 150
     std::string frontApp;               // image name of the foreground app

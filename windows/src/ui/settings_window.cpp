@@ -912,6 +912,10 @@ void SettingsWindow::diagnosticsPane(Frame& f) {
     line(L"Raw Input", model_.input.rawRegistered ? L"registered (mouse, keyboard, consumer)" : L"NOT registered", model_.input.rawRegistered);
     line(L"Hook calls", std::to_wstring(model_.input.mouseHookCalls) + L" mouse, " + std::to_wstring(model_.input.keyboardHookCalls) + L" keyboard");
     line(L"Raw reports", std::to_wstring(model_.input.rawMouse) + L" mouse, " + std::to_wstring(model_.input.rawKeyboard) + L" keyboard");
+    line(L"UI Automation", std::to_wstring(model_.uia.polls) + L" polls: " + std::to_wstring(model_.uia.menu) + L" menu, " +
+                               std::to_wstring(model_.uia.control) + L" control, " + std::to_wstring(model_.uia.drop) + L" drop, " +
+                               std::to_wstring(model_.uia.word + model_.uia.line) + L" text, " + std::to_wstring(model_.uia.slider) + L" slider, " +
+                               std::to_wstring(model_.uia.selection) + L" selection, " + std::to_wstring(model_.uia.scrollEnd) + L" scroll end");
     f.label(L"Windows does not hand a normal process the input aimed at elevated windows (UAC prompts, admin tools): there the mouse works, but nothing is shaped.", TextStyle::footnote);
     f.divider();
     bridgeSection(f);

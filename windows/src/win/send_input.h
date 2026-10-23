@@ -24,7 +24,7 @@ private:
 void sendWheelUnits(int vertical, int horizontal);  // raw WHEEL_DELTA-scaled units, tagged
 void sendKeyChord(std::initializer_list<WORD> vks);  // down in order, up in reverse, tagged
 void sendKey(WORD vk, bool down);
-void sendMouseButton(DWORD downFlag, DWORD upFlag, bool down);  // MOUSEEVENTF_*DOWN / *UP, at the current position
+bool sendMouseButton(DWORD downFlag, DWORD upFlag, bool down);  // MOUSEEVENTF_*DOWN / *UP, at the current position; false if SendInput was blocked
 void sendMediaKey(WORD vk);  // VK_VOLUME_*, VK_MEDIA_*
 
 }  // namespace ixpat::win

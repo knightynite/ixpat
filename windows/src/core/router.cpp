@@ -112,7 +112,6 @@ void Router::onGesture(ButtonGesture g, Seconds) {
     if (!s_.enabled) return;
     k_.play(HapticEvent::actionButton, std::nullopt, 0);
     const ButtonAction& a = s_.action(g);
-    if (a.kind == ActionKind::none) return;
     // A hold starts gesture mode (unless it drives the ring, which needs the pointer); its own action
     // waits for the release and runs only when the mouse stayed put.
     if (g == ButtonGesture::hold && s_.gesturesOnHold && a.kind != ActionKind::actionRing &&
@@ -128,6 +127,8 @@ void Router::onGesture(ButtonGesture g, Seconds) {
 
 void Router::run(const ButtonAction& a, bool hold) {
     switch (a.kind) {
+        case ActionKind::none:
+            break;  // "Do nothing" (ActionRunner.run(.none) is a no-op on the Mac too)
         case ActionKind::actionRing:
             if (hold) {
                 if (k_.ringOpen) k_.ringOpen(true);
@@ -204,7 +205,11 @@ void Router::foregroundChanged(std::string imageName, Seconds) {
 
 void Router::deviceConnected(bool on, Seconds) {
     if (on) return;
-    // A hold cannot end normally once the mouse is gone.
+    reset();
+}
+
+void Router::reset() {
+    // A hold cannot end normally once the mouse is gone (or the app was switched off).
     if (gestureActive_ && k_.gesturesEnd) k_.gesturesEnd();
     gestureActive_ = false;
     pendingHold_.reset();

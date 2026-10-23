@@ -18,8 +18,11 @@ BridgeServer::~BridgeServer() { stop(); }
 
 bool BridgeServer::start(std::uint16_t port, std::string token) {
     if (thread_.joinable()) return true;
-    WSADATA wsa{};
-    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) return false;
+    if (!wsa_) {
+        WSADATA wsa{};
+        if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) return false;
+        wsa_ = true;
+    }
     SOCKET s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (s == INVALID_SOCKET) return false;
     BOOL exclusive = TRUE;
@@ -44,12 +47,19 @@ bool BridgeServer::start(std::uint16_t port, std::string token) {
 }
 
 void BridgeServer::stop() {
-    if (!thread_.joinable()) return;
-    stopping_ = true;
-    closesocket(static_cast<SOCKET>(listener_));  // unblocks accept()
-    thread_.join();
-    listener_ = ~std::uintptr_t{0};
-    running_ = false;
+    if (thread_.joinable()) {
+        stopping_ = true;
+        closesocket(static_cast<SOCKET>(listener_));  // unblocks accept()
+        const auto c = client_.exchange(~std::uintptr_t{0});
+        if (c != ~std::uintptr_t{0}) closesocket(static_cast<SOCKET>(c));  // unblocks a trickling client's recv()
+        thread_.join();
+        listener_ = ~std::uintptr_t{0};
+        running_ = false;
+    }
+    if (wsa_) {
+        WSACleanup();
+        wsa_ = false;
+    }
 }
 
 void BridgeServer::loop() {
@@ -67,6 +77,11 @@ void BridgeServer::loop() {
             if (stopping_) break;
             continue;
         }
+        client_.store(static_cast<std::uintptr_t>(c));
+        if (stopping_) {
+            closesocket(c);
+            break;
+        }
         DWORD timeout = kReadTimeoutMs;
         setsockopt(c, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeout), sizeof timeout);
         setsockopt(c, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&timeout), sizeof timeout);
@@ -74,7 +89,9 @@ void BridgeServer::loop() {
         HttpRequest req;
         ParseState state = ParseState::incomplete;
         char chunk[4096];
-        while (state == ParseState::incomplete && buf.size() < static_cast<std::size_t>(kMaxRequest)) {
+        const ULONGLONG deadline = GetTickCount64() + 5000;  // a whole request must arrive within 5 s
+        while (state == ParseState::incomplete && buf.size() < static_cast<std::size_t>(kMaxRequest) && !stopping_ &&
+               GetTickCount64() < deadline) {
             const int n = recv(c, chunk, sizeof chunk, 0);
             if (n <= 0) break;
             buf.append(chunk, static_cast<std::size_t>(n));
@@ -82,9 +99,14 @@ void BridgeServer::loop() {
         }
         HttpResponse resp = state == ParseState::complete ? handler.handle(req) : HttpResponse{400, R"({"error":"bad request"})"};
         const std::string out = serializeResponse(resp);
-        send(c, out.data(), static_cast<int>(out.size()), 0);
+        for (std::size_t sent = 0; sent < out.size() && !stopping_;) {
+            const int n = send(c, out.data() + sent, static_cast<int>(out.size() - sent), 0);
+            if (n <= 0) break;
+            sent += static_cast<std::size_t>(n);
+        }
         shutdown(c, SD_BOTH);
-        closesocket(c);
+        const auto mine = client_.exchange(~std::uintptr_t{0});
+        if (mine != ~std::uintptr_t{0}) closesocket(c);  // otherwise stop() already closed it
     }
 }
 

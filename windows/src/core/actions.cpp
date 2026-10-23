@@ -66,7 +66,9 @@ std::optional<ActionKind> actionKindFromRaw(std::string_view raw) {
     return std::nullopt;
 }
 
-bool ButtonAction::isStepped() const {
+bool ButtonAction::isStepped() const { return isSteppedKind(kind); }
+
+bool isSteppedKind(ActionKind kind) {
     switch (kind) {
         case ActionKind::volumeUp:
         case ActionKind::volumeDown:

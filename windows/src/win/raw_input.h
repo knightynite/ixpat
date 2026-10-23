@@ -8,38 +8,49 @@ namespace ixpat::win {
 
 enum class RawKind : std::uint8_t { move, button, wheel, hwheel, key, consumer, other };
 
-/// One decoded WM_INPUT, with the device identity resolved.
+/// One decoded Raw Input component, with the device identity resolved.
 struct RawEvent {
     RawKind kind = RawKind::other;
     bool surfaceMouse = false;  // the Surface Mouse (any of its collections), or any device in IXPAT_ANY_MOUSE mode
     bool injected = false;      // hDevice == NULL: SendInput (ours or another program's)
+    bool unknownDevice = false; // the handle was not in the table and resolving was not allowed (inside a hook)
     std::int64_t qpc = 0;
     std::int32_t dx = 0, dy = 0;       // move
     std::uint16_t buttonFlags = 0;     // button: RI_MOUSE_* down/up flags
     std::int16_t wheel = 0;            // wheel / hwheel: signed delta (120 per notch)
     std::uint16_t vk = 0, scan = 0;    // key
     bool keyDown = false;
+    bool keyE0 = false;                // extended key (RI_KEY_E0)
     std::uint16_t consumerUsage = 0;   // consumer: raw usage when decodable
 };
 
 /// Raw Input registration and decoding (the device side of the input path, like the Mac's IOHID reports).
+/// Device identity is resolved outside hook callbacks: at registration (every present device) and on
+/// WM_INPUT_DEVICE_CHANGE; inside a hook's drain an unknown handle is reported as such, never looked up.
 class RawInput {
 public:
-    /// Mouse, keyboard and consumer collections with RIDEV_INPUTSINK on a message-only window.
+    /// Mouse, keyboard and consumer collections with RIDEV_INPUTSINK | RIDEV_DEVNOTIFY on a message-only window.
     bool registerOn(HWND messageWindow);
     void unregister();
-    std::optional<RawEvent> decode(HRAWINPUT handle);
-    /// Development mode: every pointing device counts as the Surface Mouse.
-    bool anyMouse = false;
+    /// Decode one WM_INPUT into up to three components (a mouse packet may carry buttons, a wheel and motion).
+    int decode(HRAWINPUT handle, RawEvent out[3], bool allowResolve);
+    /// WM_INPUT_DEVICE_CHANGE: resolve an arrival, forget a removal.
+    void deviceChanged(WPARAM gidc, HANDLE device);
+    /// Resolve every present device now (thread start).
+    void resolveAll();
+    /// Development mode: every pointing device counts as the Surface Mouse. Read on the input thread only.
+    void setAnyMouse(bool on) { anyMouse_ = on; }
 
 private:
-    bool isSurface(HANDLE device);
+    bool isSurface(HANDLE device, bool allowResolve, bool& known);
+    bool resolve(HANDLE device);
     struct Known {
         HANDLE device = nullptr;
         bool surface = false;
     };
-    Known devices_[32]{};  // fixed: resolving a device never allocates (the hooks drain WM_INPUT)
+    Known devices_[64]{};  // fixed: no allocation on the input thread
     int deviceCount_ = 0;
+    bool anyMouse_ = false;
     std::uint64_t buffer_[128]{};  // 1 KB, naturally aligned for RAWINPUT
 };
 

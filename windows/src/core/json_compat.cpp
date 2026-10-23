@@ -1,5 +1,8 @@
 #include "core/json_compat.h"
 
+#include <algorithm>
+#include <cmath>
+
 namespace ixpat {
 namespace {
 
@@ -18,15 +21,31 @@ void getOptional(const json& j, const char* key, std::optional<T>& v) {
     throw json::other_error::create(501, what, &j);
 }
 
+/// A required integer, clamped into int range before narrowing (a 2^31 in the file must not wrap).
+int requiredInt(const json& j, const char* key) {
+    const json& v = j.at(key);
+    if (!v.is_number()) fail(j, "expected a number");
+    const double d = v.get<double>();
+    if (!std::isfinite(d)) fail(j, "expected a finite number");
+    return static_cast<int>(std::clamp(d, -2147483648.0, 2147483647.0));
+}
+int optionalInt(const json& j, const char* key, int def) {
+    auto it = j.find(key);
+    if (it == j.end() || !it->is_number()) return def;
+    const double d = it->get<double>();
+    if (!std::isfinite(d)) return def;
+    return static_cast<int>(std::clamp(d, -2147483648.0, 2147483647.0));
+}
+
 }  // namespace
 
 void to_json(json& j, const HapticEcho& e) {
     j = json{{"ordinal", e.ordinal}, {"intensity", e.intensity}, {"delayMs", e.delayMs}};
 }
 void from_json(const json& j, HapticEcho& e) {
-    j.at("ordinal").get_to(e.ordinal);
-    j.at("intensity").get_to(e.intensity);
-    j.at("delayMs").get_to(e.delayMs);
+    e.ordinal = requiredInt(j, "ordinal");
+    e.intensity = requiredInt(j, "intensity");
+    e.delayMs = requiredInt(j, "delayMs");
 }
 
 void to_json(json& j, const HapticRule& r) {
@@ -35,8 +54,8 @@ void to_json(json& j, const HapticRule& r) {
 }
 void from_json(const json& j, HapticRule& r) {
     j.at("enabled").get_to(r.enabled);
-    j.at("ordinal").get_to(r.ordinal);
-    j.at("intensity").get_to(r.intensity);
+    r.ordinal = requiredInt(j, "ordinal");
+    r.intensity = requiredInt(j, "intensity");
     r.echo.reset();
     getOptional(j, "echo", r.echo);
 }
@@ -75,8 +94,9 @@ void from_json(const json& j, ButtonAction& a) {
             a.path = payload.value("path", std::string{});
             break;
         case ActionKind::shortcut:
-            a.keyCode = payload.value("keyCode", -1);
-            a.flags = payload.value("flags", std::uint64_t{0});
+            a.keyCode = optionalInt(payload, "keyCode", -1);
+            if (auto f = payload.find("flags"); f != payload.end() && f->is_number_unsigned()) a.flags = f->get<std::uint64_t>();
+            else if (f != payload.end() && f->is_number_integer() && f->get<std::int64_t>() >= 0) a.flags = static_cast<std::uint64_t>(f->get<std::int64_t>());
             a.label = payload.value("label", std::string{});
             break;
         case ActionKind::shell:

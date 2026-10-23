@@ -26,7 +26,9 @@ struct Event {
     bool matched;        // hook only: a raw entry of the same kind was waiting
     bool matchedViaDrain;  // hook only: the raw entry arrived through the in-hook PeekMessage drain
     bool injected;       // hook: LLMHF_INJECTED / LLKHF_INJECTED; raw: hDevice == NULL
+    bool viaDrain;       // raw only: decoded inside a hook callback's drain
     std::int32_t a, b;   // move: dx,dy (raw) or x,y (hook); wheel: delta; button: flags; key: vk, down
+    std::uint16_t scan;  // key: hardware scan code (what both streams share)
     std::string device;  // raw: tail of the device name
 };
 
@@ -39,6 +41,7 @@ HWND gWnd = nullptr;
 HHOOK gMouseHook = nullptr, gKeyHook = nullptr;
 std::atomic<int> gHookCalls{0};
 std::int64_t gQpcFreq = 1;
+bool gDraining = false;  // set while a hook callback drains WM_INPUT
 
 std::int64_t now() {
     LARGE_INTEGER c;
@@ -89,21 +92,44 @@ void onRawInput(HRAWINPUT hRaw) {
     e.device = deviceName(ri->header.hDevice);
     e.fromMouse = gDeviceIsMouse[ri->header.hDevice];
     e.injected = ri->header.hDevice == nullptr;
+    e.viaDrain = gDraining;
     if (ri->header.dwType == RIM_TYPEMOUSE) {
         const RAWMOUSE& m = ri->data.mouse;
-        e.kind = rawMouseKind(m);
-        if (e.kind == Kind::wheel) e.a = static_cast<SHORT>(m.usButtonData);
-        else if (e.kind == Kind::button) e.a = m.usButtonFlags;
-        else { e.a = m.lLastX; e.b = m.lLastY; }
-    } else if (ri->header.dwType == RIM_TYPEKEYBOARD) {
+        // One packet can carry a button change AND movement: expand it into separate entries.
+        if (m.usButtonFlags & (RI_MOUSE_WHEEL | RI_MOUSE_HWHEEL)) {
+            Event w = e;
+            w.kind = Kind::wheel;
+            w.a = static_cast<SHORT>(m.usButtonData);
+            if (!w.injected) gRawFifo.push_back(w);
+            push(w);
+        }
+        if (m.usButtonFlags & 0x03FF) {
+            Event b = e;
+            b.kind = Kind::button;
+            b.a = m.usButtonFlags & 0x03FF;
+            if (!b.injected) gRawFifo.push_back(b);
+            push(b);
+        }
+        if (m.lLastX || m.lLastY) {
+            Event mv = e;
+            mv.kind = Kind::move;
+            mv.a = m.lLastX;
+            mv.b = m.lLastY;
+            if (!mv.injected) gRawFifo.push_back(mv);
+            push(mv);
+        }
+        return;
+    }
+    if (ri->header.dwType == RIM_TYPEKEYBOARD) {
         const RAWKEYBOARD& k = ri->data.keyboard;
         e.kind = Kind::key;
         e.a = k.VKey;
         e.b = (k.Flags & RI_KEY_BREAK) ? 0 : 1;
+        e.scan = k.MakeCode;
     } else {
         e.kind = Kind::other;
     }
-    if (e.kind != Kind::other) gRawFifo.push_back(e);
+    if (e.kind != Kind::other && !e.injected) gRawFifo.push_back(e);
     push(std::move(e));
 }
 
@@ -119,27 +145,53 @@ LRESULT CALLBACK wndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
 bool drainRawInput() {
     bool any = false;
     MSG m;
-    while (PeekMessageW(&m, gWnd, WM_INPUT, WM_INPUT, PM_REMOVE)) {
+    gDraining = true;
+    int budget = 64;  // bounded work inside a hook callback
+    while (budget-- > 0 && PeekMessageW(&m, gWnd, WM_INPUT, WM_INPUT, PM_REMOVE)) {
         onRawInput(reinterpret_cast<HRAWINPUT>(m.lParam));
         DefWindowProcW(m.hwnd, m.message, m.wParam, m.lParam);
         any = true;
     }
+    gDraining = false;
     return any;
 }
 
+/// Content match: the oldest raw entry of the same kind whose identifying data agrees (wheel delta,
+/// button flag, key scan code); moves match by kind only. Injected hook events are never attributed.
 void attribute(Event& e) {
-    // Take the oldest raw entry of the same kind. Entries of other kinds older than 100 ms are stale.
+    e.matched = false;
+    e.matchedViaDrain = false;
+    if (e.injected) return;
     const std::int64_t stale = gQpcFreq / 10;
     while (!gRawFifo.empty() && e.qpc - gRawFifo.front().qpc > stale) gRawFifo.pop_front();
     for (auto it = gRawFifo.begin(); it != gRawFifo.end(); ++it) {
-        if (it->kind == e.kind) {
-            e.matched = true;
-            e.fromMouse = it->fromMouse;
-            gRawFifo.erase(it);
-            return;
-        }
+        if (it->kind != e.kind) continue;
+        bool same = true;
+        if (e.kind == Kind::wheel) same = it->a == e.a;
+        else if (e.kind == Kind::key) same = it->scan == e.scan && it->b == e.b;
+        else if (e.kind == Kind::button) same = (it->a & e.a) != 0;
+        if (!same) continue;
+        e.matched = true;
+        e.matchedViaDrain = it->viaDrain;
+        e.fromMouse = it->fromMouse;
+        gRawFifo.erase(it);
+        return;
     }
-    e.matched = false;
+}
+
+/// RI_MOUSE_* flag that corresponds to a hook button message, for the content match.
+std::int32_t buttonFlagFor(WPARAM msg, DWORD mouseData) {
+    switch (msg) {
+        case WM_LBUTTONDOWN: return RI_MOUSE_LEFT_BUTTON_DOWN;
+        case WM_LBUTTONUP: return RI_MOUSE_LEFT_BUTTON_UP;
+        case WM_RBUTTONDOWN: return RI_MOUSE_RIGHT_BUTTON_DOWN;
+        case WM_RBUTTONUP: return RI_MOUSE_RIGHT_BUTTON_UP;
+        case WM_MBUTTONDOWN: return RI_MOUSE_MIDDLE_BUTTON_DOWN;
+        case WM_MBUTTONUP: return RI_MOUSE_MIDDLE_BUTTON_UP;
+        case WM_XBUTTONDOWN: return HIWORD(mouseData) == XBUTTON1 ? RI_MOUSE_BUTTON_4_DOWN : RI_MOUSE_BUTTON_5_DOWN;
+        case WM_XBUTTONUP: return HIWORD(mouseData) == XBUTTON1 ? RI_MOUSE_BUTTON_4_UP : RI_MOUSE_BUTTON_5_UP;
+        default: return 0;
+    }
 }
 
 LRESULT CALLBACK mouseHook(int code, WPARAM wp, LPARAM lp) noexcept {
@@ -154,12 +206,10 @@ LRESULT CALLBACK mouseHook(int code, WPARAM wp, LPARAM lp) noexcept {
             case WM_MOUSEMOVE: e.kind = Kind::move; e.a = m->pt.x; e.b = m->pt.y; break;
             case WM_MOUSEWHEEL:
             case WM_MOUSEHWHEEL: e.kind = Kind::wheel; e.a = static_cast<SHORT>(HIWORD(m->mouseData)); break;
-            default: e.kind = Kind::button; e.a = static_cast<std::int32_t>(wp); break;
+            default: e.kind = Kind::button; e.a = buttonFlagFor(wp, m->mouseData); break;
         }
-        const std::size_t before = gRawFifo.size();
-        bool drained = drainRawInput();
+        drainRawInput();
         attribute(e);
-        e.matchedViaDrain = e.matched && drained && gRawFifo.size() <= before;  // the match came from the drain
         push(std::move(e));
     }
     return CallNextHookEx(nullptr, code, wp, lp);
@@ -176,10 +226,9 @@ LRESULT CALLBACK keyHook(int code, WPARAM wp, LPARAM lp) noexcept {
         e.injected = (k->flags & LLKHF_INJECTED) != 0;
         e.a = static_cast<std::int32_t>(k->vkCode);
         e.b = (k->flags & LLKHF_UP) ? 0 : 1;
-        const std::size_t before = gRawFifo.size();
-        bool drained = drainRawInput();
+        e.scan = static_cast<std::uint16_t>(k->scanCode);
+        drainRawInput();
         attribute(e);
-        e.matchedViaDrain = e.matched && drained && gRawFifo.size() <= before;
         push(std::move(e));
     }
     return CallNextHookEx(nullptr, code, wp, lp);
@@ -275,16 +324,18 @@ int cmdLog(int seconds, bool inject, const std::string& outFile) {
     // Summary
     int rawN = 0, hookN = 0, hookMatched = 0, hookDrain = 0, hookUnmatched = 0, hookMouse = 0, rawMouse = 0;
     std::map<Kind, int> unmatchedByKind;
+    int hookInjected = 0;
     for (const auto& e : gEvents) {
         if (e.src == Src::raw) { ++rawN; if (e.fromMouse) ++rawMouse; continue; }
         ++hookN;
+        if (e.injected) { ++hookInjected; continue; }  // injected events are not attributed
         if (e.matched) { ++hookMatched; if (e.matchedViaDrain) ++hookDrain; }
         else { ++hookUnmatched; ++unmatchedByKind[e.kind]; }
         if (e.fromMouse) ++hookMouse;
     }
     std::printf("raw events: %d (%d from the Surface Mouse)\n", rawN, rawMouse);
-    std::printf("hook events: %d, matched %d (via in-hook drain %d), unmatched %d, attributed to the Surface Mouse %d\n",
-                hookN, hookMatched, hookDrain, hookUnmatched, hookMouse);
+    std::printf("hook events: %d (%d injected, not attributed), matched %d (via in-hook drain %d), unmatched %d, attributed to the Surface Mouse %d\n",
+                hookN, hookInjected, hookMatched, hookDrain, hookUnmatched, hookMouse);
     for (auto& [k, n] : unmatchedByKind) std::printf("  unmatched %s: %d\n", kindName(k), n);
     std::printf("hook callbacks: %d; devices seen:\n", gHookCalls.load());
     for (auto& [h, name] : gDeviceNames) std::printf("  %p %s %s\n", h, gDeviceIsMouse[h] ? "[SURFACE MOUSE]" : "", name.c_str());

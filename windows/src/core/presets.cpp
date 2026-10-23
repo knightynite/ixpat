@@ -58,9 +58,10 @@ void applyClickFeel(Settings& s, const ClickFeel& f, bool right) {
 }
 
 std::string_view clickFeelName(const Settings& s, bool right) {
-    const auto& down = s.baseRule(right ? HapticEvent::rightDown : HapticEvent::leftDown);
-    const auto& up = s.baseRule(right ? HapticEvent::rightUp : HapticEvent::leftUp);
-    const auto& hold = s.baseRule(right ? HapticEvent::rightHold : HapticEvent::leftHold);
+    // The effective rules (a front-app profile may override them), as the Mac's picker reads them.
+    const auto& down = s.rule(right ? HapticEvent::rightDown : HapticEvent::leftDown);
+    const auto& up = s.rule(right ? HapticEvent::rightUp : HapticEvent::leftUp);
+    const auto& hold = s.rule(right ? HapticEvent::rightHold : HapticEvent::leftHold);
     for (const auto& f : kClick) {
         if (f.down == down && f.up == up && f.hold == hold) return f.name;
     }
@@ -79,9 +80,9 @@ void applyWheelFeel(Settings& s, const WheelFeel& f) {
 
 std::string_view wheelFeelName(const Settings& s) {
     for (const auto& f : kWheel) {
-        if (s.baseRule(HapticEvent::scrollStep) == f.step && s.scrollStepEvery == f.every &&
+        if (s.rule(HapticEvent::scrollStep) == f.step && s.scrollStepEvery == f.every &&
             s.ratchetDynamic == f.dynamic && s.ratchetLightRate == f.lightRate && s.freeSpin == f.freeSpin &&
-            s.baseRule(HapticEvent::freeSpinTexture) == f.texture && s.freeSpinTextureEvery == f.textureEvery) {
+            s.rule(HapticEvent::freeSpinTexture) == f.texture && s.freeSpinTextureEvery == f.textureEvery) {
             return f.name;
         }
     }

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <random>
 
 #include "core/json_compat.h"
@@ -24,6 +25,32 @@ T getOr(const json& j, const char* key, T def) {
     } catch (const json::exception&) {
         return def;
     }
+}
+
+/// Numbers are read as doubles and clamped into the destination's range BEFORE narrowing, so a huge or
+/// fractional value in a hand-edited file clamps like Swift's Int instead of wrapping (or worse).
+template <>
+int getOr<int>(const json& j, const char* key, int def) {
+    auto it = j.find(key);
+    if (it == j.end() || !it->is_number()) return def;
+    const double v = it->get<double>();
+    if (!std::isfinite(v)) return def;
+    return static_cast<int>(std::clamp(v, static_cast<double>(std::numeric_limits<int>::min()),
+                                       static_cast<double>(std::numeric_limits<int>::max())));
+}
+template <>
+std::uint32_t getOr<std::uint32_t>(const json& j, const char* key, std::uint32_t def) {
+    auto it = j.find(key);
+    if (it == j.end() || !it->is_number()) return def;
+    const double v = it->get<double>();
+    if (!std::isfinite(v) || v < 0 || v > static_cast<double>(std::numeric_limits<std::uint32_t>::max())) return def;
+    return static_cast<std::uint32_t>(v);
+}
+template <>
+double getOr<double>(const json& j, const char* key, double def) {
+    auto it = j.find(key);
+    if (it == j.end() || !it->is_number()) return def;
+    return it->get<double>();  // non-finite values are caught by sanitize()
 }
 
 /// Swift's `RawMap`: a string-keyed object, or the older alternating array `[key, value, key, value]`.

@@ -46,7 +46,7 @@ TEST_CASE("bridge: GET /waveforms returns the device table verbatim") {
     CHECK(r.body == R"([{"name":"click","ordinal":10,"ms":11}])");
 }
 
-TEST_CASE("bridge: POST /haptic with the token plays, clamps intensity and lowercases nothing") {
+TEST_CASE("bridge: POST /haptic with the token plays and clamps intensity") {
     std::vector<Played> played;
     auto h = handler(played);
     auto r = h.handle(req("POST", "/haptic", R"({"token":"secret","event":"align","intensity":9})"));
@@ -65,6 +65,24 @@ TEST_CASE("bridge: POST /haptic with the token plays, clamps intensity and lower
     CHECK(played[2].intensity == 1);
     h.handle(req("POST", "/haptic", R"({"token":"secret","event":"snap_2-x","intensity":2})"));  // allowed chars
     CHECK(played.size() == 4);
+}
+
+TEST_CASE("bridge: names are lowercased and aliases canonicalised, in the callback and the response") {
+    std::vector<Played> played;
+    auto h = handler(played);
+    auto r = h.handle(req("POST", "/haptic", R"({"token":"secret","event":"ALIGN","intensity":2})"));
+    CHECK(r.status == 200);
+    REQUIRE(played.size() == 1);
+    CHECK(played[0].name == "align");
+    CHECK(nlohmann::json::parse(r.body)["event"] == "align");
+    r = h.handle(req("POST", "/haptic", R"({"token":"secret","event":"snap","intensity":2})"));
+    CHECK(played.back().name == "align");
+    CHECK(nlohmann::json::parse(r.body)["event"] == "align");
+    r = h.handle(req("POST", "/haptic", R"({"token":"secret","event":"Notify"})"));
+    CHECK(played.back().name == "grow");
+    r = h.handle(req("POST", "/haptic", R"({"token":"secret","event":"custom_7"})"));  // unknown but well-formed: passed through
+    CHECK(r.status == 200);
+    CHECK(played.back().name == "custom_7");
 }
 
 TEST_CASE("bridge: the token is required unless empty") {
@@ -88,7 +106,12 @@ TEST_CASE("bridge: bad requests") {
     CHECK(h.handle(req("POST", "/haptic", R"({"token":"secret","event":"al ign"})")).status == 400);  // space
     CHECK(h.handle(req("POST", "/haptic", R"({"token":"secret","event":""})")).status == 400);
     CHECK(h.handle(req("POST", "/haptic", R"({"token":"secret","event":5})")).status == 400);
-    CHECK(h.handle(req("POST", "/haptic", R"({"token":"secret","event":"align","intensity":"x"})")).status == 400);
+    // Swift: an intensity that is not an Int falls back to 3
+    auto fb = h.handle(req("POST", "/haptic", R"({"token":"secret","event":"align","intensity":"x"})"));
+    CHECK(fb.status == 200);
+    CHECK(played.back().intensity == 3);
+    played.clear();
+    CHECK(h.handle(req("POST", "/haptic", R"({"token":"secret","event":"a-very-long-waveform-name-over-32-chars"})")).status == 400);
     CHECK(h.handle(req("GET", "/haptic")).status == 404);
     CHECK(h.handle(req("GET", "/nope")).status == 404);
     CHECK(h.handle(req("DELETE", "/ping")).status == 404);

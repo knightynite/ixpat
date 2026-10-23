@@ -2,7 +2,6 @@
 
 #include <array>
 #include <cstdio>
-#include <string>
 
 namespace ixpat {
 namespace {
@@ -39,13 +38,15 @@ constexpr std::array<Waveform, 8> kMeasured{{
     {7, 0x1015, 200}, {8, 0x1009, 70}, {9, 0x100A, 147}, {10, 0x1003, 11},
 }};
 
-// Unknown usages get a formatted name; keep a few around so the returned view stays valid.
-thread_local std::array<std::string, 4> gScratch;
-thread_local std::size_t gScratchNext = 0;
+std::string lowercase(std::string_view s) {
+    std::string out(s);
+    for (auto& c : out) c = (c >= 'A' && c <= 'Z') ? static_cast<char>(c + 32) : c;
+    return out;
+}
 
 }  // namespace
 
-std::string_view Waveform::name() const { return waveformName(usage); }
+std::string Waveform::name() const { return waveformName(usage); }
 
 std::span<const Waveform> measuredWaveforms() { return kMeasured; }
 
@@ -67,15 +68,13 @@ std::optional<int> ordinalFor(std::uint16_t usage, std::span<const Waveform> tab
     return std::nullopt;
 }
 
-std::string_view waveformName(std::uint16_t usage) {
+std::string waveformName(std::uint16_t usage) {
     for (const auto& n : kNames) {
-        if (n.usage == usage) return n.name;
+        if (n.usage == usage) return std::string(n.name);
     }
     char buf[24];
     std::snprintf(buf, sizeof buf, "Waveform 0x%04X", usage);
-    std::string& slot = gScratch[gScratchNext++ % gScratch.size()];
-    slot = buf;
-    return slot;
+    return buf;
 }
 
 std::optional<std::uint16_t> usageForLowercaseName(std::string_view name) {
@@ -83,15 +82,16 @@ std::optional<std::uint16_t> usageForLowercaseName(std::string_view name) {
         if (a.name == name) return a.usage;
     }
     for (const auto& n : kNames) {
-        if (n.name.size() != name.size()) continue;
-        bool same = true;
-        for (std::size_t i = 0; i < name.size() && same; ++i) {
-            const char c = n.name[i];
-            same = name[i] == (c >= 'A' && c <= 'Z' ? static_cast<char>(c + 32) : c);
-        }
-        if (same) return n.usage;
+        if (lowercase(n.name) == name) return n.usage;
     }
     return std::nullopt;
+}
+
+std::string canonicalBridgeName(std::string_view lowercaseName) {
+    for (const auto& a : kAliases) {
+        if (a.name == lowercaseName) return lowercase(waveformName(a.usage));
+    }
+    return std::string(lowercaseName);
 }
 
 }  // namespace ixpat

@@ -5,6 +5,8 @@
 #include <charconv>
 #include <nlohmann/json.hpp>
 
+#include "core/haptic_table.h"
+
 namespace ixpat {
 namespace {
 
@@ -92,15 +94,17 @@ HttpResponse BridgeHandler::handle(const HttpRequest& r) const {
         }
         auto ev = obj.find("event");
         if (ev == obj.end() || !ev->is_string()) return {400, errorBody("missing or bad event")};
-        const std::string name = ev->get<std::string>();
-        const bool nameOk = !name.empty() && std::all_of(name.begin(), name.end(), [](unsigned char c) {
+        // Bridge.swift: lowercase, at most 32 of [A-Za-z0-9_-], then the alias table.
+        std::string name = lower(ev->get<std::string>());
+        const bool nameOk = !name.empty() && name.size() <= 32 && std::all_of(name.begin(), name.end(), [](unsigned char c) {
                                 return std::isalnum(c) || c == '_' || c == '-';
                             });
         if (!nameOk) return {400, errorBody("missing or bad event")};
-        int intensity = 3;
-        if (auto in = obj.find("intensity"); in != obj.end() && !in->is_null()) {
-            if (!in->is_number_integer()) return {400, errorBody("bad intensity")};
-            intensity = std::clamp(in->get<int>(), 1, 4);
+        name = canonicalBridgeName(name);
+        int intensity = 3;  // Swift: `(obj["intensity"] as? Int) ?? 3`, then clamped to 1...4
+        if (auto in = obj.find("intensity"); in != obj.end() && in->is_number_integer()) {
+            const double d = in->get<double>();
+            intensity = static_cast<int>(std::clamp(d, 1.0, 4.0));
         }
         if (onPlay) onPlay(name, intensity);
         return {200, json{{"ok", true}, {"event", name}, {"intensity", intensity}}.dump()};

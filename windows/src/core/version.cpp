@@ -15,7 +15,8 @@ std::vector<long> parts(std::string_view v) {
         if (dot == std::string_view::npos) dot = v.size();
         std::string_view piece = v.substr(start, dot - start);
         long n = 0;
-        std::from_chars(piece.data(), piece.data() + piece.size(), n);  // failure leaves 0
+        const auto res = std::from_chars(piece.data(), piece.data() + piece.size(), n);
+        if (res.ec != std::errc{} || res.ptr != piece.data() + piece.size()) n = 0;  // "2oops" is not a number
         out.push_back(n);
         start = dot + 1;
     }

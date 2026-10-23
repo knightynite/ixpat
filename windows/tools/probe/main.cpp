@@ -27,10 +27,12 @@ const Collection* find(const std::vector<Collection>& cols, std::uint16_t usageP
 }
 
 std::int64_t micros() {
-    LARGE_INTEGER c, f;
+    static LARGE_INTEGER f = [] { LARGE_INTEGER x; QueryPerformanceFrequency(&x); return x; }();
+    static LARGE_INTEGER t0 = [] { LARGE_INTEGER x; QueryPerformanceCounter(&x); return x; }();
+    LARGE_INTEGER c;
     QueryPerformanceCounter(&c);
-    QueryPerformanceFrequency(&f);
-    return c.QuadPart * 1000000 / f.QuadPart;
+    const long double elapsed = static_cast<long double>(c.QuadPart - t0.QuadPart);  // subtract first: no overflow
+    return static_cast<std::int64_t>(elapsed * 1000000.0L / static_cast<long double>(f.QuadPart));
 }
 
 std::string measuredName(int ordinal) {
@@ -82,7 +84,12 @@ int cmdTable() {
         std::printf("open failed: %lu\n", err);
         return 1;
     }
-    std::vector<std::uint8_t> buf(std::max<std::size_t>(h->featureLen, 201), 0);
+    if (h->featureLen < 201) {
+        std::printf("feature report length is %u, expected at least 201: not the known descriptor\n", h->featureLen);
+        CloseHandle(dev);
+        return 1;
+    }
+    std::vector<std::uint8_t> buf(h->featureLen, 0);
     buf[0] = kHapticTableReport;
     const auto t0 = micros();
     const BOOL ok = HidD_GetFeature(dev, buf.data(), static_cast<ULONG>(buf.size()));
@@ -117,20 +124,25 @@ int cmdPlay(int ordinal, int intensity, bool useWriteFile) {
         std::printf("open failed: %lu\n", err);
         return 1;
     }
+    if (h->outputLen < 3) {
+        std::printf("output report length is %u, expected at least 3: not the known descriptor\n", h->outputLen);
+        CloseHandle(dev);
+        return 1;
+    }
     std::vector<int> ordinals;
     if (ordinal > 0) ordinals.push_back(ordinal);
     else
         for (int o = 3; o <= 10; ++o) ordinals.push_back(o);
     int failures = 0;
     for (int o : ordinals) {
-        std::vector<std::uint8_t> buf(std::max<std::size_t>(h->outputLen, 3), 0);
+        std::vector<std::uint8_t> buf(h->outputLen, 0);
         buf[0] = kHapticOutputReport;
         buf[1] = static_cast<std::uint8_t>(o);
         buf[2] = static_cast<std::uint8_t>(std::clamp(intensity, 0, 4));
         const auto t0 = micros();
         BOOL ok;
         DWORD written = 0;
-        if (useWriteFile) ok = WriteFile(dev, buf.data(), static_cast<DWORD>(buf.size()), &written, nullptr);
+        if (useWriteFile) ok = WriteFile(dev, buf.data(), static_cast<DWORD>(buf.size()), &written, nullptr) && written == buf.size();
         else ok = HidD_SetOutputReport(dev, buf.data(), static_cast<ULONG>(buf.size()));
         const auto t1 = micros();
         const DWORD e = ok ? 0 : GetLastError();
@@ -169,7 +181,11 @@ int cmdVersions() {
         CloseHandle(dev);
         return 1;
     }
-    std::vector<std::uint8_t> buf(std::max<std::size_t>(c->featureLen, 2), 0);
+    if (c->featureLen < 2) {
+        CloseHandle(dev);
+        return 1;
+    }
+    std::vector<std::uint8_t> buf(c->featureLen, 0);
     buf[0] = id;
     if (!HidD_GetFeature(dev, buf.data(), static_cast<ULONG>(buf.size()))) {  // a read; nothing is written
         std::printf("HidD_GetFeature(0x%02X) failed: %lu\n", id, GetLastError());

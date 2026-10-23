@@ -1,6 +1,7 @@
 // iXpat for Windows: the wiring (the Mac AppDelegate). Everything else is a unit with one job.
 #include <windows.h>
 #include <objbase.h>
+#include <commdlg.h>
 #include <shellapi.h>
 
 #include <cstdlib>
@@ -22,6 +23,7 @@
 #include "win/settings_store.h"
 #include "win/tray.h"
 #include "ui/ring_window.h"
+#include "ui/settings_window.h"
 
 #define IDI_IXPAT 101
 
@@ -40,7 +42,7 @@ constexpr UINT_PTR kTimerFlush = 4, kTimerWatchdog = 5, kTimerSnapCheck = 7, kTi
                    kTimerDemoClose = 10, kTimerDetachExpiry = 11, kTimerPointerOwner = 12;
 constexpr UINT_PTR kFirstEchoTimer = 100;
 
-enum MenuId : UINT { kMenuEnabled = 1, kMenuHaptics, kMenuOpenSettings, kMenuOpenLogs, kMenuReload, kMenuAbout, kMenuQuit };
+enum MenuId : UINT { kMenuEnabled = 1, kMenuHaptics, kMenuSettings, kMenuOpenSettings, kMenuOpenLogs, kMenuReload, kMenuAbout, kMenuQuit };
 
 const wchar_t* kWindowClass = L"iXpat.Main";
 const wchar_t* kMutexName = L"Local\\iXpat.SurfaceMouse.SingleInstance";
@@ -91,6 +93,11 @@ private:
     ui::RingWindow ring_;
     std::optional<ButtonAction> pendingRingAction_;
     bool ringDemo_ = false;
+    ui::SettingsModel model_;
+    std::unique_ptr<ui::SettingsWindow> window_;
+    void syncModel();
+    void showSettings();
+    std::optional<std::string> pickFile(const wchar_t* filter);
 
     win::DeviceInfo device_;
     Seconds lastDetach_ = -1e9;
@@ -198,7 +205,10 @@ void App::start() {
     store_->watch(hwnd_, WM_APP_SETTINGS);
 
     // Engine -> device; echoes come back through one-shot timers.
-    engine_.trigger = [this](HapticEngine::Play p, std::string_view) { hid_.trigger(p.ordinal, p.intensity); };
+    engine_.trigger = [this](HapticEngine::Play p, std::string_view) {
+        hid_.trigger(p.ordinal, p.intensity);
+        if (window_ && window_->isVisible()) window_->pulse();
+    };
     engine_.defer = [this](HapticEngine::Deferred d) {
         const UINT_PTR id = nextEcho_++;
         if (nextEcho_ > kFirstEchoTimer + 10000) nextEcho_ = kFirstEchoTimer;
@@ -283,6 +293,72 @@ void App::start() {
     SetTimer(hwnd_, kTimerFlush, 100, nullptr);
     SetTimer(hwnd_, kTimerWatchdog, 5000, nullptr);
     onDeviceChanged();
+
+    // The settings window (MainWindow.swift). Opens on every launch unless IXPAT_NO_WINDOW=1, like the Mac.
+    ui::SettingsActions acts;
+    acts.changed = [this] {
+        store_->markDirty(settings_, now());
+        settingsChanged();
+    };
+    acts.preview = [this](const HapticRule& r, const std::string& label) { engine_.preview(r, label, now()); syncModel(); };
+    acts.run = [this](const ButtonAction& a, bool hold) { router_->run(a, hold); };
+    acts.openRing = [this] { ring_.toggle(settings_.effRingItems(), false, settings_.accentHex); };
+    acts.testPulse = [this] {
+        engine_.play(ordinalFor(0x1015, device_.table).value_or(7), 4, "Test", now());
+        syncModel();
+    };
+    acts.newToken = [this] {
+        settings_.bridgeToken = newBridgeToken();
+        store_->markDirty(settings_, now());
+        startBridgeIfWanted();
+    };
+    acts.readTable = [this] { hid_.refreshTable(); };
+    acts.copyText = [this](const std::string& s) {
+        std::wstring w(s.begin(), s.end());
+        if (!OpenClipboard(hwnd_)) return;
+        EmptyClipboard();
+        HGLOBAL h = GlobalAlloc(GMEM_MOVEABLE, (w.size() + 1) * sizeof(wchar_t));
+        if (h) {
+            if (void* p = GlobalLock(h)) {
+                memcpy(p, w.c_str(), (w.size() + 1) * sizeof(wchar_t));
+                GlobalUnlock(h);
+                SetClipboardData(CF_UNICODETEXT, h);
+            }
+        }
+        CloseClipboard();
+    };
+    acts.showSetup = [this] { showAbout(); };
+    acts.showAbout = [this] { showAbout(); };
+    acts.openMouseSettings = [] { ShellExecuteW(nullptr, L"open", L"ms-settings:mousetouchpad", nullptr, nullptr, SW_SHOWNORMAL); };
+    acts.runningApps = [] {
+        std::vector<std::pair<std::string, std::string>> apps;
+        EnumWindows(
+            [](HWND h, LPARAM p) -> BOOL {
+                auto* out = reinterpret_cast<std::vector<std::pair<std::string, std::string>>*>(p);
+                if (!IsWindowVisible(h) || GetWindow(h, GW_OWNER)) return TRUE;
+                wchar_t title[256]{};
+                if (!GetWindowTextW(h, title, 256) || !title[0]) return TRUE;
+                std::string image = win::ForegroundWatch::imageNameOf(h);
+                if (image.empty() || image == "iXpat.exe") return TRUE;
+                for (auto& a : *out) if (a.first == image) return TRUE;
+                int n = WideCharToMultiByte(CP_UTF8, 0, title, -1, nullptr, 0, nullptr, nullptr);
+                std::string t(static_cast<std::size_t>(std::max(0, n - 1)), '\0');
+                if (n > 1) WideCharToMultiByte(CP_UTF8, 0, title, -1, t.data(), n, nullptr, nullptr);
+                out->emplace_back(image, t);
+                return TRUE;
+            },
+            reinterpret_cast<LPARAM>(&apps));
+        std::sort(apps.begin(), apps.end(), [](auto& a, auto& b) { return a.second < b.second; });
+        return apps;
+    };
+    acts.chooseExe = [this] { return pickFile(L"Programs (*.exe)\0*.exe\0All files (*.*)\0*.*\0"); };
+    acts.chooseApp = [this] { return pickFile(L"Programs and shortcuts (*.exe;*.lnk)\0*.exe;*.lnk\0All files (*.*)\0*.*\0"); };
+    window_ = std::make_unique<ui::SettingsWindow>(settings_, model_, std::move(acts));
+    window_->create(inst_, icon_);
+    syncModel();
+    char noWin[8];
+    const bool suppress = GetEnvironmentVariableA("IXPAT_NO_WINDOW", noWin, sizeof noWin) > 0 && noWin[0] == '1';
+    if (!suppress && !ringDemo_) showSettings();
 }
 
 void App::refreshWaveformsJson() {
@@ -299,10 +375,46 @@ void App::refreshWaveformsJson() {
     ReleaseSRWLockExclusive(&waveformsLock_);
 }
 
+std::optional<std::string> App::pickFile(const wchar_t* filter) {
+    wchar_t path[MAX_PATH]{};
+    OPENFILENAMEW ofn{};
+    ofn.lStructSize = sizeof ofn;
+    ofn.hwndOwner = window_ ? window_->hwnd() : hwnd_;
+    ofn.lpstrFilter = filter;
+    ofn.lpstrFile = path;
+    ofn.nMaxFile = MAX_PATH;
+    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
+    if (!GetOpenFileNameW(&ofn)) return std::nullopt;
+    int n = WideCharToMultiByte(CP_UTF8, 0, path, -1, nullptr, 0, nullptr, nullptr);
+    std::string s(static_cast<std::size_t>(std::max(0, n - 1)), '\0');
+    if (n > 1) WideCharToMultiByte(CP_UTF8, 0, path, -1, s.data(), n, nullptr, nullptr);
+    return s;
+}
+
+void App::showSettings() {
+    if (!window_) return;
+    syncModel();
+    window_->applyTheme();
+    window_->show();
+}
+
+/// Copy the live state the window shows (device, engine, input status) and repaint it.
+void App::syncModel() {
+    model_.device = device_;
+    model_.pulseCount = engine_.pulseCount();
+    model_.lastEvent = engine_.lastEvent();
+    model_.lastPlayed = engine_.lastPlayed();
+    model_.input = input_.status();
+    model_.bridgeRunning = bridge_.running();
+    model_.frontApp = settings_.frontBundleID.value_or("");
+    if (window_) window_->refresh();
+}
+
 /// Stop every producer while the window still exists, then let the window go.
 void App::quit() {
     if (quitting_) return;
     quitting_ = true;
+    window_.reset();
     KillTimer(hwnd_, kTimerFlush);
     KillTimer(hwnd_, kTimerWatchdog);
     if (store_) {
@@ -372,10 +484,13 @@ void App::pushConfig() {
 
 void App::onInputEvents() {
     win::InputEvent e;
+    bool any = false;
     while (input_.pop(e)) {
+        any = true;
         switch (e.kind) {
             case win::InputEvent::Kind::rawButtons: {
                 const auto oldMask = static_cast<std::uint8_t>(e.a), newMask = static_cast<std::uint8_t>(e.b);
+                model_.buttons = newMask;
                 if ((newMask & ~oldMask) & 0x01) {
                     if (auto r = win::foregroundFrame()) frameBeforeDrag_ = IRect{r->left, r->top, r->right, r->bottom};
                 }
@@ -383,9 +498,12 @@ void App::onInputEvents() {
                 char buf[48];
                 std::snprintf(buf, sizeof buf, "mouse buttons %02x -> %02x", oldMask, newMask);
                 win::reportLog(buf);
+                model_.reportLog.push_back(buf);
+                if (model_.reportLog.size() > 150) model_.reportLog.pop_front();
                 break;
             }
             case win::InputEvent::Kind::rawWheel:
+                model_.wheelTotal += e.b;
                 router_->wheel(e.b, e.now);
                 if (router_->freeSpinActive() != lastFreeSpin_) pushConfig();
                 break;
@@ -393,11 +511,16 @@ void App::onInputEvents() {
                 char buf[48];
                 std::snprintf(buf, sizeof buf, "keyboard vk %02x %s", e.b, e.c ? "down" : "up");
                 win::reportLog(buf);
+                model_.reportLog.push_back(buf);
+                if (model_.reportLog.size() > 150) model_.reportLog.pop_front();
                 break;
             }
             case win::InputEvent::Kind::chord: {
                 const auto out = static_cast<ChordOutput>(e.b);
-                win::debugLog(std::string("action button: ") + (out == ChordOutput::press ? "press" : out == ChordOutput::doublePress ? "doublePress" : out == ChordOutput::holdBegin ? "hold" : "holdEnd"));
+                const char* name = out == ChordOutput::press ? "Press" : out == ChordOutput::doublePress ? "Double press" : out == ChordOutput::holdBegin ? "Press and hold" : "Hold released";
+                win::debugLog(std::string("action button: ") + name);
+                if (out != ChordOutput::holdEnd) model_.lastGesture = name;
+                model_.actionPressed = out == ChordOutput::holdBegin;
                 router_->chord(out, e.now);
                 break;
             }
@@ -434,6 +557,7 @@ void App::onInputEvents() {
 
         }
     }
+    if (any && window_ && window_->isVisible()) syncModel();
 }
 
 void App::snapCheck() {
@@ -467,6 +591,7 @@ void App::onDeviceChanged() {
     }
     updateTray();
     pushConfig();
+    syncModel();
 }
 
 /// The Surface Mouse's pointer settings apply while it is the device moving the pointer; another
@@ -494,6 +619,8 @@ void App::settingsChanged() {
     startBridgeIfWanted();
     applyPointer();
     updateTray();
+    if (window_) window_->applyTheme();
+    syncModel();
 }
 
 void App::updateTray() {
@@ -508,6 +635,7 @@ void App::showMenu() {
     AppendMenuW(menu, MF_STRING | (settings_.enabled ? MF_CHECKED : 0), kMenuEnabled, L"Enabled");
     AppendMenuW(menu, MF_STRING | (settings_.hapticsEnabled ? MF_CHECKED : 0), kMenuHaptics, L"Haptics");
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(menu, MF_STRING, kMenuSettings, L"Settings...");
     AppendMenuW(menu, MF_STRING, kMenuOpenSettings, L"Open settings.json");
     AppendMenuW(menu, MF_STRING, kMenuOpenLogs, L"Open logs folder");
     AppendMenuW(menu, MF_STRING, kMenuReload, L"Reload settings");
@@ -530,6 +658,9 @@ void App::showMenu() {
             settings_.hapticsEnabled = !settings_.hapticsEnabled;
             store_->markDirty(settings_, now());
             settingsChanged();
+            break;
+        case kMenuSettings:
+            showSettings();
             break;
         case kMenuOpenSettings:
             if (!std::filesystem::exists(win::settingsPath())) store_->save(settings_);
@@ -595,11 +726,12 @@ LRESULT App::handle(UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         }
         case WM_APP_SHOW:
-            showAbout();
+            showSettings();
             return 0;
         case WM_APP_TRAY: {
             const UINT event = LOWORD(lp);
-            if (event == WM_LBUTTONUP || event == WM_RBUTTONUP || event == WM_CONTEXTMENU || event == NIN_SELECT || event == NIN_KEYSELECT) showMenu();
+            if (event == WM_LBUTTONUP || event == NIN_SELECT || event == NIN_KEYSELECT) showSettings();
+            else if (event == WM_RBUTTONUP || event == WM_CONTEXTMENU) showMenu();
             return 0;
         }
         case WM_TIMER: {

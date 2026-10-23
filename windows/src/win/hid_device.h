@@ -42,6 +42,7 @@ public:
     /// Any thread. Bounded queue (8): the oldest pending trigger is dropped when it is full.
     void trigger(int ordinal, int intensity);
     void refreshBattery();
+    void refreshTable();
     DeviceInfo snapshot() const;
 
 private:
@@ -65,6 +66,7 @@ private:
     HANDLE stopEvent_ = nullptr;
     std::atomic<bool> enumerate_{true};
     std::atomic<bool> battery_{true};
+    std::atomic<bool> table_{false};
     HCMNOTIFICATION notify_ = nullptr;
     std::thread thread_;
 };

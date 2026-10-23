@@ -10,7 +10,8 @@ const wchar_t* kRunKey = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 std::wstring loginItemCommand() {
     wchar_t exe[MAX_PATH];
     const DWORD n = GetModuleFileNameW(nullptr, exe, MAX_PATH);
-    return L"\"" + std::wstring(exe, n < MAX_PATH ? n : 0) + L"\"";
+    if (n == 0 || n >= MAX_PATH) return {};  // failed or truncated: no command rather than a wrong one
+    return L"\"" + std::wstring(exe, n) + L"\"";
 }
 
 bool loginItemEnabled(const wchar_t* valueName) {
@@ -28,6 +29,10 @@ bool setLoginItem(bool on, const wchar_t* valueName) {
     LSTATUS st;
     if (on) {
         const std::wstring cmd = loginItemCommand();
+        if (cmd.empty()) {
+            RegCloseKey(k);
+            return false;
+        }
         st = RegSetValueExW(k, valueName, 0, REG_SZ, reinterpret_cast<const BYTE*>(cmd.c_str()),
                             static_cast<DWORD>((cmd.size() + 1) * sizeof(wchar_t)));
     } else {

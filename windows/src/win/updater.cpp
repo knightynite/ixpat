@@ -53,19 +53,48 @@ UpdateState loadUpdateState() {
 
 void saveUpdateState(const UpdateState& s) {
     const nlohmann::json j{{"lastCheck", s.lastCheck}, {"skipped", s.skipped}};
-    std::ofstream out(statePath(), std::ios::binary | std::ios::trunc);
-    out << j.dump(2) << '\n';
+    const std::filesystem::path target = statePath();
+    const std::filesystem::path tmp = target.wstring() + L".tmp";
+    {
+        std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
+        out << j.dump(2) << '\n';
+        if (!out) {
+            debugLog("update state: could not be written");
+            return;
+        }
+    }
+    if (!MoveFileExW(tmp.c_str(), target.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) debugLog("update state: could not be replaced");
 }
 
-bool httpsGet(const wchar_t* host, const wchar_t* path, const wchar_t* userAgent, std::string& body, std::string& error) {
+void SessionSlot::set(HINTERNET h) {
+    AcquireSRWLockExclusive(&lock);
+    const bool late = closed;
+    if (!late) handle = h;
+    ReleaseSRWLockExclusive(&lock);
+    if (late && h) WinHttpCloseHandle(h);
+}
+
+void SessionSlot::close() {
+    AcquireSRWLockExclusive(&lock);
+    HINTERNET h = handle;
+    handle = nullptr;
+    closed = true;
+    ReleaseSRWLockExclusive(&lock);
+    if (h) WinHttpCloseHandle(h);
+}
+
+bool httpsGet(const wchar_t* host, const wchar_t* path, const wchar_t* userAgent, std::string& body, std::string& error,
+              SessionSlot* slot) {
     body.clear();
     error.clear();
     struct Handles {
         HINTERNET s = nullptr, c = nullptr, r = nullptr;
+        SessionSlot* slot = nullptr;
         ~Handles() {
             if (r) WinHttpCloseHandle(r);
             if (c) WinHttpCloseHandle(c);
-            if (s) WinHttpCloseHandle(s);
+            if (slot) slot->close();  // the slot owns the session once published
+            else if (s) WinHttpCloseHandle(s);
         }
     } h;
     h.s = WinHttpOpen(userAgent, WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
@@ -73,6 +102,10 @@ bool httpsGet(const wchar_t* host, const wchar_t* path, const wchar_t* userAgent
     if (!h.s) {
         error = lastErrorText(GetLastError());
         return false;
+    }
+    if (slot) {
+        h.slot = slot;
+        slot->set(h.s);
     }
     WinHttpSetTimeouts(h.s, 10000, 10000, 10000, 15000);
     h.c = WinHttpConnect(h.s, host, INTERNET_DEFAULT_HTTPS_PORT, 0);
@@ -134,12 +167,20 @@ bool Updater::check(bool manual) {
     if (busy_.load() || !hwnd_) return false;
     if (thread_.joinable()) thread_.join();  // the previous check finished; reclaim it
     busy_ = true;
+    AcquireSRWLockExclusive(&session_.lock);
+    session_.handle = nullptr;
+    session_.closed = false;
+    ReleaseSRWLockExclusive(&session_.lock);
     thread_ = std::thread([this, manual] {
         auto* res = new UpdateResult;
         std::string body;
-        if (httpsGet(L"api.github.com", L"/repos/knightynite/ixpat/releases?per_page=30", userAgent_.c_str(), body, res->error)) {
-            res->ok = true;
-            res->release = newestWindowsRelease(body);
+        if (httpsGet(L"api.github.com", L"/repos/knightynite/ixpat/releases?per_page=100", userAgent_.c_str(), body, res->error, &session_)) {
+            if (nlohmann::json::parse(body, nullptr, false).is_array()) {
+                res->ok = true;
+                res->release = newestWindowsRelease(body);
+            } else {
+                res->error = "GitHub answered with something that is not a release list.";
+            }
         }
         busy_ = false;
         if (!PostMessageW(hwnd_, message_, manual ? 1 : 0, reinterpret_cast<LPARAM>(res))) delete res;
@@ -148,6 +189,7 @@ bool Updater::check(bool manual) {
 }
 
 void Updater::stop() {
+    session_.close();  // aborts a request in flight so the join below is immediate
     if (thread_.joinable()) thread_.join();
     hwnd_ = nullptr;
 }

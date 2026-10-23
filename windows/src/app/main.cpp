@@ -380,7 +380,14 @@ void App::start() {
         }
     };
     acts.openUrl = [](const std::string& url) {
-        if (url.rfind("https://", 0) == 0) ShellExecuteW(nullptr, L"open", widen(url).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        static const char* const kAllowed[] = {"https://github.com/knightynite/ixpat", "https://knightynite.github.io/ixpat/",
+                                               "https://www.linkedin.com/in/alnnajafi/"};
+        for (const char* prefix : kAllowed) {
+            if (url.rfind(prefix, 0) == 0) {
+                ShellExecuteW(nullptr, L"open", widen(url).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+                return;
+            }
+        }
     };
     acts.openMouseSettings = [] { ShellExecuteW(nullptr, L"open", L"ms-settings:mousetouchpad", nullptr, nullptr, SW_SHOWNORMAL); };
     acts.runningApps = [] {
@@ -738,7 +745,7 @@ void App::settingsChanged() {
 }
 
 void App::applyLoginItem() {
-    if (anyMouse_ && !settings_.windows.startAtLogin) return;  // dev runs never touch the Run key unless asked
+    if (anyMouse_) return;  // dev runs (IXPAT_ANY_MOUSE) never touch the Run key
     if (win::loginItemEnabled() != settings_.windows.startAtLogin && !win::setLoginItem(settings_.windows.startAtLogin))
         win::debugLog("login item: HKCU Run could not be updated");
 }
@@ -762,7 +769,7 @@ void App::onUpdateResult(bool manual, win::UpdateResult& r) {
     updateState_.lastCheck = win::unixNow();
     win::saveUpdateState(updateState_);
     if (!r.release) {
-        win::debugLog("update check: no Windows release published yet, running " IXPAT_VERSION_STRING);
+        win::debugLog("update check: no Windows release found, running " IXPAT_VERSION_STRING);
         model_.updateStatus = "No Windows release has been published yet.";
         model_.updateAvailable.reset();
         syncModel();
@@ -799,13 +806,14 @@ void App::offerUpdate(const ReleaseInfo& r, bool manual) {
     cfg.pszMainIcon = TD_INFORMATION_ICON;
     const TASKDIALOG_BUTTON buttons[] = {{100, L"Open release page"}, {101, L"Later"}, {102, L"Skip this version"}};
     cfg.pButtons = buttons;
-    cfg.cButtons = manual ? 2 : 3;
+    cfg.cButtons = 3;
+    (void)manual;
     cfg.nDefaultButton = 100;
     int pressed = 101;
     if (FAILED(TaskDialogIndirect(&cfg, &pressed, nullptr, nullptr))) {
         pressed = MessageBoxW(cfg.hwndParent, (title + L"\n\n" + body + L"\n\nOpen the release page?").c_str(), L"iXpat", MB_YESNO | MB_ICONINFORMATION) == IDYES ? 100 : 101;
     }
-    if (pressed == 100) ShellExecuteW(nullptr, L"open", widen(r.url).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+    if (pressed == 100 && isWindowsReleaseTag(r.tag)) ShellExecuteW(nullptr, L"open", widen(canonicalReleaseUrl(r.tag)).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
     else if (pressed == 102) {
         updateState_.skipped = r.version;
         win::saveUpdateState(updateState_);
@@ -881,6 +889,11 @@ void App::showMenu() {
 }
 
 void App::showAbout() {
+    if (window_) {  // the About pane; the message box below is the IXPAT_NO_WINDOW fallback
+        showSettings();
+        window_->showAbout();
+        return;
+    }
     std::wstring text = L"iXpat " IXPAT_VERSION_WSTRING L" for Windows\n\n";
     text += device_.connected ? L"Surface Mouse (2nd Edition): connected\n" : L"Surface Mouse (2nd Edition): not connected\n";
     text += L"Firmware: " + std::wstring(device_.firmware.begin(), device_.firmware.end()) + L"\n";
@@ -1030,6 +1043,13 @@ LRESULT App::handle(UINT msg, WPARAM wp, LPARAM lp) {
 
 int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmdLine, int) {
     App app;
+    if (cmdLine && wcsstr(cmdLine, L"--quit") != nullptr) {  // the uninstaller / scripts: ask the running instance to leave
+        if (HWND other = FindWindowW(kWindowClass, nullptr)) {
+            PostMessageW(other, WM_CLOSE, 0, 0);
+            for (int i = 0; i < 50 && IsWindow(other); ++i) Sleep(100);
+        }
+        return 0;
+    }
     const bool demo = cmdLine && wcsstr(cmdLine, L"--ring-demo") != nullptr;
     return app.run(inst, demo);
 }

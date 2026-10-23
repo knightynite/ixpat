@@ -1,4 +1,4 @@
-# Plan 1 review (independent review,2026-10-22)
+# Plan 1 review (independent review, 2026-10-22)
 
 Independent read-only review of the Plan 1 diff (core engine port + probe), fed inline. 16 findings; the
 triage below is the author's. Fixed items have a test that failed before the fix.

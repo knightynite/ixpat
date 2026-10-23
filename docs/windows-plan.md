@@ -53,8 +53,8 @@ CFU collection. Both were wrong once the mouse was paired to a Windows 11 PC
 
 So firmware updates for the 2nd Edition arrive through Windows Update, in the
 background, over the standard CFU protocol, and iXpat has no reason to implement them:
-it never opens the CFU or vendor collections, shows the installed firmware version and
-points at Windows Update. The macOS plan for an in-app updater is withdrawn for the
+it never opens the CFU or vendor collections and shows the installed firmware version;
+updates arrive through Windows Update on their own. The macOS plan for an in-app updater is withdrawn for the
 same reason: the safe path for Mac-only users is to pair the mouse with any Windows PC
 once.
 

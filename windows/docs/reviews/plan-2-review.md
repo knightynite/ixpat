@@ -1,4 +1,4 @@
-# Plan 2 review (independent review,2026-10-23)
+# Plan 2 review (independent review, 2026-10-23)
 
 Independent read-only review of the Plan 2 diff (Win32 application core), fed inline. 2 Critical, 20 Important,
 6 Minor. Triage by the author; "fixed" means the change is in the following commit.

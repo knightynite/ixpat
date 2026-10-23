@@ -54,6 +54,9 @@ public:
     void deviceConnected(bool on, Seconds now);
     void timer(int id, Seconds now);
 
+    /// Run an action the way the action button would (ring and gesture kinds need router state).
+    void run(const ButtonAction& a, bool hold);
+
     bool freeSpinActive() const { return wheel_.freeSpinActive(); }
     bool gestureModeActive() const { return gestureActive_; }
     std::uint8_t buttonsMask() const { return buttons_; }
@@ -61,7 +64,6 @@ public:
 
 private:
     void onGesture(ButtonGesture g, Seconds now);
-    void run(const ButtonAction& a, bool hold);
     void holdEnded(Seconds now);
     void armHold(int id, HapticEvent holdEvent);
     int ordinalOr(std::uint16_t usage, int fallback) const;

@@ -1,0 +1,315 @@
+{
+  "accentHex": 689407,
+  "actions": {
+    "doublePress": {
+      "missionControl": {}
+    },
+    "hold": {
+      "screenshot": {}
+    },
+    "press": {
+      "actionRing": {}
+    }
+  },
+  "autoCheckUpdates": true,
+  "bridgeEnabled": true,
+  "bridgePort": 47337,
+  "bridgeToken": "k3j4h5g6f7d8s9a0q1w2e3r4",
+  "clickHoldMs": 300,
+  "enabled": true,
+  "forceClick": true,
+  "forceClickMs": 350,
+  "freeSpin": true,
+  "freeSpinMultiplier": 3,
+  "freeSpinTextureEvery": 2,
+  "freeSpinThreshold": 18,
+  "gestureDown": {
+    "volumeDown": {}
+  },
+  "gestureFreezePointer": true,
+  "gestureLeft": {
+    "previousTrack": {}
+  },
+  "gestureRight": {
+    "nextTrack": {}
+  },
+  "gestureStepPx": 24,
+  "gestureSwipePx": 90,
+  "gestureUp": {
+    "volumeUp": {}
+  },
+  "gesturesOnHold": true,
+  "hapticsEnabled": true,
+  "managePointer": false,
+  "masterIntensity": 4,
+  "noAcceleration": false,
+  "pointerSpeed": 3,
+  "profiles": [
+    {
+      "bundleID": "com.google.Chrome",
+      "id": "3B9E6B0A-6C8E-4B5B-9E3A-0F0F0F0F0F0F",
+      "name": "Google Chrome",
+      "rules": {
+        "leftDown": {
+          "enabled": true,
+          "intensity": 1,
+          "ordinal": 3
+        }
+      },
+      "smoothScroll": false
+    }
+  ],
+  "ratchetDynamic": true,
+  "ratchetLightRate": 10,
+  "reverseScroll": false,
+  "ringItems": [
+    {
+      "action": {
+        "missionControl": {}
+      },
+      "id": "000000A0-0000-4000-8000-0000000000A0",
+      "symbol": "rectangle.3.group",
+      "title": "Mission Control"
+    },
+    {
+      "action": {
+        "spotlight": {}
+      },
+      "id": "000000A1-0000-4000-8000-0000000000A1",
+      "symbol": "magnifyingglass",
+      "title": "Spotlight"
+    },
+    {
+      "action": {
+        "screenshot": {}
+      },
+      "id": "000000A2-0000-4000-8000-0000000000A2",
+      "symbol": "camera.viewfinder",
+      "title": "Screenshot"
+    },
+    {
+      "action": {
+        "playPause": {}
+      },
+      "id": "000000A3-0000-4000-8000-0000000000A3",
+      "symbol": "playpause.fill",
+      "title": "Play / Pause"
+    },
+    {
+      "action": {
+        "showDesktop": {}
+      },
+      "id": "000000A4-0000-4000-8000-0000000000A4",
+      "symbol": "menubar.dock.rectangle",
+      "title": "Show Desktop"
+    },
+    {
+      "action": {
+        "lockScreen": {}
+      },
+      "id": "000000A5-0000-4000-8000-0000000000A5",
+      "symbol": "lock.fill",
+      "title": "Lock"
+    },
+    {
+      "action": {
+        "shortcut": {
+          "flags": 1048576,
+          "keyCode": 8,
+          "label": "⌘C"
+        }
+      },
+      "id": "000000A6-0000-4000-8000-0000000000A6",
+      "symbol": "doc.on.doc",
+      "title": "Copy"
+    },
+    {
+      "action": {
+        "shortcut": {
+          "flags": 1048576,
+          "keyCode": 9,
+          "label": "⌘V"
+        }
+      },
+      "id": "000000A7-0000-4000-8000-0000000000A7",
+      "symbol": "doc.on.clipboard",
+      "title": "Paste"
+    }
+  ],
+  "rules": {
+    "actionButton": {
+      "enabled": true,
+      "intensity": 4,
+      "ordinal": 10
+    },
+    "appSwitch": {
+      "enabled": true,
+      "intensity": 2,
+      "ordinal": 3
+    },
+    "controlHover": {
+      "enabled": true,
+      "intensity": 1,
+      "ordinal": 3
+    },
+    "dragEnd": {
+      "enabled": true,
+      "intensity": 3,
+      "ordinal": 5
+    },
+    "dropTarget": {
+      "enabled": true,
+      "intensity": 2,
+      "ordinal": 3
+    },
+    "forceClick": {
+      "enabled": true,
+      "intensity": 4,
+      "ordinal": 10
+    },
+    "freeSpinOff": {
+      "enabled": true,
+      "intensity": 2,
+      "ordinal": 5
+    },
+    "freeSpinOn": {
+      "enabled": true,
+      "intensity": 3,
+      "ordinal": 4
+    },
+    "freeSpinTexture": {
+      "enabled": false,
+      "intensity": 1,
+      "ordinal": 3
+    },
+    "gestureLimit": {
+      "enabled": true,
+      "intensity": 3,
+      "ordinal": 4
+    },
+    "gestureStep": {
+      "enabled": true,
+      "intensity": 2,
+      "ordinal": 6
+    },
+    "gestureSwipe": {
+      "enabled": true,
+      "intensity": 3,
+      "ordinal": 8
+    },
+    "hoverAffordance": {
+      "enabled": false,
+      "intensity": 1,
+      "ordinal": 3
+    },
+    "leftDown": {
+      "enabled": false,
+      "intensity": 2,
+      "ordinal": 10
+    },
+    "leftHold": {
+      "enabled": false,
+      "intensity": 2,
+      "ordinal": 7
+    },
+    "leftUp": {
+      "enabled": false,
+      "intensity": 1,
+      "ordinal": 3
+    },
+    "menuHighlight": {
+      "enabled": true,
+      "intensity": 2,
+      "ordinal": 6
+    },
+    "middleDown": {
+      "enabled": true,
+      "intensity": 3,
+      "ordinal": 10
+    },
+    "pluginPulse": {
+      "enabled": true,
+      "intensity": 3,
+      "ordinal": 10
+    },
+    "rightDown": {
+      "enabled": false,
+      "intensity": 2,
+      "ordinal": 10
+    },
+    "rightHold": {
+      "enabled": false,
+      "intensity": 2,
+      "ordinal": 7
+    },
+    "rightUp": {
+      "enabled": false,
+      "intensity": 1,
+      "ordinal": 3
+    },
+    "ringCommit": {
+      "enabled": true,
+      "intensity": 4,
+      "ordinal": 10
+    },
+    "ringDetent": {
+      "enabled": true,
+      "intensity": 2,
+      "ordinal": 3
+    },
+    "ringOpen": {
+      "enabled": true,
+      "intensity": 2,
+      "ordinal": 7
+    },
+    "screenEdge": {
+      "enabled": true,
+      "intensity": 3,
+      "ordinal": 4
+    },
+    "scrollEnd": {
+      "enabled": true,
+      "intensity": 2,
+      "ordinal": 4
+    },
+    "scrollStep": {
+      "enabled": false,
+      "intensity": 2,
+      "ordinal": 6
+    },
+    "selectionChange": {
+      "enabled": true,
+      "intensity": 2,
+      "ordinal": 5
+    },
+    "sliderTick": {
+      "enabled": true,
+      "intensity": 1,
+      "ordinal": 6
+    },
+    "textLine": {
+      "enabled": true,
+      "intensity": 2,
+      "ordinal": 5
+    },
+    "textSelect": {
+      "enabled": true,
+      "intensity": 1,
+      "ordinal": 3
+    },
+    "windowSnap": {
+      "enabled": true,
+      "intensity": 3,
+      "ordinal": 8
+    }
+  },
+  "scrollAccel": 1,
+  "scrollGlide": 5,
+  "scrollMomentum": 4,
+  "scrollPixelsPerNotch": 60,
+  "scrollSpeed": 0.3125,
+  "scrollStepEvery": 1,
+  "smoothScroll": true,
+  "swallowButton": true,
+  "theme": "system"
+}

@@ -3,6 +3,7 @@
 #include <objbase.h>
 #include <commdlg.h>
 #include <shellapi.h>
+#include <commctrl.h>
 
 #include <cstdlib>
 #include <map>
@@ -23,6 +24,9 @@
 #include "win/settings_store.h"
 #include "win/tray.h"
 #include "win/uia_watch.h"
+#include "core/version.h"
+#include "win/login_item.h"
+#include "win/updater.h"
 #include "ui/ring_window.h"
 #include "ui/settings_window.h"
 
@@ -39,13 +43,22 @@ constexpr UINT WM_APP_BRIDGE = WM_APP + 4;
 constexpr UINT WM_APP_TRAY = WM_APP + 5;
 constexpr UINT WM_APP_SHOW = WM_APP + 6;
 constexpr UINT WM_APP_UIA = WM_APP + 7;
+constexpr UINT WM_APP_UPDATE = WM_APP + 8;
 
 constexpr UINT_PTR kTimerFlush = 4, kTimerWatchdog = 5, kTimerSnapCheck = 7, kTimerPointerApply = 8, kTimerRingCommit = 9,
                    kTimerDemoClose = 10, kTimerDetachExpiry = 11, kTimerPointerOwner = 12,
-                   kTimerCursor = 13;
+                   kTimerCursor = 13, kTimerUpdateFirst = 14, kTimerUpdate = 15;
 constexpr UINT_PTR kFirstEchoTimer = 100;
 
-enum MenuId : UINT { kMenuEnabled = 1, kMenuHaptics, kMenuSettings, kMenuOpenSettings, kMenuOpenLogs, kMenuReload, kMenuAbout, kMenuQuit };
+enum MenuId : UINT { kMenuEnabled = 1, kMenuHaptics, kMenuSettings, kMenuOpenSettings, kMenuOpenLogs, kMenuReload, kMenuCheckUpdates, kMenuAbout, kMenuQuit };
+
+std::wstring widen(const std::string& s) {
+    if (s.empty()) return {};
+    const int n = MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), nullptr, 0);
+    std::wstring w(static_cast<std::size_t>(n), wchar_t{});
+    MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), w.data(), n);
+    return w;
+}
 
 const wchar_t* kWindowClass = L"iXpat.Main";
 const wchar_t* kMutexName = L"Local\\iXpat.SurfaceMouse.SingleInstance";
@@ -94,6 +107,12 @@ private:
     win::PointerSettings pointer_;
     win::Tray tray_;
     win::UiaWatch uia_;
+    win::Updater updater_;
+    win::UpdateState updateState_;
+    void scheduledUpdateCheck();
+    void onUpdateResult(bool manual, win::UpdateResult& r);
+    void offerUpdate(const ReleaseInfo& r, bool manual);
+    void applyLoginItem();
     HCURSOR arrowCursor_ = nullptr, waitCursor_ = nullptr, appStartingCursor_ = nullptr, lastCursor_ = nullptr;
     Seconds lastCursorTick_ = 0;
     void cursorTick();
@@ -270,6 +289,11 @@ void App::start() {
     waitCursor_ = LoadCursorW(nullptr, IDC_WAIT);
     appStartingCursor_ = LoadCursorW(nullptr, IDC_APPSTARTING);
     SetTimer(hwnd_, kTimerCursor, 50, nullptr);
+    updater_.init(hwnd_, WM_APP_UPDATE, L"iXpat-Windows/" IXPAT_VERSION_WSTRING);
+    updateState_ = win::loadUpdateState();
+    SetTimer(hwnd_, kTimerUpdateFirst, 10 * 1000, nullptr);   // Updater.start: 10 s after launch, then every 6 h
+    SetTimer(hwnd_, kTimerUpdate, 6 * 3600 * 1000, nullptr);
+    applyLoginItem();
     {
         const auto st = input_.status();
         win::debugLog(std::string("raw input registered=") + (st.rawRegistered ? "yes" : "no") + " hooks installed=" +
@@ -345,6 +369,16 @@ void App::start() {
     };
     acts.showSetup = [this] { showAbout(); };
     acts.showAbout = [this] { showAbout(); };
+    acts.checkUpdates = [this] {
+        if (updater_.check(true)) {
+            model_.updateChecking = true;
+            model_.updateStatus = "Checking GitHub...";
+            syncModel();
+        }
+    };
+    acts.openUrl = [](const std::string& url) {
+        if (url.rfind("https://", 0) == 0) ShellExecuteW(nullptr, L"open", widen(url).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+    };
     acts.openMouseSettings = [] { ShellExecuteW(nullptr, L"open", L"ms-settings:mousetouchpad", nullptr, nullptr, SW_SHOWNORMAL); };
     acts.runningApps = [] {
         std::vector<std::pair<std::string, std::string>> apps;
@@ -435,6 +469,8 @@ void App::quit() {
     KillTimer(hwnd_, kTimerFlush);
     KillTimer(hwnd_, kTimerWatchdog);
     KillTimer(hwnd_, kTimerCursor);
+    KillTimer(hwnd_, kTimerUpdateFirst);
+    KillTimer(hwnd_, kTimerUpdate);
     if (store_) {
         store_->stopWatching();
         store_->flush();
@@ -444,6 +480,7 @@ void App::quit() {
     ring_.destroy();
     input_.stop();
     uia_.stop();
+    updater_.stop();
     foreground_.stop();
     bridge_.stop();
     hid_.stop();
@@ -451,6 +488,7 @@ void App::quit() {
     // Payloads posted by the bridge thread before it stopped are ours to free.
     MSG m;
     while (PeekMessageW(&m, hwnd_, WM_APP_BRIDGE, WM_APP_BRIDGE, PM_REMOVE)) delete reinterpret_cast<BridgePlay*>(m.lParam);
+    while (PeekMessageW(&m, hwnd_, WM_APP_UPDATE, WM_APP_UPDATE, PM_REMOVE)) delete reinterpret_cast<win::UpdateResult*>(m.lParam);
     win::debugLog("quit");
     DestroyWindow(hwnd_);
 }
@@ -684,9 +722,85 @@ void App::settingsChanged() {
     pushConfig();
     startBridgeIfWanted();
     applyPointer();
+    applyLoginItem();
     updateTray();
     if (window_) window_->applyTheme();
     syncModel();
+}
+
+void App::applyLoginItem() {
+    if (anyMouse_ && !settings_.windows.startAtLogin) return;  // dev runs never touch the Run key unless asked
+    if (win::loginItemEnabled() != settings_.windows.startAtLogin && !win::setLoginItem(settings_.windows.startAtLogin))
+        win::debugLog("login item: HKCU Run could not be updated");
+}
+
+/// Background checks hit the network at most once a day (Updater.check(manual: false)).
+void App::scheduledUpdateCheck() {
+    if (!settings_.autoCheckUpdates) return;
+    if (win::unixNow() - updateState_.lastCheck < 24 * 3600) return;
+    updater_.check(false);
+}
+
+void App::onUpdateResult(bool manual, win::UpdateResult& r) {
+    model_.updateChecking = false;
+    if (!r.ok) {
+        win::debugLog("update check failed: " + r.error);
+        model_.updateStatus = "Update check failed: " + r.error;
+        syncModel();
+        if (manual) MessageBoxW(hwnd_, (L"The update check failed.\n\n" + widen(r.error)).c_str(), L"iXpat", MB_OK | MB_ICONWARNING);
+        return;
+    }
+    updateState_.lastCheck = win::unixNow();
+    win::saveUpdateState(updateState_);
+    if (!r.release) {
+        win::debugLog("update check: no Windows release published yet, running " IXPAT_VERSION_STRING);
+        model_.updateStatus = "No Windows release has been published yet.";
+        model_.updateAvailable.reset();
+        syncModel();
+        if (manual) MessageBoxW(hwnd_, L"No Windows release has been published yet.\nYou are running a development build.", L"iXpat", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    const std::string& latest = r.release->version;
+    win::debugLog("update check: latest " + latest + ", running " IXPAT_VERSION_STRING);
+    if (!isNewerVersion(latest, IXPAT_VERSION_STRING)) {
+        model_.updateStatus = "Up to date: " IXPAT_VERSION_STRING " is the latest Windows release.";
+        model_.updateAvailable.reset();
+        syncModel();
+        if (manual) MessageBoxW(hwnd_, L"iXpat " IXPAT_VERSION_WSTRING L" is the latest Windows release.", L"iXpat is up to date", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    model_.updateStatus = "iXpat " + latest + " is available.";
+    model_.updateAvailable = *r.release;
+    syncModel();
+    if (!manual && updateState_.skipped == latest) return;
+    offerUpdate(*r.release, manual);
+}
+
+/// The Mac's alert: Download (here: open the release page, the build is unsigned) / Later / Skip this version.
+void App::offerUpdate(const ReleaseInfo& r, bool manual) {
+    const std::wstring title = L"iXpat " + widen(r.version) + L" is available";
+    const std::wstring body = L"You have version " IXPAT_VERSION_WSTRING L". The release page has the zip and the installer.";
+    TASKDIALOGCONFIG cfg{};
+    cfg.cbSize = sizeof cfg;
+    cfg.hwndParent = window_ ? window_->hwnd() : hwnd_;
+    cfg.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_POSITION_RELATIVE_TO_WINDOW;
+    cfg.pszWindowTitle = L"iXpat";
+    cfg.pszMainInstruction = title.c_str();
+    cfg.pszContent = body.c_str();
+    cfg.pszMainIcon = TD_INFORMATION_ICON;
+    const TASKDIALOG_BUTTON buttons[] = {{100, L"Open release page"}, {101, L"Later"}, {102, L"Skip this version"}};
+    cfg.pButtons = buttons;
+    cfg.cButtons = manual ? 2 : 3;
+    cfg.nDefaultButton = 100;
+    int pressed = 101;
+    if (FAILED(TaskDialogIndirect(&cfg, &pressed, nullptr, nullptr))) {
+        pressed = MessageBoxW(cfg.hwndParent, (title + L"\n\n" + body + L"\n\nOpen the release page?").c_str(), L"iXpat", MB_YESNO | MB_ICONINFORMATION) == IDYES ? 100 : 101;
+    }
+    if (pressed == 100) ShellExecuteW(nullptr, L"open", widen(r.url).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+    else if (pressed == 102) {
+        updateState_.skipped = r.version;
+        win::saveUpdateState(updateState_);
+    }
 }
 
 void App::updateTray() {
@@ -706,6 +820,7 @@ void App::showMenu() {
     AppendMenuW(menu, MF_STRING, kMenuOpenLogs, L"Open logs folder");
     AppendMenuW(menu, MF_STRING, kMenuReload, L"Reload settings");
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(menu, MF_STRING | (updater_.busy() ? MF_GRAYED : 0), kMenuCheckUpdates, L"Check for updates...");
     AppendMenuW(menu, MF_STRING, kMenuAbout, L"About iXpat");
     AppendMenuW(menu, MF_STRING, kMenuQuit, L"Quit");
     POINT pt;
@@ -737,6 +852,13 @@ void App::showMenu() {
             break;
         case kMenuReload:
             reloadSettings();
+            break;
+        case kMenuCheckUpdates:
+            if (updater_.check(true)) {
+                model_.updateChecking = true;
+                model_.updateStatus = "Checking GitHub...";
+                syncModel();
+            }
             break;
         case kMenuAbout:
             showAbout();
@@ -775,6 +897,11 @@ LRESULT App::handle(UINT msg, WPARAM wp, LPARAM lp) {
             if (router_) router_->systemEvent(static_cast<HapticEvent>(wp), now());
             if (window_ && window_->isVisible()) syncModel();
             return 0;
+        case WM_APP_UPDATE: {
+            std::unique_ptr<win::UpdateResult> r(reinterpret_cast<win::UpdateResult*>(lp));
+            if (r) onUpdateResult(wp != 0, *r);
+            return 0;
+        }
         case WM_APP_HID:
             onDeviceChanged();
             return 0;
@@ -825,6 +952,11 @@ LRESULT App::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 lastRawKey_ = st.rawKeyboard;
             } else if (id == kTimerCursor) {
                 cursorTick();
+            } else if (id == kTimerUpdateFirst) {
+                KillTimer(hwnd_, kTimerUpdateFirst);
+                scheduledUpdateCheck();
+            } else if (id == kTimerUpdate) {
+                scheduledUpdateCheck();
             } else if (id == kTimerSnapCheck) {
                 KillTimer(hwnd_, kTimerSnapCheck);
                 snapCheck();

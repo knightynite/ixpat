@@ -40,3 +40,22 @@ hook, on this machine, at equal integrity. So the main thread's watchdog now com
 reports only; its earlier "raw input flowing but no keyboard hook callbacks" lines during test runs were the test
 harness's own injected keys, not dropped hooks. The two genuine drops in the logs (the first press after a long idle,
 twice) remain unexplained and covered by the re-install paths.
+
+## Second pass (the same reviewer, on the fixes)
+
+| # | Severity | Finding | Verdict | Action |
+|---|---|---|---|---|
+| 1 | High | A reader copying a config slot could be lapped by sixteen publications | confirmed (in theory) | The reader registers the slot it copies and re-checks the index; the writer never writes the published slot nor the registered one |
+| 2 | High | A hook lost mid-chord: a swallowed letter's release eaten after Windows got its own make; a passed letter's release missed, so the next chord's letter passes | confirmed | `reconcileLetters()`: Windows' own key state (`GetAsyncKeyState`) settles a letter's ownership after every re-install and on every loop pass |
+| 3 | Medium | Stale bookkeeping after a lost break blocked the idle refresh for good; an expired hold never ended gesture mode | confirmed | The loop runs the stale pass and the reconciliation before judging the refresh; `expire()` turns a stale hold into `holdEnd` |
+| 4 | Medium | A swallowed letter repeating past 2 s lost its release; a passed-but-fed letter's repeats never refreshed the hold | confirmed | Repeats refresh `swallowedAt_`; a passed letter the chord took feeds its repeats; the 2 s forgetting runs on either direction |
+| 5 | Medium | Another keyboard's report left its observation unconsumed, so a later mouse report could use it; a slow chain could out-wait the 30 ms window | confirmed | Every physical report consumes its observation before the device branch; the pairing window is 100 ms (liveness keeps its own 30 ms) |
+| 6 | Medium, conditional | Two attributed Shift keys share one bit | not reachable | The mouse's keyboard collection sends Left Shift only; noted |
+| 7 | Medium | With the ring open the fake click never reached the decoder; a late click skipped the interceptor | confirmed | Fixed before this pass: the decoder hears every fake click first, and a late click with the ring open is the ring's commit |
+| 8 | Medium | A classified hold swallowed and fed the user's S, which then kept the chord down | confirmed | `wantsLetter()`: a press or hold takes only its own letter; any other passes as the user's |
+| 9 | Medium | A delayed re-install request voided a fresh observation; requests were not coalesced | confirmed | Fixed before this pass: requests set a due time the loop serves under the quiet-keyboard gate, coalesced |
+| 10 | Medium | The Win make's report could sit behind more mouse reports than one callback's drain budget, so the release passed before the mask | confirmed | A Win release drains up to 1024 reports first |
+| 11 | Low | The hook timing excluded the mask flush | confirmed | The flush is inside the measured interval |
+| 12 | Medium | A failed event creation in the stall watch meant a busy loop and a join that never returned | confirmed | No event, no thread; a failed wait ends the loop |
+
+Confirmed fixed from the first pass: 3, 4, 6, 10, 12, 13; the rest partially, with the remainder covered above.

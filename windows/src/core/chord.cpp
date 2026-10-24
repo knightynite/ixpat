@@ -100,6 +100,13 @@ ChordOutput ChordDecoder::chordUp(Seconds now) {
     }
 }
 
+ChordOutput ChordDecoder::expire(Seconds now) {
+    if (!stale(now)) return ChordOutput::none;
+    const bool hold = chord_ == Chord::copilot && !consumed_;
+    dropIfStale(now);
+    return hold ? ChordOutput::holdEnd : ChordOutput::none;
+}
+
 void ChordDecoder::consumePress(Seconds now) {
     consumed_ = true;
     // Only the click chord has a fake click still to come; that one must stay hidden.

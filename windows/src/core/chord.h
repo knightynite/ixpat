@@ -33,6 +33,14 @@ public:
     ChordOutput mouseLeftDown(Seconds now);
     /// Consume the chord in flight (or the next one while these keys stay down) without firing it.
     void consumePress(Seconds now);
+    /// Drop a chord whose keys went quiet (kStaleAfter). A hold dropped this way still ends: holdEnd, so gesture
+    /// mode ends with it; none otherwise.
+    ChordOutput expire(Seconds now);
+    /// Whether this letter is the chord's to take: any letter while Win alone is down, only its own once it is
+    /// a press or a hold. A letter the chord does not want is the user's and must pass.
+    bool wantsLetter(int vk) const {
+        return chord_ == Chord::win || (chord_ == Chord::snip && vk == kVkS) || (chord_ == Chord::copilot && vk == kVkF23);
+    }
 
     /// A recognised chord is held (schematic glow).
     bool pressed() const { return chord_ != Chord::none && !consumed_; }

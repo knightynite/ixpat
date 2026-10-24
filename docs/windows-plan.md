@@ -69,6 +69,15 @@ the measurements are [`windows/docs/measurements-2026-10.md`](../windows/docs/me
 * **Keyboard.** Tab walks every control with the Fluent focus ring; Space, Enter, the arrows, Home and End work
   the controls; flyouts take the keyboard and fit the window.
 
+### win-v0.2.5
+
+* **A crash leaves evidence.** An unhandled exception writes a minidump beside the logs
+  (`%LOCALAPPDATA%\iXpat\crash-<time>.dmp`, the last five kept) and one line in debug.log, then the process ends
+  as it would have. `iXpat.exe --crash` raises one on purpose, so the handler can be proved on any machine.
+* **Relaunch right after a quit.** A launch that finds the previous instance still leaving (its window gone, the
+  instance mutex still held) waits for it, up to 5 s, and then runs; before, it exited silently, which an
+  installer or a script that quits and relaunches could trip over.
+
 ## 2. What the first plan got wrong
 
 * **Language and UI.** The plan weighed Rust + WinUI 3 or egui. The port is C++20 with

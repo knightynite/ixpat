@@ -17,6 +17,7 @@
 #include "core/snap.h"
 #include "win/actions.h"
 #include "win/bridge_server.h"
+#include "win/crash_dump.h"
 #include "win/hid_device.h"
 #include "win/input_thread.h"
 #include "win/log.h"
@@ -182,11 +183,22 @@ int App::run(HINSTANCE inst, bool ringDemo) {
     QueryPerformanceFrequency(&f);
     qpcFreq_ = static_cast<double>(f.QuadPart);
 
-    // One instance: a second launch asks the first to show itself and exits.
+    // One instance. Another one with a window is asked to show itself, and this launch is done. One without a
+    // window is still coming up or on its way out (a relaunch right after a quit): this launch waits for the mutex,
+    // up to 5 s, and goes on as the one instance when it comes free.
     HANDLE mutex = CreateMutexW(nullptr, TRUE, kMutexName);
     if (GetLastError() == ERROR_ALREADY_EXISTS) {
-        if (HWND other = FindWindowW(kWindowClass, nullptr)) PostMessageW(other, WM_APP_SHOW, 0, 0);
-        return 0;
+        if (HWND other = FindWindowW(kWindowClass, nullptr)) {
+            PostMessageW(other, WM_APP_SHOW, 0, 0);
+            return 0;
+        }
+        const ULONGLONG t0 = GetTickCount64();
+        const DWORD r = WaitForSingleObject(mutex, 5000);
+        if (r != WAIT_OBJECT_0 && r != WAIT_ABANDONED) {
+            if (HWND other = FindWindowW(kWindowClass, nullptr)) PostMessageW(other, WM_APP_SHOW, 0, 0);  // it came up after all
+            return 0;
+        }
+        win::debugLog("single instance: waited " + std::to_string(GetTickCount64() - t0) + " ms for the previous instance to leave");
     }
 
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
@@ -1071,6 +1083,8 @@ LRESULT App::handle(UINT msg, WPARAM wp, LPARAM lp) {
 }  // namespace
 
 int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmdLine, int) {
+    win::installCrashHandler();
+    if (cmdLine && wcsstr(cmdLine, L"--crash") != nullptr) win::crashNow();  // a diagnostic: proves the dump on this machine
     App app;
     if (cmdLine && wcsstr(cmdLine, L"--quit") != nullptr) {  // the uninstaller / scripts: ask the running instance to leave
         if (HWND other = FindWindowW(kWindowClass, nullptr)) {

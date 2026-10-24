@@ -69,16 +69,18 @@ struct InputStatus {
     std::uint32_t hookReinstalls = 0;   // times the hooks had to be put back
     std::uint32_t hookInstallError = 0; // the last SetWindowsHookEx error (0 = none)
     std::uint32_t maxCoastGapMs = 0;    // the longest gap between two smooth-scroll frames
+    std::uint32_t maskFailures = 0;     // times the Start-menu mask key could not be sent
 };
 
 /// Owns the low-level hooks, Raw Input, the chord decoder, the kinetic coast timer and gesture mode,
 /// all on one TIME_CRITICAL thread. Decides pass / block / replace; never does I/O, never waits.
 ///
 /// Who hears what: Windows runs the keyboard hook before it generates a key's Raw Input (and generates
-/// none for a key the hook ate), and the mouse hook just after. So the hooks decide alone, at once, and
-/// Raw Input names the device a moment later. The mouse's Shift and Win pass (the Win release is kept
-/// from opening Start by a mask key), its letters are swallowed once its Win chord is in flight, and a
-/// report the hooks never saw is the signal that Windows dropped a hook: nothing fires, the hooks go back.
+/// none for a key the hook ate); for the mouse the report is posted just before the hook runs. So the
+/// hooks decide alone, at once, and Raw Input names the device a moment later. The mouse's Shift and Win
+/// pass (the Win release is kept from opening Start by a mask key), its letters are swallowed once its
+/// Win chord is in flight, and a report the hooks never saw is the signal that Windows dropped a hook:
+/// nothing fires, the hooks go back.
 class InputThread {
 public:
     InputThread();
@@ -121,6 +123,8 @@ private:
     Seconds now() const noexcept;
     std::int64_t qpcNow() const noexcept;
     void feedChord(int vk, bool down, Seconds now) noexcept;
+    void forgetStaleChord(Seconds now) noexcept;
+    void flushMask() noexcept;
     void noteHookTime(Seconds start) noexcept;
     void noteChainTime(Seconds start) noexcept;
     void noteHookLag(DWORD eventTime) noexcept;
@@ -153,9 +157,12 @@ private:
     std::thread thread_;
     double qpcFreq_ = 1;
 
-    // Config snapshot (main writes, thread reads) under a lock; plain data, copied per event.
-    mutable SRWLOCK cfgLock_ = SRWLOCK_INIT;
-    InputConfig cfg_;
+    // Config snapshots: main writes the next slot and publishes its index; a hook copies the published slot
+    // without ever waiting on main. Sixteen slots outlast any reader a writer could lap.
+    static constexpr std::size_t kConfigSlots = 16;
+    std::array<InputConfig, kConfigSlots> cfgSlots_{};
+    std::atomic<std::size_t> cfgIndex_{0};
+    InputConfig cfgLast_;  // the writer's own copy, for change detection
     std::atomic<bool> ringOpen_{false};
     std::atomic<bool> ringHold_{false};
     std::atomic<bool> gestureRequested_{false};
@@ -180,13 +187,23 @@ private:
     POINT gestureAnchor_{};
     std::uint8_t surfaceButtons_ = 0;
     bool lastMoverSurface_ = false, moverKnown_ = false;
+    bool anyMouse_ = false;  // the raw decoder's current mode (mirrors anyMouseRequested_)
     Seconds lastSurfaceWheel_ = -1e9, lastOtherWheel_ = -1e9, lastOtherButton_ = -1e9;
     Seconds swallowLeftUpUntil_ = 0, swallowRightUpUntil_ = 0;
     bool leftDownSurface_ = false;  // the press in progress came from the Surface Mouse
-    // The chord keys as the hook saw them (indexed by chordIndex): when, and what the decoder was told.
-    std::array<Seconds, 256> hookMakeAt_{}, hookBreakAt_{};
+    // What the keyboard hook saw of each chord key, by chordIndex: one observation, consumed by the one report it
+    // belongs to (matched by direction, scan code and a short window), so a report the hook never saw is never
+    // vouched for by an older callback.
+    struct HookSeen {
+        Seconds at = -1e9;
+        std::uint16_t scan = 0;
+        bool used = true;
+    };
+    std::array<HookSeen, 256> hookMake_{}, hookBreak_{};
     std::bitset<256> swallowedMake_;  // the hook ate this make: its break is eaten too
     std::bitset<256> fedMake_;        // the decoder heard this make: it hears the break
+    std::bitset<256> letterPassed_;   // Windows holds this letter from a make the hook passed: nothing of it is ever eaten
+    std::array<Seconds, 256> swallowedAt_{};
     bool maskPending_ = false;        // send the Start-menu mask key once the hook callback in progress returns
     POINT dragStart_{};
     double dragDistance_ = 0;
@@ -197,6 +214,7 @@ private:
     std::array<RECT, 16> monitors_{};
     int monitorCount_ = 0;
     Seconds nextMonitorRefresh_ = 0;
+    Seconds lastHookRefresh_ = 0;
     int hookDepth_ = 0;
     std::array<RawEntry, 32> fifo_{};
     std::size_t fifoHead_ = 0, fifoCount_ = 0;
@@ -213,7 +231,7 @@ private:
     std::atomic<std::int64_t> lastSurfaceMoveQpc_{0};  // the Surface Mouse (Raw Input)
     std::atomic<std::int64_t> lastMouseHookQpc_{0}, lastKeyHookQpc_{0};
     std::atomic<std::uint32_t> maxHookMicros_{0}, maxChainMicros_{0}, maxHookLagMs_{0}, maxCoastGapMs_{0};
-    std::atomic<std::uint32_t> reinstalls_{0}, installError_{0};
+    std::atomic<std::uint32_t> reinstalls_{0}, installError_{0}, maskFailures_{0};
 };
 
 }  // namespace ixpat::win

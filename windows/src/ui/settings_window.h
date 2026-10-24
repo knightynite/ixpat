@@ -30,6 +30,7 @@ struct SettingsModel {
     int wheelTotal = 0;
     win::InputStatus input;
     win::UiaStats uia;
+    std::uint32_t stallMaxMs = 0, stallCount = 0;  // the machine standing still (why hooks get dropped)
     bool bridgeRunning = false;
     std::deque<std::string> reportLog;  // newest last, capped by the app at 150
     std::string frontApp;               // image name of the foreground app

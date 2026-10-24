@@ -214,3 +214,59 @@ TEST_CASE("chord: a break without its make (S up alone) is harmless and ends not
     CHECK(d.key(0x53, false, 1.0) == O::none);
     CHECK_FALSE(d.chordActive(2.0));
 }
+
+TEST_CASE("chord: with the ring open, the press commits at its letter and the double press at its click, never at Win") {
+    D d;
+    int asked = 0;
+    d.pressIntercept = [&] { ++asked; return true; };
+    CHECK(d.key(ixpat::kVkLWin, true, 1.0) == O::none);
+    CHECK(d.key(ixpat::kVkShift, true, 1.0) == O::none);
+    CHECK(asked == 0);  // Windows may still get this chord if the hook dies now: nothing is committed yet
+    CHECK(d.key(ixpat::kVkS, true, 1.001) == O::none);
+    CHECK(asked == 1);
+    CHECK_FALSE(d.pressed());
+    d.key(ixpat::kVkS, false, 1.02);
+    d.key(ixpat::kVkShift, false, 1.02);
+    CHECK(d.key(ixpat::kVkLWin, false, 1.021) == O::none);
+    D e;
+    e.pressIntercept = [&] { ++asked; return true; };
+    e.key(ixpat::kVkLWin, true, 2.0);
+    CHECK(asked == 1);
+    CHECK(e.mouseLeftDown(2.02) == O::none);  // the click is the commit
+    CHECK(asked == 2);
+    CHECK(e.key(ixpat::kVkLWin, false, 2.1) == O::none);
+    D f;
+    f.pressIntercept = [&] { ++asked; return false; };  // ring closed: the gesture fires as usual
+    f.key(ixpat::kVkShift, true, 3.0);
+    f.key(ixpat::kVkLWin, true, 3.0);
+    CHECK(f.key(ixpat::kVkF23, true, 3.0) == O::holdBegin);
+    CHECK(asked == 3);
+}
+
+TEST_CASE("chord: Win+Shift down hides no click, and a click then is the user's own") {
+    D d;
+    d.key(ixpat::kVkShift, true, 1.0);
+    d.key(ixpat::kVkLWin, true, 1.001);
+    CHECK(d.inFlight(1.01));
+    CHECK_FALSE(d.swallowLeftClick(1.01));
+    CHECK(d.mouseLeftDown(1.01) == O::none);
+    CHECK(d.key(ixpat::kVkS, true, 1.02) == O::press);  // the press still completes
+    D e;  // Shift after Win: the same
+    e.key(ixpat::kVkLWin, true, 2.0);
+    CHECK(e.swallowLeftClick(2.0));
+    e.key(ixpat::kVkShift, true, 2.001);
+    CHECK_FALSE(e.swallowLeftClick(2.002));
+    CHECK(e.mouseLeftDown(2.003) == O::none);
+}
+
+TEST_CASE("chord: once a hold is recognised, a stray S does not turn it into a press") {
+    D d;
+    d.key(ixpat::kVkShift, true, 1.0);
+    d.key(ixpat::kVkLWin, true, 1.0);
+    CHECK(d.key(ixpat::kVkF23, true, 1.001) == O::holdBegin);
+    CHECK(d.key(ixpat::kVkS, true, 1.5) == O::none);  // the user's own key, fed by mistake
+    d.key(ixpat::kVkS, false, 1.6);
+    d.key(ixpat::kVkF23, false, 2.0);
+    d.key(ixpat::kVkShift, false, 2.0);
+    CHECK(d.key(ixpat::kVkLWin, false, 2.0) == O::holdEnd);
+}

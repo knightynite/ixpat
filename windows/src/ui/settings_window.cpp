@@ -1017,6 +1017,9 @@ void SettingsWindow::diagnosticsPane(Frame& f) {
                                   (model_.input.hookInstallError ? L", last install error " + std::to_wstring(model_.input.hookInstallError) : std::wstring()),
          model_.input.hookReinstalls == 0 && model_.input.hookInstallError == 0);
     line(L"Scroll frames", L"longest gap " + std::to_wstring(model_.input.maxCoastGapMs) + L" ms", model_.input.maxCoastGapMs < 25);
+    line(L"System stalls", model_.stallCount ? std::to_wstring(model_.stallCount) + L", longest " + std::to_wstring(model_.stallMaxMs) + L" ms (Windows drops hooks during a stall)"
+                                              : L"none seen", model_.stallCount == 0);
+    if (model_.input.maskFailures) line(L"Start menu mask", std::to_wstring(model_.input.maskFailures) + L" failed sends", false);
     line(L"Raw reports", std::to_wstring(model_.input.rawMouse) + L" mouse, " + std::to_wstring(model_.input.rawKeyboard) + L" keyboard");
     line(L"UI Automation", std::to_wstring(model_.uia.polls) + L" polls: " + std::to_wstring(model_.uia.menu) + L" menu, " +
                                std::to_wstring(model_.uia.control) + L" control, " + std::to_wstring(model_.uia.drop) + L" drop, " +

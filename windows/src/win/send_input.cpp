@@ -59,15 +59,15 @@ void sendKey(WORD vk, bool down) {
     SendInput(1, &in, sizeof in);
 }
 
-void sendMaskKey() {
+bool sendMaskKey() {
     INPUT in[2]{};
     for (int i = 0; i < 2; ++i) {
         in[i].type = INPUT_KEYBOARD;
-        in[i].ki.wVk = 0xFF;
+        in[i].ki.wVk = 0xE8;
         in[i].ki.dwFlags = i ? KEYEVENTF_KEYUP : 0;
         in[i].ki.dwExtraInfo = kOwnTag;
     }
-    SendInput(2, in, sizeof(INPUT));
+    return SendInput(2, in, sizeof(INPUT)) == 2;
 }
 
 void sendKeyChord(std::initializer_list<WORD> vks) {

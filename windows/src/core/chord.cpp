@@ -17,7 +17,7 @@ ChordOutput ChordDecoder::key(int vk, bool down, Seconds now) {
     dropIfStale(now);
     deviceKeyUntil_ = now + kKeyWindow;
     if (down) {
-        if (down_[vk]) return ChordOutput::none;  // key repeat
+        if (down_[vk]) return ChordOutput::none;  // key repeat: keeps the chord fresh, changes nothing
         down_[vk] = true;
         if (chord_ == Chord::win && shiftDown()) shiftInChord_ = true;
         // Evaluate the whole key set on every make, like the Mac reads each report: kbdhid may emit the
@@ -34,11 +34,17 @@ ChordOutput ChordDecoder::key(int vk, bool down, Seconds now) {
 
 ChordOutput ChordDecoder::mouseLeftDown(Seconds now) {
     dropIfStale(now);
-    if (chord_ == Chord::win && !clickSeen_) {
-        // The "double press" chord is Win + a left click the firmware fakes.
+    if (chord_ == Chord::win && !clickSeen_ && !shiftInChord_) {
+        // The "double press" chord is Win + a left click the firmware fakes. Shift in the chord means a press or
+        // a hold is on its way instead, and a click then is the user's own.
         clickSeen_ = true;
         swallowClicksUntil_ = now + kClickWindow;
-        return consumed_ ? ChordOutput::none : ChordOutput::doublePress;
+        if (consumed_) return ChordOutput::none;
+        if (pressIntercept && pressIntercept()) {
+            consumed_ = true;
+            return ChordOutput::none;
+        }
+        return ChordOutput::doublePress;
     }
     if (clickFires_ && now < swallowClicksUntil_) {
         // The Win chord was already released: this late click is the one it promised.
@@ -50,26 +56,24 @@ ChordOutput ChordDecoder::mouseLeftDown(Seconds now) {
 
 ChordOutput ChordDecoder::chordDown(Chord c, Seconds now) {
     if (chord_ == c) return ChordOutput::none;
-    // A chord only upgrades (Win alone -> Win+Shift+S as the keys arrive one by one); it never falls
-    // back to Win while its keys are being released in whatever order kbdhid emits them.
-    if (chord_ != Chord::none && c == Chord::win) return ChordOutput::none;
+    // A chord only upgrades, from Win alone to Win+Shift+S or Win+Shift+F23 as the keys arrive one by one. Once
+    // it is a press or a hold, no other key changes what it is, and it never falls back to Win while its keys
+    // are being released in whatever order kbdhid emits them.
+    if (chord_ != Chord::none && chord_ != Chord::win) return ChordOutput::none;
+    if (chord_ == Chord::win && c == Chord::win) return ChordOutput::none;
     chord_ = c;
     clickSeen_ = false;
     clickFires_ = false;
     if (c == Chord::win) shiftInChord_ = shiftDown();
     if (consumed_) return ChordOutput::none;
+    if (c == Chord::win) return ChordOutput::none;  // a candidate only: the letter or the fake click decides
+    // A concrete gesture: the ring, if it is open in toggle mode, takes it as its commit instead.
     if (pressIntercept && pressIntercept()) {
-        consumePress(now);
+        consumed_ = true;
         return ChordOutput::none;
     }
-    switch (c) {
-        case Chord::snip:
-            return ChordOutput::press;
-        case Chord::copilot:
-            return ChordOutput::holdBegin;  // the firmware already waited for the hold
-        default:
-            return ChordOutput::none;  // win: the fake click that follows confirms the double press
-    }
+    (void)now;
+    return c == Chord::snip ? ChordOutput::press : ChordOutput::holdBegin;  // the firmware already waited for the hold
 }
 
 ChordOutput ChordDecoder::chordUp(Seconds now) {
@@ -98,8 +102,8 @@ ChordOutput ChordDecoder::chordUp(Seconds now) {
 
 void ChordDecoder::consumePress(Seconds now) {
     consumed_ = true;
-    // The Win chord's fake click still follows and must stay hidden.
-    swallowClicksUntil_ = now + kClickWindow;
+    // Only the click chord has a fake click still to come; that one must stay hidden.
+    if (chord_ == Chord::win && !shiftInChord_) swallowClicksUntil_ = now + kClickWindow;
 }
 
 void ChordDecoder::reset() {

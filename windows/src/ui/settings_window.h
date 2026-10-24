@@ -93,7 +93,9 @@ private:
     void aboutPane(Frame& f);
     void ruleRow(Frame& f, HapticEvent e);
     void feelPresets(Frame& f);
-    void actionPicker(Frame& f, const std::string& id, ButtonAction& action);
+    void actionPicker(Frame& f, const std::string& id, ButtonAction& action, float reserveRight = 0);  // reserveRight: room kept free at the row's end
+    void ensureEditFont(bool mono);
+    void onDpiChanged() override;
     void ringEditor(Frame& f, const std::string& id, std::vector<RingItem>& items);
     void gesturePane(Frame& f);
     void bridgeSection(Frame& f);
@@ -116,6 +118,10 @@ private:
     HWND edit_ = nullptr;
     HBRUSH editBrush_ = nullptr;      // the native edit's background, in the theme's colour
     COLORREF editBrushColor_ = 0;
+    HFONT editFont_ = nullptr;        // the native edit's face, per DPI and style
+    float editFontScale_ = 0;
+    bool editFontMono_ = false;
+    int lastTab_ = -1;
     std::string* editTarget_ = nullptr;
     std::string editId_;
     bool editNumeric_ = false;

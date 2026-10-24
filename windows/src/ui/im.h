@@ -37,6 +37,7 @@ struct UiState {
     HWND edit = nullptr;
     std::string editId;
     std::string* editTarget = nullptr;
+    bool editMono = false;            // the field being edited shows a monospaced face
     bool editCommitted = false;
     Rect editRect;                    // where the native edit sits this frame
     bool anyDirty = false;            // a widget changed a value this frame

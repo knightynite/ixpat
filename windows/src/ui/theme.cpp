@@ -95,6 +95,7 @@ Palette resolve(AppTheme theme, bool systemDark, std::uint32_t accentHex) {
         p.text3 = {0xFFFFFF, 0.5442f};
         p.textDisabled = {0xFFFFFF, 0.3628f};
         p.hair = {0xFFFFFF, 0.0837f};
+        p.editBackground = 0x353535;
         p.mouseShell = 0x3A3A3A;
         p.mouseEdge = {0xFFFFFF, 0.16f};
         p.ok = 0x6CCB5F;
@@ -126,14 +127,21 @@ Palette resolve(AppTheme theme, bool systemDark, std::uint32_t accentHex) {
         p.flyoutStroke = {0x000000, 0.0578f};
         p.text = 0x1B1B1B;
         p.text2 = {0x000000, 0.6063f};
-        p.text3 = {0x000000, 0.4458f};
+        p.text3 = {0x000000, 0.56f};  // Fluent's 0.4458 reads at 3.3:1 on the layer; this keeps 12 px copy above 4.5:1
         p.textDisabled = {0x000000, 0.3614f};
         p.hair = {0x000000, 0.0803f};
+        p.editBackground = 0xFFFFFF;
         p.mouseShell = 0xF4F4F6;
         p.mouseEdge = {0x000000, 0.16f};
         p.ok = 0x0F7B0F;
         p.warn = 0x9D5D00;
         p.bad = 0xC42B1C;
+    }
+    // A chosen accent can be anything: the text on it follows its brightness (the Windows ramp keeps the Fluent rule).
+    const std::uint32_t hex = accentHex & 0xFFFFFF;
+    if (hex != 0 && hex != kLegacyDefaultAccent) {
+        const double lum = 0.2126 * ((p.accent >> 16) & 0xFF) + 0.7152 * ((p.accent >> 8) & 0xFF) + 0.0722 * (p.accent & 0xFF);
+        p.textOnAccent = lum > 150 ? 0x000000 : 0xFFFFFF;
     }
     p.field = p.controlFill;
     p.track = p.strongFill;

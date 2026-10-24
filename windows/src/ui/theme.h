@@ -42,6 +42,7 @@ struct Palette {
     std::uint32_t text;                         // TextFillColorPrimary (baked onto the base for light)
     Tint text2, text3, textDisabled;            // TextFillColorSecondary / Tertiary / Disabled
     Tint hair;                                  // DividerStrokeColorDefault
+    std::uint32_t editBackground;               // the native edit's opaque surface (it cannot blend)
     std::uint32_t mouseShell;
     Tint mouseEdge;
     std::uint32_t ok, warn, bad;                // SystemFillColorSuccess / Caution / Critical

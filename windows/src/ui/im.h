@@ -29,7 +29,12 @@ enum class TextStyle { title, body, bodyMedium, detail, footnote, footnoteSemibo
 /// Persistent state the immediate-mode toolkit keeps between frames.
 struct UiState {
     std::string hot, active, focus;   // widget ids
+    bool focusVisible = false;        // the focus came from the keyboard: draw its ring (a click hides it, as Windows does)
+    std::vector<std::string> focusOrder;  // the focusable widgets of the last pass, in layout order (Tab walks it)
+    std::string focusScrollTo;        // bring this widget into the scroll viewport on the next pass
     std::string openDropdown;         // a dropdown showing its popup
+    int popupHighlight = -1;          // the row the keyboard is on in the open popup (-1: none)
+    int popupScroll = 0;              // the first row shown of a popup taller than the window
     float scrollY = 0, contentHeight = 0, viewHeight = 0;
     float mouseX = -1, mouseY = -1;
     bool consumed = false;            // this event was taken by a popup
@@ -63,6 +68,11 @@ struct UiState {
 
 /// One immediate-mode pass. Construct with the render target (painting) or nullptr (input), call the
 /// widgets in layout order, then `finish()` to draw popups and run the change callback.
+///
+/// Keyboard: Tab and Shift+Tab walk the focusable widgets in layout order (the focus ring shows only then, as
+/// Windows does); Space or Enter activates a button, toggle, check box, row or dropdown; Left/Right, Up/Down,
+/// Home and End move sliders, selector bars and number boxes; in an open flyout Up/Down pick and Enter chooses;
+/// Escape closes a flyout.
 class Frame {
 public:
     Frame(ID2D1RenderTarget* rt, const Palette& pal, const UiInput& in, UiState& st, float dpiScale, float winW, float winH);
@@ -123,7 +133,7 @@ public:
     const UiInput& input() const { return in_; }
     UiState& state() { return st_; }
     bool hovered(const Rect& r) const;
-    bool clicked(const std::string& id, const Rect& r, bool enabled = true);  // press+release inside
+    bool clicked(const std::string& id, const Rect& r, bool enabled = true);  // press+release inside, or Space / Enter with the focus
     void finish();
 
     // Text formats (cached per style)
@@ -137,6 +147,14 @@ private:
     void drawPopups();
     void controlSurface(const Rect& b, bool hot, bool down, bool enabled);  // a button-like control's fill and elevation border
     void selectionPill(const Rect& row);                                    // the 3 x 16 accent pill at a selected row's left edge
+    // Keyboard
+    void registerFocus(const std::string& id, const Rect& r, bool enabled);  // every interactive widget, in layout order
+    bool focused(const std::string& id) const { return st_.focus == id; }
+    bool activated(const std::string& id);                 // Space / Enter on the focused widget (consumed)
+    int arrowStep(const std::string& id, bool horizontal);  // -1 / +1 for the focused widget's arrows (consumed), else 0
+    int homeEnd(const std::string& id);                    // -1 Home / +1 End (consumed), else 0
+    void focusRing(const Rect& r, float radius);
+    int popupRowsVisible(const UiState::Popup& p) const;
 
     ID2D1RenderTarget* rt_;
     const Palette& pal_;
@@ -165,6 +183,9 @@ private:
     float scrollStartY_ = 0;
     bool inScroll_ = false;
     Rect last_{};
+    std::vector<std::string> focusables_;
+    Rect focusedRect_{};
+    bool focusedSeen_ = false;
     Com<ID2D1SolidColorBrush> brush_;
     Rect popupBox(const UiState::Popup& p) const;
 };

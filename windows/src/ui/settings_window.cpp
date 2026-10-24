@@ -161,13 +161,16 @@ LRESULT CALLBACK SettingsWindow::editProc(HWND h, UINT msg, WPARAM wp, LPARAM lp
         case WM_GETDLGCODE:
             return DLGC_WANTALLKEYS | DLGC_WANTCHARS;
         case WM_KEYDOWN:
-            if (wp == VK_RETURN || wp == VK_ESCAPE) {
-                if (self) PostMessageW(self->hwnd(), kEditCommandMsg, wp == VK_RETURN ? 1 : 2, 0);
+            if (wp == VK_RETURN || wp == VK_ESCAPE || wp == VK_TAB) {
+                if (self) {
+                    PostMessageW(self->hwnd(), kEditCommandMsg, wp == VK_ESCAPE ? 2 : 1, 0);
+                    if (wp == VK_TAB) PostMessageW(self->hwnd(), WM_KEYDOWN, VK_TAB, 0);  // then the focus moves on
+                }
                 return 0;
             }
             break;
         case WM_CHAR:
-            if (wp == L'\r' || wp == L'\n' || wp == 27) return 0;  // no beep for the keys handled above
+            if (wp == L'\r' || wp == L'\n' || wp == 27 || wp == L'\t') return 0;  // no beep for the keys handled above
             break;
         case WM_NCDESTROY:
             RemoveWindowSubclass(h, &SettingsWindow::editProc, 1);

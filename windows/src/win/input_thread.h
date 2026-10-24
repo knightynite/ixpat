@@ -216,7 +216,8 @@ private:
     int monitorCount_ = 0;
     Seconds nextMonitorRefresh_ = 0;
     Seconds lastHookRefresh_ = 0;
-    Seconds rehookAt_ = 0;  // a device came or went: put the hooks back at the head of the chain shortly after (0 = nothing due)
+    Seconds rehookAt_ = 0;  // a device came or went, or main asked: put the hooks back shortly after (0 = nothing due)
+    bool reinstallAsked_ = false;  // the due re-hook was asked by main (the watchdog, a stall): counted and reported
     int hookDepth_ = 0;
     std::array<RawEntry, 32> fifo_{};
     std::size_t fifoHead_ = 0, fifoCount_ = 0;

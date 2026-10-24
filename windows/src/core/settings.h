@@ -78,7 +78,7 @@ struct Settings {
     bool swallowButton = true;
     // Appearance
     AppTheme theme = AppTheme::system;
-    std::uint32_t accentHex = 0x0A84FF;
+    std::uint32_t accentHex = 0;  // 0 = Windows' own accent colour
     // Windows-only
     WindowsSettings windows;
 

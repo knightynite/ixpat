@@ -63,7 +63,7 @@ TEST_CASE("settings: defaults match Settings.swift") {
     CHECK(s.freeSpinTextureEvery == 2);
     CHECK(s.swallowButton);
     CHECK(s.theme == ixpat::AppTheme::system);
-    CHECK(s.accentHex == 0x0A84FFu);
+    CHECK(s.accentHex == 0u);  // 0 = the Windows accent
     CHECK(s.windows.holdAction == ixpat::HoldAction::contextMenu);
     CHECK_FALSE(s.windows.startAtLogin);
     CHECK(s.baseRule(HapticEvent::leftDown) == ixpat::defaultRule(HapticEvent::leftDown));
@@ -136,8 +136,8 @@ TEST_CASE("settings: out-of-range and huge numbers clamp like Swift instead of w
     CHECK(parseOk(R"({"masterIntensity":-1e300})").masterIntensity == 0);
     CHECK(parseOk(R"({"clickHoldMs":1e19})").clickHoldMs == 1500);
     CHECK(parseOk(R"({"bridgePort":-9999999999})").bridgePort == 1024);
-    CHECK(parseOk(R"({"accentHex":-5})").accentHex == 0x0A84FFu);        // negative for an unsigned: default
-    CHECK(parseOk(R"({"accentHex":4294967296})").accentHex == 0x0A84FFu);  // too big: default
+    CHECK(parseOk(R"({"accentHex":-5})").accentHex == 0u);        // negative for an unsigned: default
+    CHECK(parseOk(R"({"accentHex":4294967296})").accentHex == 0u);  // too big: default
     CHECK(parseOk(R"({"accentHex":16711680})").accentHex == 0xFF0000u);
     CHECK(parseOk(R"({"masterIntensity":2.7})").masterIntensity == 2);    // a float for an int: truncated
 }

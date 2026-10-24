@@ -20,8 +20,10 @@ struct UiInput {
     bool rightButton = false;
 };
 
-/// A framed Direct2D window: HwndRenderTarget, per-monitor DPI, dark title bar, paint on invalidate,
-/// input events handed to `build`, a 60 Hz animation timer while `animate(true)`.
+/// A framed Direct2D window with the Windows 11 shell: Mica through the frame and the client area (the client is
+/// painted with per-pixel alpha, so the backdrop shows wherever nothing opaque is drawn), the system title bar in
+/// the theme's tone, per-monitor DPI, paint on invalidate, input events handed to `build`, a 60 Hz animation timer
+/// while `animate(true)`. Without Mica (Windows 10, or DWM saying no) the client is cleared to the base colour.
 class GfxWindow {
 public:
     GfxWindow() = default;
@@ -41,6 +43,7 @@ public:
     void animate(bool on);
     void setPalette(const Palette& p);
     const Palette& palette() const { return palette_; }
+    bool micaOn() const { return micaOn_; }
     /// Client size in DIPs.
     float widthDip() const { return clientW_ / dpiScale(); }
     float heightDip() const { return clientH_ / dpiScale(); }
@@ -50,6 +53,7 @@ protected:
     virtual void build(ID2D1RenderTarget* rt, const UiInput& input) = 0;
     virtual void onClosed() {}
     virtual void onTimer() {}
+    virtual void onSystemThemeChanged() {}  // the accent or the light / dark preference changed
     virtual LRESULT onMessage(UINT msg, WPARAM wp, LPARAM lp, bool& handled);  // extra messages (native edit, etc.)
     /// After an input pass: true when the toolkit wants one more empty input pass (a popup selection waits).
     virtual bool consumeRerun() { return false; }
@@ -60,7 +64,7 @@ private:
     void paint();
     void ensureTarget();
     void dispatch(const UiInput& in);
-    void applyDarkTitle();
+    void applyFrame();
 
     HWND hwnd_ = nullptr;
     HINSTANCE inst_ = nullptr;
@@ -72,6 +76,7 @@ private:
     bool animating_ = false;
     bool tracking_ = false;
     bool leftDown_ = false;
+    bool micaOn_ = false;
 };
 
 }  // namespace ixpat::ui

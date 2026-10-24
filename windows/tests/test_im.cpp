@@ -51,7 +51,7 @@ UiInput at(UiInput::Kind k, float x, float y) {
 
 TEST_CASE("im: the click that hits a dropdown opens it and leaves it open") {
     DropdownRig r;
-    r.pass(at(UiInput::Kind::down, 30, 12));  // the box is the first 150 x 26 DIPs of the pane
+    r.pass(at(UiInput::Kind::down, 30, 12));  // the box is the first 150 x 32 DIPs of the pane
     CHECK(r.st.openDropdown == "d");
 }
 
@@ -59,8 +59,8 @@ TEST_CASE("im: a popup row click lands in the caller's value and reports exactly
     DropdownRig r;
     r.pass(at(UiInput::Kind::down, 30, 12));
     REQUIRE(r.st.openDropdown == "d");
-    // popup: top = anchor bottom (27) + 2, 4 DIP pad, 26 DIP rows -> row 2 ("C") is centred at 29 + 4 + 52 + 13
-    r.pass(at(UiInput::Kind::down, 30, 29 + 4 + 52 + 13));
+    // popup: top = anchor bottom (32) + 4, 4 DIP pad, 36 DIP rows -> row 2 ("C") is centred at 36 + 4 + 72 + 18
+    r.pass(at(UiInput::Kind::down, 30, 36 + 4 + 72 + 18));
     CHECK(r.value == 2);
     CHECK(r.st.openDropdown.empty());
     CHECK(r.changedCalls == 1);

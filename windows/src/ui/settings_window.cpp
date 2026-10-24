@@ -42,8 +42,9 @@ std::wstring fmti(const wchar_t* f, int v) {
     return b;
 }
 
-const std::vector<std::wstring> kTabs{L"Haptics", L"Action Button", L"Action Ring", L"Apps", L"Pointer & Scroll", L"Diagnostics"};
-constexpr int kAboutTab = 6;  // reached from the header button and the tray menu, not a pill
+constexpr int kAboutTab = 6;  // the About page: the pane's last row and the tray menu lead to it
+constexpr float kNavW = 248;  // the navigation pane
+const wchar_t* const kPageTitles[] = {L"Haptics", L"Action button", L"Action Ring", L"Apps", L"Pointer and scroll", L"Diagnostics", L"About"};
 const std::vector<std::wstring> kLevels{L"Off", L"Light", L"Medium", L"Strong", L"Max"};
 const std::vector<std::wstring> kIntensities{L"1", L"2", L"3", L"4"};
 const std::vector<std::wstring> kTri{L"Default", L"On", L"Off"};
@@ -59,7 +60,7 @@ SettingsWindow::SettingsWindow(Settings& settings, SettingsModel& model, Setting
 
 void SettingsWindow::create(HINSTANCE inst, HICON icon) {
     applyTheme();
-    GfxWindow::create(inst, L"iXpat.Settings", L"iXpat", 860, 700, 760, 560, icon, true);
+    GfxWindow::create(inst, L"iXpat.Settings", L"iXpat", 1040, 720, 860, 600, icon, true);
 }
 
 void SettingsWindow::applyTheme() { setPalette(resolve(settings_.theme, systemPrefersDark(), settings_.accentHex)); }
@@ -104,15 +105,16 @@ void SettingsWindow::beginEdit(const Rect& r, const std::string& id, std::string
     commitEdit();
     if (!target) return;
     const float s = dpiScale();
-    edit_ = CreateWindowExW(0, L"EDIT", W(*target).c_str(), WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | (numeric ? ES_NUMBER : 0),
-                            static_cast<int>((r.x + 6) * s), static_cast<int>((r.y + 4) * s), static_cast<int>((r.w - 12) * s),
-                            static_cast<int>((r.h - 8) * s), hwnd(), reinterpret_cast<HMENU>(static_cast<UINT_PTR>(kEditId)),
+    edit_ = CreateWindowExW(WS_EX_LAYERED, L"EDIT", W(*target).c_str(), WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | (numeric ? ES_NUMBER : 0),
+                            static_cast<int>((r.x + 11) * s), static_cast<int>((r.y + 5) * s), static_cast<int>((r.w - 22) * s),
+                            static_cast<int>((r.h - 10) * s), hwnd(), reinterpret_cast<HMENU>(static_cast<UINT_PTR>(kEditId)),
                             GetModuleHandleW(nullptr), nullptr);
     if (!edit_) return;
+    SetLayeredWindowAttributes(edit_, 0, 255, LWA_ALPHA);  // a GDI child over the Mica surface stays opaque this way
     static HFONT font = nullptr;
-    const int fontPx = static_cast<int>(-12 * s);
+    const int fontPx = static_cast<int>(-14 * s);
     if (font) DeleteObject(font);
-    font = CreateFontW(fontPx, 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
+    font = CreateFontW(fontPx, 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI Variable Text");
     SendMessageW(edit_, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
     SendMessageW(edit_, EM_SETSEL, 0, -1);
     SetWindowSubclass(edit_, &SettingsWindow::editProc, 1, reinterpret_cast<DWORD_PTR>(this));
@@ -252,25 +254,20 @@ void SettingsWindow::build(ID2D1RenderTarget* rt, const UiInput& in) {
     Frame f(rt, palette(), in, st_, dpiScale(), widthDip(), heightDip());
     if (in.kind == UiInput::Kind::key && in.key == VK_ESCAPE && edit_) cancelEdit();
     if (in.kind == UiInput::Kind::key && in.key == VK_RETURN && edit_) commitEdit();
-    f.backdrop();
     const float W0 = widthDip(), H0 = heightDip();
-    f.begin({0, 0, W0, H0});
-    header(f);
-    const float headerBottom = f.cursorY();
-    f.beginScroll({0, headerBottom, W0, H0 - headerBottom});
-    f.begin({20, f.cursorY() + 8, W0 - 40, 100000});
-    const float contentW = W0 - 40;
-    // Hero + live tiles
-    f.beginRow(300);
-    heroTile(f, 330, 300);
-    f.gap(16);
-    liveTile(f, std::max(200.0f, contentW - 330 - 16), 300);
-    f.endRow();
-    f.space(16);
-    int shown = tab_ < kAboutTab ? tab_ : -1;  // the About pane has no pill: none is lit
-    if (f.pillTabs("tabs", shown, kTabs)) tab_ = shown;
-    f.space(12);
-    f.beginCard(18);
+    // The content layer to the right of the navigation pane: the page title stays put, its cards scroll.
+    f.layer({kNavW, 0, W0 - kNavW, H0});
+    navPane(f, H0);
+    const float px = kNavW + 36;
+    const float pw = std::min(W0 - kNavW - 36 - 28, 1000.0f);
+    f.begin({px, 0, pw, H0});
+    f.space(30);
+    f.label(kPageTitles[std::clamp(tab_, 0, kAboutTab)], TextStyle::pageTitle);
+    f.space(18);
+    const float top = f.cursorY();
+    f.beginScroll({kNavW + 1, top, W0 - kNavW - 1, H0 - top});
+    f.begin({px, f.cursorY(), pw, 100000});
+    f.beginSections();
     switch (tab_) {
         case 0: hapticsPane(f); break;
         case 1: buttonPane(f); break;
@@ -280,58 +277,21 @@ void SettingsWindow::build(ID2D1RenderTarget* rt, const UiInput& in) {
         case kAboutTab: aboutPane(f); break;
         default: diagnosticsPane(f); break;
     }
-    f.endCard();
-    f.space(22);
+    f.endSections();
+    f.space(36);
     f.endScroll();
     f.finish();
     // Keep the native edit where its field is (it scrolls with the content).
     if (edit_ && st_.editId == editId_) {
         const float s = dpiScale();
         const Rect r = st_.editRect;
-        SetWindowPos(edit_, nullptr, static_cast<int>((r.x + 6) * s), static_cast<int>((r.y + 4) * s), static_cast<int>((r.w - 12) * s), static_cast<int>((r.h - 8) * s), SWP_NOZORDER);
+        SetWindowPos(edit_, nullptr, static_cast<int>((r.x + 11) * s), static_cast<int>((r.y + 5) * s), static_cast<int>((r.w - 22) * s), static_cast<int>((r.h - 10) * s), SWP_NOZORDER);
     }
 }
 
-void SettingsWindow::header(Frame& f) {
-    const float W0 = widthDip();
-    f.begin({20, 14, W0 - 40, 60});
-    f.beginRow(40);
-    // App glyph stands in for the icon image
-    const Rect ic = f.take(34, 40);
-    f.fillRound({ic.x, ic.y + 3, 34, 34}, 9, f.pal().accent, 0.9f);
-    f.glyph(0xE962, {ic.x, ic.y + 3, 34, 34}, 0xFFFFFF, 1, 18);
-    f.gap(12);
-    const Rect tx = f.take(W0 - 40 - 34 - 12 - 60, 40);
-    f.drawText(L"iXpat", {tx.x, tx.y - 4, 200, 30}, TextStyle::wordmark, f.pal().text, 1, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_NEAR, false);
-    f.drawText(L"Haptics, gestures and feel for the Surface Mouse on Windows", {tx.x, tx.y + 26, tx.w, 16}, TextStyle::detail, f.pal().text2.rgb, f.pal().text2.alpha, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_NEAR, false);
-    f.setX(20 + W0 - 40 - 40 - 44);
-    if (f.iconButton("hdr/about", 0xE946, true, L"About iXpat")) tab_ = tab_ == kAboutTab ? 0 : kAboutTab;
-    f.gap(8);
-    f.toggle("master", settings_.enabled);
-    f.endRow();
-    f.space(10);
-}
-
-void SettingsWindow::showAbout() {
-    tab_ = kAboutTab;
-    refresh();
-}
-
-void SettingsWindow::heroTile(Frame& f, float width, float height) {
-    const Rect r = f.take(width, height);
-    f.fillRound(r, 18, f.pal().panel, f.pal().isDark ? 0.55f : 0.72f);
-    f.fillRound(r, 18, f.pal().accent, f.pal().isDark ? 0.10f : 0.07f);
-    f.strokeRound(r, 18, 0xFFFFFF, f.pal().isDark ? 0.18f : 0.6f);
+void SettingsWindow::navPane(Frame& f, float H0) {
     const Palette& pal = f.pal();
-    f.drawText(L"SURFACE MOUSE · 2ND EDITION", {r.x + 14, r.y + 14, 200, 14}, TextStyle::footnoteSemibold, pal.text2.rgb, pal.text2.alpha);
-    // Connection pill
-    const std::wstring state = model_.device.connected ? L"Connected" : L"Offline";
-    const float pw = f.textWidth(state, TextStyle::caption) + 30;
-    const Rect pill{r.right() - 14 - pw, r.y + 11, pw, 20};
-    f.fillRound(pill, 10, pal.field.rgb, pal.field.alpha);
-    f.dot(pill.x + 11, pill.y + 10, 3.5f, model_.device.connected ? 0x30D158 : pal.text3.rgb, model_.device.connected ? 1 : pal.text3.alpha, model_.device.connected);
-    f.drawText(state, {pill.x + 20, pill.y, pw - 24, 20}, TextStyle::caption, pal.text2.rgb, pal.text2.alpha, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, false);
-    // Schematic
+    // The mouse, live: its buttons light as they are pressed, and every pulse ripples out of it.
     SchematicState s;
     s.connected = model_.device.connected;
     s.buttons = model_.buttons;
@@ -339,43 +299,39 @@ void SettingsWindow::heroTile(Frame& f, float width, float height) {
     s.actionPressed = model_.actionPressed;
     const double now = static_cast<double>(GetTickCount64());
     for (double start : pulseStarts_) s.pulseAges.push_back(static_cast<float>((now - start) / 1000.0));
-    drawSchematic(f, {r.x, r.y + 30, r.w, r.h - 60}, s);
-    // Battery + firmware
-    const std::wstring batt = model_.device.battery ? fmti(L"%d%%", *model_.device.battery) : L"—";
-    const wchar_t glyph = !model_.device.battery ? 0xE850 : *model_.device.battery >= 90 ? 0xE83F : *model_.device.battery >= 60 ? 0xE859 : *model_.device.battery >= 35 ? 0xE857 : *model_.device.battery >= 15 ? 0xE855 : 0xE850;
-    f.glyph(glyph, {r.x + 14, r.bottom() - 32, 18, 18}, model_.device.battery && *model_.device.battery < 15 ? 0xFF453A : pal.text2.rgb, 1, 14);
-    f.drawText(batt, {r.x + 36, r.bottom() - 32, 60, 18}, TextStyle::caption, pal.text2.rgb, pal.text2.alpha, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, false);
-    f.drawText(L"fw " + W(model_.device.firmware), {r.right() - 114, r.bottom() - 32, 100, 18}, TextStyle::monoSmall, pal.text3.rgb, pal.text3.alpha, DWRITE_TEXT_ALIGNMENT_TRAILING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, false);
+    const Rect dev{12, 16, kNavW - 24, 150};
+    drawSchematic(f, {dev.x, dev.y, dev.w, 104}, s);
+    f.drawText(L"Surface Mouse", {dev.x, dev.y + 108, dev.w, 20}, TextStyle::bodyMedium, pal.text, 1, DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, false);
+    std::wstring state;
+    if (!model_.device.connected) state = L"Not connected";
+    else if (model_.device.battery) state = fmti(L"Connected, battery %d%%", *model_.device.battery);
+    else state = L"Connected";
+    const bool low = model_.device.connected && model_.device.battery && *model_.device.battery < 15;
+    f.drawText(state, {dev.x, dev.y + 128, dev.w, 18}, TextStyle::detail, low ? pal.bad : pal.text2.rgb, low ? 1 : pal.text2.alpha,
+               DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, false);
+    // Pages
+    struct Item {
+        wchar_t glyph;
+        const wchar_t* title;
+    };
+    static const Item items[] = {{0xE877, L"Haptics"},         {0xE7C9, L"Action button"},      {0xE895, L"Action Ring"},
+                                 {0xE71D, L"Apps"},            {0xE962, L"Pointer and scroll"}, {0xE9D9, L"Diagnostics"}};
+    f.begin({8, dev.bottom() + 16, kNavW - 16, 100000});
+    for (int i = 0; i < 6; ++i) {
+        if (f.navItem(idx("nav", i), items[i].glyph, items[i].title, tab_ == i)) tab_ = i;
+    }
+    // The foot: the master switch, then About.
+    f.begin({8, H0 - 12 - 40 - 44, kNavW - 16, 100});
+    f.beginRow(44);
+    f.gap(12);
+    f.toggle("master", settings_.enabled, settings_.enabled ? L"iXpat is on" : L"iXpat is off");
+    f.endRow();
+    if (f.navItem("nav/about", 0xE946, L"About", tab_ == kAboutTab)) tab_ = kAboutTab;
 }
 
-void SettingsWindow::liveTile(Frame& f, float width, float height) {
-    const Rect r = f.take(width, height);
-    const Palette& pal = f.pal();
-    f.fillRound(r, 18, pal.panel, pal.isDark ? 0.55f : 0.72f);
-    f.strokeRound(r, 18, 0xFFFFFF, pal.isDark ? 0.18f : 0.6f);
-    f.drawText(L"LIVE", {r.x + 14, r.y + 14, 100, 14}, TextStyle::footnoteSemibold, pal.text2.rgb, pal.text2.alpha);
-    f.drawText(fmti(L"%d pulses", model_.pulseCount), {r.right() - 140, r.y + 14, 126, 14}, TextStyle::monoSmall, pal.text3.rgb, pal.text3.alpha, DWRITE_TEXT_ALIGNMENT_TRAILING);
-    auto stat = [&](float y, const wchar_t* k, const std::string& v) {
-        f.drawText(k, {r.x + 14, y, r.w - 28, 16}, TextStyle::footnoteSemibold, pal.text3.rgb, pal.text3.alpha, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_NEAR, false);
-        f.drawText(W(v), {r.x + 14, y + 18, r.w - 28, 20}, TextStyle::bodyMedium, pal.text, 1, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_NEAR, false);
-    };
-    stat(r.y + 42, L"Last event", model_.lastEvent);
-    stat(r.y + 90, L"Last pulse", model_.lastPlayed);
-    stat(r.y + 138, L"Action button", model_.lastGesture);
-    stat(r.y + 186, L"Front app", model_.frontApp.empty() ? "-" : model_.frontApp);
-    // Status chips at the bottom
-    auto chip = [&](float x, const std::wstring& text, bool ok) {
-        const float cw = f.textWidth(text, TextStyle::footnote) + 24;
-        const Rect c{x, r.bottom() - 36, cw, 22};
-        f.fillRound(c, 11, ok ? 0x30D158 : 0xFF9F0A, 0.18f);
-        f.dot(c.x + 10, c.y + 11, 3, ok ? 0x30D158 : 0xFF9F0A, 1, false);
-        f.drawText(text, {c.x + 18, c.y, cw - 20, 22}, TextStyle::footnote, pal.text, 0.9f, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, false);
-        return cw;
-    };
-    float x = r.x + 14;
-    x += chip(x, model_.input.mouseHook && model_.input.keyboardHook ? L"Hooks on" : L"Hooks off", model_.input.mouseHook && model_.input.keyboardHook) + 8;
-    x += chip(x, model_.input.rawRegistered ? L"Raw input" : L"No raw input", model_.input.rawRegistered) + 8;
-    chip(x, model_.bridgeRunning ? L"Bridge" : L"Bridge off", model_.bridgeRunning);
+void SettingsWindow::showAbout() {
+    tab_ = kAboutTab;
+    refresh();
 }
 
 // MARK: Haptics pane
@@ -493,7 +449,7 @@ void SettingsWindow::ruleRow(Frame& f, HapticEvent e) {
 void SettingsWindow::hapticsPane(Frame& f) {
     f.beginRow(30);
     f.toggle("haptics", settings_.hapticsEnabled, L"Haptic feedback");
-    f.setX(f.contentWidth() + 18 - 300 - 84);
+    f.setX(f.areaX() + f.contentWidth() - 300 - 84);
     const Rect lr = f.take(74, 30);
     f.drawText(L"Strength", lr, TextStyle::body, f.pal().text2.rgb, f.pal().text2.alpha, DWRITE_TEXT_ALIGNMENT_TRAILING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, false);
     f.gap(10);
@@ -501,9 +457,9 @@ void SettingsWindow::hapticsPane(Frame& f) {
     f.endRow();
     f.space(8);
     f.label(L"Each event below plays one of the waveforms the mouse itself reports (HID Simple Haptic Controller). The mouse's own click feel is in its firmware; these are extra pulses layered on top.", TextStyle::detail);
-    f.divider();
+    f.sectionBreak();
     feelPresets(f);
-    f.divider();
+    f.sectionBreak();
     for (std::size_t i = 0; i < kHapticEventCount; ++i) {
         ruleRow(f, static_cast<HapticEvent>(i));
         if (i + 1 < kHapticEventCount) f.divider(0.5f);
@@ -603,25 +559,25 @@ void SettingsWindow::buttonPane(Frame& f) {
     f.gap(6);
     f.label(W(model_.lastGesture), TextStyle::detail, 0, pal.accent, 1);
     f.endRow();
-    f.divider();
+    f.sectionBreak();
     const wchar_t* names[3] = {L"Press", L"Double press", L"Press and hold"};
     for (int g = 0; g < 3; ++g) {
         f.beginRow(30);
         f.drawText(names[g], f.take(120, 30), TextStyle::bodyMedium, pal.text, 1, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, false);
         ButtonAction& a = settings_.action(static_cast<ButtonGesture>(g));
         actionPicker(f, idx("action", g), a);
-        f.setX(f.contentWidth() + 18 - 34);
+        f.setX(f.areaX() + f.contentWidth() - 32);
         if (f.iconButton(idx("action/run", g), 0xE768) && actions_.run) actions_.run(a, g == 2);
         f.endRow();
         f.space(6);
     }
-    f.divider();
+    f.sectionBreak();
     f.toggle("gesturesOnHold", settings_.gesturesOnHold, L"Hold-and-move gestures on every hold",
              L"Keep the button down and move to gesture; release without moving and the hold action above runs as usual. Off: only a hold mapped to “Hold-and-move gestures” gestures.");
     bool anyGestures = settings_.gesturesOnHold;
     for (int g = 0; g < 3; ++g) anyGestures |= settings_.action(static_cast<ButtonGesture>(g)).kind == ActionKind::gestures;
     if (anyGestures) { f.space(8); gesturePane(f); }
-    f.divider();
+    f.sectionBreak();
     f.toggle("holdAction/on", settings_.forceClick, L"Press-and-hold action on the left button",
              L"Keep the left button down without moving and iXpat runs the action below with a deeper second click on the mouse (the Mac's force click). Release or move first and nothing extra happens.");
     f.space(4);
@@ -638,7 +594,7 @@ void SettingsWindow::buttonPane(Frame& f) {
     f.gap(10);
     f.drawText(fmti(L"%d ms", settings_.forceClickMs), f.take(60, 28), TextStyle::mono, pal.text2.rgb, pal.text2.alpha, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, false);
     f.endRow();
-    f.divider();
+    f.sectionBreak();
     f.toggle("swallow", settings_.swallowButton, L"Hide the button's built-in chords from apps",
              L"Otherwise a press also reaches the foreground app as Win+Shift+S (Snipping Tool) and the double press as a real click.");
 }
@@ -661,7 +617,7 @@ void SettingsWindow::ringEditor(Frame& f, const std::string& id, std::vector<Rin
         f.textField(id + "/symbol/" + items[i].id, items[i].symbol, 150, L"Symbol", true);
         f.gap(10);
         actionPicker(f, id + "/act/" + items[i].id, items[i].action);
-        f.setX(f.contentWidth() + 18 - 34);
+        f.setX(f.areaX() + f.contentWidth() - 32);
         if (f.iconButton(id + "/rm/" + items[i].id, 0xE738, items.size() > 2)) remove = static_cast<int>(i);
         f.endRow();
         f.space(6);
@@ -678,15 +634,14 @@ void SettingsWindow::ringEditor(Frame& f, const std::string& id, std::vector<Rin
 
 void SettingsWindow::ringPane(Frame& f) {
     const std::wstring ringIntro = L"A ring of shortcuts that opens under the pointer. Assign it to the action button (press or hold). Sweep the mouse toward a chamber (you feel a detent per chamber), then release or click to run it. Escape or right-click cancels.";
-    const float introH = f.measureHeight(ringIntro, TextStyle::detail, f.contentWidth() - 160);
-    f.beginRow(24 + introH);
-    const Rect tr = f.take(f.contentWidth() - 150, 24 + introH);
-    f.drawText(L"Action Ring", {tr.x, tr.y, tr.w, 20}, TextStyle::title, f.pal().text);
-    f.drawText(ringIntro, {tr.x, tr.y + 22, tr.w, introH + 2}, TextStyle::detail, f.pal().text2.rgb, f.pal().text2.alpha);
+    const float introH = f.measureHeight(ringIntro, TextStyle::body, f.contentWidth() - 160);
+    f.beginRow(std::max(32.0f, introH));
+    const Rect tr = f.take(f.contentWidth() - 150, std::max(32.0f, introH));
+    f.drawText(ringIntro, {tr.x, tr.y, tr.w, introH + 2}, TextStyle::body, f.pal().text2.rgb, f.pal().text2.alpha);
     f.gap(10);
     if (f.button("ring/open", L"Open ring now", true) && actions_.openRing) actions_.openRing();
     f.endRow();
-    f.divider();
+    f.sectionBreak();
     ringEditor(f, "ring", settings_.ringItems);
 }
 
@@ -695,11 +650,10 @@ void SettingsWindow::ringPane(Frame& f) {
 void SettingsWindow::appsPane(Frame& f) {
     const Palette& pal = f.pal();
     const std::wstring appsIntro = L"Overrides that apply while an app is in front: a different click or wheel feel, haptics off, its own ring, its own gestures. Anything left on Default follows the main tabs.";
-    const float introH = f.measureHeight(appsIntro, TextStyle::detail, f.contentWidth() - 150);
-    f.beginRow(24 + introH);
-    const Rect tr = f.take(f.contentWidth() - 140, 24 + introH);
-    f.drawText(L"Per-app profiles", {tr.x, tr.y, tr.w, 20}, TextStyle::title, pal.text);
-    f.drawText(appsIntro, {tr.x, tr.y + 22, tr.w, introH + 2}, TextStyle::detail, pal.text2.rgb, pal.text2.alpha);
+    const float introH = f.measureHeight(appsIntro, TextStyle::body, f.contentWidth() - 150);
+    f.beginRow(std::max(32.0f, introH));
+    const Rect tr = f.take(f.contentWidth() - 140, std::max(32.0f, introH));
+    f.drawText(appsIntro, {tr.x, tr.y, tr.w, introH + 2}, TextStyle::body, pal.text2.rgb, pal.text2.alpha);
     f.gap(10);
     if (f.button("apps/add", L"+ Add app", true, true, 120) && !f.painting()) {
         runningApps_ = actions_.runningApps ? actions_.runningApps() : std::vector<std::pair<std::string, std::string>>{};
@@ -751,7 +705,7 @@ void SettingsWindow::appsPane(Frame& f) {
         f.endRow();
         f.endCard();
     }
-    f.divider();
+    f.sectionBreak();
     if (settings_.profiles.empty()) {
         f.label(L"No profiles yet. Add the apps you want to feel different: a design tool with a fine wheel, a game with haptics off, a DAW with its own ring.", TextStyle::body);
         return;
@@ -773,7 +727,7 @@ void SettingsWindow::appsPane(Frame& f) {
         f.glyph(0xE7FC, {r.x + 6, r.y + 8, 24, 24}, pal.accent, 1, 16);
         f.drawText(W(p.name), {r.x + 36, r.y + 4, r.w - 44, 18}, TextStyle::bodyMedium, pal.text, 1, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_NEAR, false);
         f.drawText(W(p.bundleID), {r.x + 36, r.y + 22, r.w - 44, 14}, TextStyle::footnote, pal.text3.rgb, pal.text3.alpha, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_NEAR, false);
-        if (settings_.frontBundleID == p.bundleID) f.dot(r.right() - 12, r.y + 20, 3, 0x30D158, 1, false);
+        if (settings_.frontBundleID == p.bundleID) f.dot(r.right() - 12, r.y + 20, 3, pal.ok, 1, false);
         f.space(4);
     }
     const float listBottom = f.cursorY();
@@ -855,7 +809,7 @@ void SettingsWindow::appsPane(Frame& f) {
             }
             f.endRow();
         }
-        f.divider();
+        f.sectionBreak();
         bool ownGestures = p.gestureUp.has_value();
         if (f.toggle("apps/gestures", ownGestures, L"Own hold-and-move gestures")) {
             if (ownGestures) { p.gestureUp = settings_.gestureUp; p.gestureDown = settings_.gestureDown; p.gestureLeft = settings_.gestureLeft; p.gestureRight = settings_.gestureRight; }
@@ -875,7 +829,7 @@ void SettingsWindow::appsPane(Frame& f) {
             row(L"Left", "left", p.gestureLeft);
             row(L"Right", "right", p.gestureRight);
         }
-        f.divider();
+        f.sectionBreak();
         bool ownRing = p.ringItems.has_value();
         if (f.toggle("apps/ring", ownRing, L"Own Action Ring")) {
             if (ownRing) p.ringItems = settings_.ringItems;
@@ -909,9 +863,9 @@ void SettingsWindow::pointerPane(Frame& f) {
     sliderRow(L"Tracking speed", "ptr/speed", settings_.pointerSpeed, 0, 3, 0.125, L"Slow", L"Fast", fmt(L"%.2f", settings_.pointerSpeed), settings_.managePointer);
     f.toggle("ptr/noaccel", settings_.noAcceleration, L"No pointer acceleration", L"Turns off “Enhance pointer precision” while this mouse drives the pointer: 1:1 sensor movement.", settings_.managePointer);
     sliderRow(L"Scrolling speed", "ptr/scroll", settings_.scrollSpeed, 0.05, 1.5, 0.05, L"Slow", L"Fast", fmt(L"%.2f", settings_.scrollSpeed), settings_.managePointer);
-    f.divider();
+    f.sectionBreak();
     f.toggle("ptr/reverse", settings_.reverseScroll, L"Reverse scrolling direction for this mouse", L"Flips wheel scrolls only; the touchpad keeps its own setting.");
-    f.divider();
+    f.sectionBreak();
     f.label(L"Wheel feel", TextStyle::title);
     f.space(6);
     f.toggle("ptr/smooth", settings_.smoothScroll, L"Smooth kinetic scrolling", L"Each notch becomes a pixel glide instead of a jump; a fast spin coasts on after the wheel stops.");
@@ -927,15 +881,15 @@ void SettingsWindow::pointerPane(Frame& f) {
     f.toggle("ptr/freespin", settings_.freeSpin, L"Free-spin on a flick", L"Spin fast and the wheel switches to free-spin: no ticks, boosted distance, one Collide pulse on the switch.");
     sliderRow(L"Flick threshold", "ptr/flick", settings_.freeSpinThreshold, 8, 40, 1, L"", L"", fmti(L"%d/s", static_cast<int>(settings_.freeSpinThreshold)), settings_.freeSpin);
     sliderRow(L"Free-spin boost", "ptr/boost", settings_.freeSpinMultiplier, 1.5, 6, 0.5, L"", L"", fmt(L"%.1f×", settings_.freeSpinMultiplier), settings_.freeSpin);
-    f.divider();
+    f.sectionBreak();
     f.label(L"System", TextStyle::title);
     f.space(6);
     f.toggle("sys/login", settings_.windows.startAtLogin, L"Start iXpat at login", L"Adds iXpat to your account's startup programs (HKCU Run). Task Manager's Startup tab can veto it.");
     f.toggle("sys/updates", settings_.autoCheckUpdates, L"Check for updates daily", L"Asks GitHub for a newer Windows release once a day. Nothing is downloaded or installed by itself.");
-    f.divider();
+    f.sectionBreak();
     f.beginRow(30);
     f.label(L"Double-click speed, button swap and the system-wide pointer speed live in Windows Settings.", TextStyle::detail, f.contentWidth() - 220);
-    f.setX(f.contentWidth() + 18 - 200);
+    f.setX(f.areaX() + f.contentWidth() - 200);
     if (f.button("ptr/open", L"Open Windows mouse settings", false, true, 200) && actions_.openMouseSettings) actions_.openMouseSettings();
     f.endRow();
 }
@@ -945,8 +899,8 @@ void SettingsWindow::aboutPane(Frame& f) {
     const Palette& pal = f.pal();
     const float cw = f.contentWidth();
     const Rect ic = f.take(0, 88);
-    f.fillRound({ic.x + cw / 2 - 44, ic.y, 88, 88}, 22, pal.accent, 0.9f);
-    f.glyph(0xE962, {ic.x + cw / 2 - 44, ic.y, 88, 88}, 0xFFFFFF, 1, 46);
+    f.fillRound({ic.x + cw / 2 - 44, ic.y, 88, 88}, 16, pal.accent, 1);
+    f.glyph(0xE962, {ic.x + cw / 2 - 44, ic.y, 88, 88}, pal.textOnAccent, 1, 46);
     f.space(10);
     f.drawText(L"iXpat", f.take(0, 34), TextStyle::wordmark, pal.text, 1, DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, false);
 #if defined(_M_ARM64)
@@ -954,7 +908,7 @@ void SettingsWindow::aboutPane(Frame& f) {
 #else
     const wchar_t* arch = L"x64";
 #endif
-    f.drawText(L"Version " IXPAT_VERSION_WSTRING L" · " + std::wstring(arch) + L" · Windows", f.take(0, 18), TextStyle::detail, pal.text2.rgb, pal.text2.alpha,
+    f.drawText(L"Version " IXPAT_VERSION_WSTRING L" for Windows (" + std::wstring(arch) + L")", f.take(0, 18), TextStyle::detail, pal.text2.rgb, pal.text2.alpha,
                DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, false);
     f.space(8);
     f.drawText(L"Haptics, an Action Ring, kinetic scrolling and force click for the Microsoft Surface Mouse (2nd Edition) on Windows.",
@@ -1009,9 +963,9 @@ void SettingsWindow::bridgeSection(Frame& f) {
     f.fillRound({tick.x, tick.y + 5, 3, 14}, 1.5f, pal.accent, 1);
     f.gap(8);
     f.drawText(L"Plugin bridge", f.take(160, 24), TextStyle::title, pal.text, 1, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, false);
-    f.setX(f.contentWidth() + 18 - 320);
+    f.setX(f.areaX() + f.contentWidth() - 320);
     const std::wstring status = model_.bridgeRunning ? L"listening on 127.0.0.1:" + std::to_wstring(settings_.bridgePort) : L"off";
-    f.drawText(status, f.take(260, 24), TextStyle::mono, model_.bridgeRunning ? 0x30D158 : pal.text3.rgb, model_.bridgeRunning ? 1 : pal.text3.alpha, DWRITE_TEXT_ALIGNMENT_TRAILING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, false);
+    f.drawText(status, f.take(260, 24), TextStyle::mono, model_.bridgeRunning ? pal.ok : pal.text3.rgb, model_.bridgeRunning ? 1 : pal.text3.alpha, DWRITE_TEXT_ALIGNMENT_TRAILING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, false);
     f.gap(10);
     f.toggle("bridge/on", settings_.bridgeEnabled);
     f.endRow();
@@ -1026,7 +980,7 @@ void SettingsWindow::bridgeSection(Frame& f) {
     if (f.button("bridge/copy", copied ? L"Copied" : L"Copy") && actions_.copyText) { actions_.copyText(settings_.bridgeToken); copiedAt_ = GetTickCount64(); }
     f.gap(8);
     if (f.button("bridge/new", L"New token") && actions_.newToken) actions_.newToken();
-    f.setX(f.contentWidth() + 18 - 176);
+    f.setX(f.areaX() + f.contentWidth() - 176);
     f.drawText(L"Port", f.take(36, 28), TextStyle::detail, pal.text2.rgb, pal.text2.alpha, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, false);
     int port = settings_.bridgePort;
     if (f.stepper("bridge/port", port, 1024, 65535, 1, std::to_wstring(port), 136)) settings_.bridgePort = port;
@@ -1035,22 +989,33 @@ void SettingsWindow::bridgeSection(Frame& f) {
 
 void SettingsWindow::diagnosticsPane(Frame& f) {
     const Palette& pal = f.pal();
-    f.label(L"Input", TextStyle::title);
+    f.label(L"Live", TextStyle::title);
     f.space(4);
     auto line = [&](const wchar_t* k, const std::wstring& v, bool ok = true) {
-        f.beginRow(20);
-        f.drawText(k, f.take(150, 20), TextStyle::detail, pal.text2.rgb, pal.text2.alpha, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, false);
-        f.drawText(v, f.take(f.contentWidth() - 150, 20), TextStyle::mono, ok ? pal.text : 0xFF9F0A, 1, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, false);
+        f.beginRow(24);
+        f.drawText(k, f.take(150, 24), TextStyle::detail, pal.text2.rgb, pal.text2.alpha, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, false);
+        f.drawText(v, f.take(f.contentWidth() - 150, 24), TextStyle::mono, ok ? pal.text : pal.warn, 1, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, false);
         f.endRow();
     };
     const bool hooks = model_.input.mouseHook && model_.input.keyboardHook;
+    line(L"Last event", W(model_.lastEvent));
+    line(L"Last pulse", W(model_.lastPlayed));
+    line(L"Action button", W(model_.lastGesture));
+    line(L"Front app", model_.frontApp.empty() ? L"-" : W(model_.frontApp));
+    line(L"Pulses played", std::to_wstring(model_.pulseCount));
+    f.sectionBreak();
+    f.label(L"Input", TextStyle::title);
+    f.space(4);
     line(L"Low-level hooks", hooks ? L"installed (mouse + keyboard)" : L"NOT installed: nothing is shaped or hidden", hooks);
     line(L"Raw Input", model_.input.rawRegistered ? L"registered (mouse, keyboard, consumer)" : L"NOT registered", model_.input.rawRegistered);
-    line(L"Hook calls", std::to_wstring(model_.input.mouseHookCalls) + L" mouse, " + std::to_wstring(model_.input.keyboardHookCalls) + L" keyboard, slowest " +
-                            std::to_wstring(model_.input.maxHookMicros) + L" us (chain " + std::to_wstring(model_.input.maxChainMicros) + L" us), longest lag " +
-                            std::to_wstring(model_.input.maxHookLagMs) + L" ms, re-installed " + std::to_wstring(model_.input.hookReinstalls) + L"x" +
-                            (model_.input.hookInstallError ? L", install error " + std::to_wstring(model_.input.hookInstallError) : L""),
-         model_.input.maxHookMicros < 100000 && model_.input.maxHookLagMs < 200 && model_.input.hookReinstalls == 0 && model_.input.hookInstallError == 0);
+    line(L"Hook calls", std::to_wstring(model_.input.mouseHookCalls) + L" mouse, " + std::to_wstring(model_.input.keyboardHookCalls) + L" keyboard",
+         model_.input.hookInstallError == 0);
+    line(L"Hook timing", L"ours " + std::to_wstring(model_.input.maxHookMicros) + L" us, chain " + std::to_wstring(model_.input.maxChainMicros) + L" us, lag " +
+                             std::to_wstring(model_.input.maxHookLagMs) + L" ms at worst",
+         model_.input.maxHookMicros < 100000 && model_.input.maxHookLagMs < 200);
+    line(L"Hook re-installs", std::to_wstring(model_.input.hookReinstalls) +
+                                  (model_.input.hookInstallError ? L", last install error " + std::to_wstring(model_.input.hookInstallError) : std::wstring()),
+         model_.input.hookReinstalls == 0 && model_.input.hookInstallError == 0);
     line(L"Scroll frames", L"longest gap " + std::to_wstring(model_.input.maxCoastGapMs) + L" ms", model_.input.maxCoastGapMs < 25);
     line(L"Raw reports", std::to_wstring(model_.input.rawMouse) + L" mouse, " + std::to_wstring(model_.input.rawKeyboard) + L" keyboard");
     line(L"UI Automation", std::to_wstring(model_.uia.polls) + L" polls: " + std::to_wstring(model_.uia.menu) + L" menu, " +
@@ -1058,9 +1023,9 @@ void SettingsWindow::diagnosticsPane(Frame& f) {
                                std::to_wstring(model_.uia.word + model_.uia.line) + L" text, " + std::to_wstring(model_.uia.slider) + L" slider, " +
                                std::to_wstring(model_.uia.selection) + L" selection, " + std::to_wstring(model_.uia.scrollEnd) + L" scroll end");
     f.label(L"Windows does not hand a normal process the input aimed at elevated windows (UAC prompts, admin tools): there the mouse works, but nothing is shaped.", TextStyle::footnote);
-    f.divider();
+    f.sectionBreak();
     bridgeSection(f);
-    f.divider();
+    f.sectionBreak();
     f.label(L"Device", TextStyle::title);
     f.space(4);
     line(L"State", model_.device.connected ? L"connected" : L"not found (paired but asleep, or on another host)", model_.device.connected);
@@ -1087,14 +1052,15 @@ void SettingsWindow::diagnosticsPane(Frame& f) {
     f.gap(8);
     if (f.button("diag/about", L"About iXpat")) tab_ = kAboutTab;
     f.endRow();
-    f.divider();
+    f.sectionBreak();
     f.label(L"Raw input reports (buttons, keys; motion is not logged)", TextStyle::title);
     f.space(6);
     const Rect box = f.take(0, 180);
-    f.fillRound(box, 8, pal.field.rgb, pal.field.alpha);
+    f.fillRound(box, 4, pal.field.rgb, pal.field.alpha);
+    f.strokeRound(box, 4, pal.cardStroke.rgb, pal.cardStroke.alpha);
     float y = box.y + 6;
-    for (auto it = model_.reportLog.rbegin(); it != model_.reportLog.rend() && y < box.bottom() - 14; ++it, y += 15) {
-        f.drawText(W(*it), {box.x + 8, y, box.w - 16, 15}, TextStyle::monoSmall, pal.text, 0.9f, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_NEAR, false);
+    for (auto it = model_.reportLog.rbegin(); it != model_.reportLog.rend() && y < box.bottom() - 16; ++it, y += 17) {
+        f.drawText(W(*it), {box.x + 10, y, box.w - 20, 17}, TextStyle::monoSmall, pal.text, 0.9f, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_NEAR, false);
     }
 }
 

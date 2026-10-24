@@ -8,13 +8,14 @@
 
 #include "core/ring.h"
 #include "ui/glyphs.h"
+#include "ui/theme.h"
 
 namespace ixpat::ui {
 namespace {
 
 constexpr double kPi = 3.14159265358979323846;
-constexpr std::uint32_t kDisc = 0x151518;
-constexpr float kDiscAlpha = 0.86f;
+constexpr std::uint32_t kDisc = 0x202020;  // the dark base of the shell
+constexpr float kDiscAlpha = 0.92f;
 constexpr ULONGLONG kFadeMs = 120;
 const wchar_t* kClass = L"iXpat.Ring";
 
@@ -116,7 +117,7 @@ void RingWindow::open(const std::vector<RingItem>& items, bool holdMode, std::ui
     if (open_ || items.empty() || !hwnd_) return;
     items_ = items;
     holdMode_ = holdMode;
-    accent_ = accentHex & 0xFFFFFF;
+    accent_ = accentFill(accentHex, true);
     selected_.reset();
     drawnSelected_.reset();
     GetCursorPos(&origin_);

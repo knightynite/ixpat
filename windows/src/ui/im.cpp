@@ -51,6 +51,8 @@ std::wstring wide(std::string_view s) {
     return w;
 }
 
+bool isKey(const UiInput& in, int vk) { return in.kind == UiInput::Kind::key && in.key == vk; }
+
 }  // namespace
 
 Frame::Frame(ID2D1RenderTarget* rt, const Palette& pal, const UiInput& in, UiState& st, float dpiScale, float winW, float winH)
@@ -58,15 +60,17 @@ Frame::Frame(ID2D1RenderTarget* rt, const Palette& pal, const UiInput& in, UiSta
     st_.anyDirty = false;
     st_.consumed = false;
     st_.wheelPending = false;
+    const bool popupOpen = !st_.openDropdown.empty();
     // A click while a popup is up belongs to the popup: a row selects (applied by that dropdown on the rerun pass),
     // anywhere else just closes it. Either way nothing underneath sees the click.
-    if (!rt_ && in.kind == UiInput::Kind::down && !st_.openDropdown.empty()) {
+    if (!rt_ && in.kind == UiInput::Kind::down && popupOpen) {
         for (const auto& p : st_.popups) {
             const Rect box = popupBox(p);
             if (!box.contains(in.x, in.y) || in.rightButton) continue;
-            const Rect rows{box.x + kPopupPad, box.y + kPopupPad, box.w - 2 * kPopupPad, kPopupRowH * static_cast<float>(p.options.size())};
+            const int shown = popupRowsVisible(p);
+            const Rect rows{box.x + kPopupPad, box.y + kPopupPad, box.w - 2 * kPopupPad, kPopupRowH * static_cast<float>(shown)};
             if (!rows.contains(in.x, in.y)) continue;  // the padding selects nothing
-            const int i = static_cast<int>(std::floor((in.y - rows.y) / kPopupRowH));
+            const int i = static_cast<int>(std::floor((in.y - rows.y) / kPopupRowH)) + st_.popupScroll;
             if (i >= 0 && i < static_cast<int>(p.options.size())) {
                 st_.pendingPopupId = p.id;
                 st_.pendingPopupIndex = i;
@@ -76,6 +80,41 @@ Frame::Frame(ID2D1RenderTarget* rt, const Palette& pal, const UiInput& in, UiSta
         st_.openDropdown.clear();
         st_.consumed = true;
     }
+    // The wheel over a tall popup scrolls its rows.
+    if (!rt_ && in.kind == UiInput::Kind::wheel && popupOpen) {
+        for (const auto& p : st_.popups) {
+            if (!popupBox(p).contains(in.x, in.y)) continue;
+            const int shown = popupRowsVisible(p);
+            const int maxScroll = std::max(0, static_cast<int>(p.options.size()) - shown);
+            st_.popupScroll = std::clamp(st_.popupScroll - (in.wheel > 0 ? 1 : -1), 0, maxScroll);
+            st_.consumed = true;
+        }
+    }
+    // The keyboard in an open popup: Up / Down pick a row, Enter takes it, Escape leaves.
+    if (!rt_ && in.kind == UiInput::Kind::key && popupOpen && !st_.popups.empty()) {
+        const UiState::Popup& p = st_.popups.front();
+        const int n = static_cast<int>(p.options.size());
+        if (in.key == VK_DOWN || in.key == VK_UP) {
+            const int cur = st_.popupHighlight < 0 ? std::max(0, p.current) : st_.popupHighlight;
+            st_.popupHighlight = std::clamp(cur + (in.key == VK_DOWN ? 1 : -1), 0, std::max(0, n - 1));
+            const int shown = popupRowsVisible(p);
+            if (st_.popupHighlight < st_.popupScroll) st_.popupScroll = st_.popupHighlight;
+            if (st_.popupHighlight >= st_.popupScroll + shown) st_.popupScroll = st_.popupHighlight - shown + 1;
+            st_.focusVisible = true;
+            st_.consumed = true;
+        } else if (in.key == VK_RETURN || in.key == VK_SPACE) {
+            if (st_.popupHighlight >= 0 && st_.popupHighlight < n) {
+                st_.pendingPopupId = p.id;
+                st_.pendingPopupIndex = st_.popupHighlight;
+                st_.rerun = true;
+            }
+            st_.openDropdown.clear();
+            st_.consumed = true;
+        } else if (in.key == VK_ESCAPE) {
+            st_.openDropdown.clear();
+            st_.consumed = true;
+        }
+    }
     st_.popups.clear();
     if (in.kind == UiInput::Kind::move || in.kind == UiInput::Kind::down || in.kind == UiInput::Kind::up || in.kind == UiInput::Kind::wheel) {
         st_.mouseX = in.x;
@@ -83,11 +122,21 @@ Frame::Frame(ID2D1RenderTarget* rt, const Palette& pal, const UiInput& in, UiSta
     } else if (in.kind == UiInput::Kind::leave) {
         st_.mouseX = st_.mouseY = -1;
     }
-    if (rt_) rt_->CreateSolidColorBrush(D2D1::ColorF(0, 0, 0, 1), brush_.put());
-    if (in.kind == UiInput::Kind::key && in.key == VK_ESCAPE && !st_.openDropdown.empty()) {
-        st_.openDropdown.clear();
+    if (!rt_ && in.kind == UiInput::Kind::down) st_.focusVisible = false;  // the pointer took over: no ring, as Windows does
+    // Tab and Shift+Tab walk the focusable widgets of the last pass in layout order.
+    if (!rt_ && isKey(in, VK_TAB) && !popupOpen && !st_.edit && !st_.focusOrder.empty()) {
+        const auto& order = st_.focusOrder;
+        const auto it = std::find(order.begin(), order.end(), st_.focus);
+        std::size_t i = 0;
+        if (it == order.end()) i = in.shift ? order.size() - 1 : 0;
+        else if (in.shift) i = (static_cast<std::size_t>(it - order.begin()) + order.size() - 1) % order.size();
+        else i = (static_cast<std::size_t>(it - order.begin()) + 1) % order.size();
+        st_.focus = order[i];
+        st_.focusVisible = true;
+        st_.focusScrollTo = st_.focus;
         st_.consumed = true;
     }
+    if (rt_) rt_->CreateSolidColorBrush(D2D1::ColorF(0, 0, 0, 1), brush_.put());
 }
 
 Frame::~Frame() = default;
@@ -222,7 +271,7 @@ void Frame::gap(float w) { cx_ += w; }
 void Frame::beginScroll(Rect viewport) {
     scrollViewport_ = viewport;
     inScroll_ = true;
-    st_.wheelPending = !rt_ && in_.kind == UiInput::Kind::wheel && viewport.contains(in_.x, in_.y) && st_.openDropdown.empty();
+    st_.wheelPending = !rt_ && in_.kind == UiInput::Kind::wheel && viewport.contains(in_.x, in_.y) && st_.openDropdown.empty() && !st_.consumed;
     st_.viewHeight = viewport.h;
     if (rt_) rt_->PushAxisAlignedClip(viewport.d2d(), D2D1_ANTIALIAS_MODE_ALIASED);
     stack_.push_back({area_, cx_, cy_, inRow_, rowY_, rowH_, rowMaxH_});
@@ -235,10 +284,19 @@ void Frame::beginScroll(Rect viewport) {
 
 void Frame::endScroll() {
     st_.contentHeight = cy_ - scrollStartY_;
+    const float maxScroll = std::max(0.0f, st_.contentHeight - scrollViewport_.h);
     if (st_.wheelPending && !st_.consumed) {  // no slider under the pointer took the notch
-        st_.scrollY = std::clamp(st_.scrollY - in_.wheel * 0.5f, 0.0f, std::max(0.0f, st_.contentHeight - scrollViewport_.h));
+        st_.scrollY = std::clamp(st_.scrollY - in_.wheel * 0.5f, 0.0f, maxScroll);
     }
     st_.wheelPending = false;
+    // The keyboard moved the focus to a widget outside the viewport: bring it in, and lay out once more.
+    if (!rt_ && !st_.focusScrollTo.empty() && focusedSeen_ && st_.focusScrollTo == st_.focus) {
+        if (focusedRect_.y < scrollViewport_.y) st_.scrollY -= (scrollViewport_.y - focusedRect_.y) + 12;
+        else if (focusedRect_.bottom() > scrollViewport_.bottom()) st_.scrollY += (focusedRect_.bottom() - scrollViewport_.bottom()) + 12;
+        st_.scrollY = std::clamp(st_.scrollY, 0.0f, maxScroll);
+        st_.focusScrollTo.clear();
+        st_.rerun = true;
+    }
     if (rt_) rt_->PopAxisAlignedClip();
     // Scroll bar: the thin Fluent rail, at the viewport's right edge.
     if (rt_ && st_.contentHeight > scrollViewport_.h) {
@@ -257,7 +315,7 @@ void Frame::endScroll() {
     rowH_ = s.rowH;
     rowMaxH_ = s.rowMaxH;
     inScroll_ = false;
-    st_.scrollY = std::clamp(st_.scrollY, 0.0f, std::max(0.0f, st_.contentHeight - scrollViewport_.h));
+    st_.scrollY = std::clamp(st_.scrollY, 0.0f, maxScroll);
 }
 
 // MARK: surfaces
@@ -385,6 +443,16 @@ void Frame::selectionPill(const Rect& row) {
     fillRound({row.x, row.y + row.h / 2 - 8, 3, 16}, 1.5f, pal_.accent, 1);
 }
 
+void Frame::focusRing(const Rect& r, float radius) {
+    // The Fluent focus visual: two strokes, the outer in the text colour, the inner in the surface's, so it reads
+    // on any background. Only while the keyboard holds the focus.
+    if (!rt_ || !st_.focusVisible) return;
+    const Rect outer{r.x - 3, r.y - 3, r.w + 6, r.h + 6};
+    strokeRound(outer, radius + 3, pal_.isDark ? 0xFFFFFF : 0x000000, 1, 2);
+    const Rect inner{r.x - 1, r.y - 1, r.w + 2, r.h + 2};
+    strokeRound(inner, radius + 1, pal_.isDark ? 0x000000 : 0xFFFFFF, 1, 1);
+}
+
 void Frame::label(std::wstring_view text, TextStyle style, float width, std::uint32_t rgbOverride, float alphaOverride) {
     const float w = width > 0 ? width : (inRow_ ? textWidth(text, style) + 2 : area_.w);
     const float h = measureHeight(text, style, w);
@@ -409,6 +477,39 @@ bool Frame::hovered(const Rect& r) const {
     return r.contains(st_.mouseX, st_.mouseY);
 }
 
+void Frame::registerFocus(const std::string& id, const Rect& r, bool enabled) {
+    if (enabled) focusables_.push_back(id);
+    if (st_.focus == id) {
+        focusedRect_ = r;
+        focusedSeen_ = true;
+    }
+}
+
+bool Frame::activated(const std::string& id) {
+    if (rt_ || st_.consumed || st_.focus != id) return false;
+    if (!isKey(in_, VK_SPACE) && !isKey(in_, VK_RETURN)) return false;
+    st_.consumed = true;
+    st_.focusVisible = true;
+    return true;
+}
+
+int Frame::arrowStep(const std::string& id, bool horizontal) {
+    if (rt_ || st_.consumed || st_.focus != id || in_.kind != UiInput::Kind::key) return 0;
+    const int minus = horizontal ? VK_LEFT : VK_DOWN, plus = horizontal ? VK_RIGHT : VK_UP;
+    if (in_.key != minus && in_.key != plus) return 0;
+    st_.consumed = true;
+    st_.focusVisible = true;
+    return in_.key == plus ? 1 : -1;
+}
+
+int Frame::homeEnd(const std::string& id) {
+    if (rt_ || st_.consumed || st_.focus != id || in_.kind != UiInput::Kind::key) return 0;
+    if (in_.key != VK_HOME && in_.key != VK_END) return 0;
+    st_.consumed = true;
+    st_.focusVisible = true;
+    return in_.key == VK_END ? 1 : -1;
+}
+
 bool Frame::clicked(const std::string& id, const Rect& r, bool enabled) {
     if (rt_) return false;
     // A release or a cancel ends this widget's press whatever its state now (disabled since, consumed, elsewhere).
@@ -416,10 +517,11 @@ bool Frame::clicked(const std::string& id, const Rect& r, bool enabled) {
         st_.active.clear();
         return in_.kind == UiInput::Kind::up && enabled && !st_.consumed && !in_.rightButton && hovered(r);
     }
+    if (enabled && activated(id)) return true;  // Space or Enter with the focus
     if (st_.consumed || !enabled) return false;
     if (in_.kind == UiInput::Kind::down && hovered(r) && !in_.rightButton) {
         st_.active = id;
-        if (st_.focus != id) st_.focus.clear();
+        st_.focus = id;  // the pointer moves the focus too, ring hidden
         if (!st_.openDropdown.empty() && st_.openDropdown != id) st_.openDropdown.clear();
     }
     return false;
@@ -441,6 +543,7 @@ bool Frame::toggle(const std::string& id, bool& value, std::wstring_view title, 
     }
     const Rect r = take(inline_ ? sw + textW : 0, h + 12);
     const Rect sw_r = inline_ ? Rect{r.x, r.y + 6 + (h - sh) / 2, sw, sh} : Rect{r.right() - sw, r.y + 6, sw, sh};
+    registerFocus(id, sw_r, enabled);
     bool changed = false;
     if (clicked(id, r, enabled)) {
         value = !value;
@@ -460,6 +563,7 @@ bool Frame::toggle(const std::string& id, bool& value, std::wstring_view title, 
             strokeRound(sw_r, sh / 2, pal_.strongStroke.rgb, pal_.strongStroke.alpha * a);
             dot(sw_r.x + 10, sw_r.y + sh / 2, knob, pal_.text2.rgb, pal_.text2.alpha * a);
         }
+        if (focused(id)) focusRing(sw_r, sh / 2);
         if (!title.empty()) {
             const Rect text_r = inline_ ? Rect{sw_r.right() + 12, sw_r.y - 6, textW, sh + 12} : Rect{r.x, r.y + 6, textW, 20};
             drawText(title, text_r, TextStyle::body, enabled ? pal_.text : pal_.textDisabled.rgb, enabled ? 1 : pal_.textDisabled.alpha,
@@ -474,6 +578,8 @@ bool Frame::checkbox(const std::string& id, bool& value, std::wstring_view title
     const float box = 20;
     const float textW = textWidth(title, TextStyle::body) + 8;
     const Rect r = take(box + 8 + textW, kControlH);
+    const Rect b{r.x, r.y + (kControlH - box) / 2, box, box};
+    registerFocus(id, b, true);
     bool changed = false;
     if (clicked(id, r)) {
         value = !value;
@@ -482,7 +588,6 @@ bool Frame::checkbox(const std::string& id, bool& value, std::wstring_view title
     }
     if (rt_) {
         const bool hot = hovered(r);
-        const Rect b{r.x, r.y + (kControlH - box) / 2, box, box};
         if (value) {
             fillRound(b, kRadius, hot ? pal_.accentHover : pal_.accent, 1);
             glyph(0xE73E, b, pal_.textOnAccent, 1, 12);
@@ -490,6 +595,7 @@ bool Frame::checkbox(const std::string& id, bool& value, std::wstring_view title
             fillRound(b, kRadius, pal_.controlAlt.rgb, pal_.controlAlt.alpha * (hot ? 1.6f : 1));
             strokeRound(b, kRadius, pal_.strongStroke.rgb, pal_.strongStroke.alpha);
         }
+        if (focused(id)) focusRing(b, kRadius);
         drawText(title, {r.x + box + 8, r.y, textW, kControlH}, TextStyle::body, pal_.text, 1, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, false);
     }
     return changed;
@@ -500,19 +606,33 @@ bool Frame::segmented(const std::string& id, int& index, std::span<const std::ws
     const Rect r = take(width, kControlH);
     const int n = static_cast<int>(options.size());
     if (n == 0) return false;
-    const float segW = width / n;
+    const float segW = width / static_cast<float>(n);
+    registerFocus(id, r, enabled);
     bool changed = false;
     for (int i = 0; i < n; ++i) {
-        const Rect seg{r.x + segW * i, r.y, segW, kControlH};
-        if (clicked(id + "/" + std::to_string(i), seg, enabled) && index != i) {
+        const Rect seg{r.x + segW * static_cast<float>(i), r.y, segW, kControlH};
+        const std::string segId = id + "/" + std::to_string(i);
+        if (clicked(segId, seg, enabled) && index != i) {
             index = i;
             changed = true;
             st_.anyDirty = true;
         }
+        if (st_.focus == segId) st_.focus = id;  // the bar is one focus stop
+    }
+    if (enabled) {
+        const int step = arrowStep(id, true);
+        if (step != 0) {
+            const int next = std::clamp(index + step, 0, n - 1);
+            if (next != index) {
+                index = next;
+                changed = true;
+                st_.anyDirty = true;
+            }
+        }
     }
     if (rt_) {
         for (int i = 0; i < n; ++i) {
-            const Rect seg{r.x + segW * i, r.y, segW, kControlH};
+            const Rect seg{r.x + segW * static_cast<float>(i), r.y, segW, kControlH};
             const bool on = i == index;
             const bool hot = enabled && hovered(seg);
             if (hot) fillRound({seg.x + 1, seg.y, seg.w - 2, seg.h}, kRadius, pal_.subtleHover.rgb, pal_.subtleHover.alpha);
@@ -520,7 +640,10 @@ bool Frame::segmented(const std::string& id, int& index, std::span<const std::ws
             const float a = !enabled ? pal_.textDisabled.alpha : on ? 1 : pal_.text2.alpha;
             drawText(options[static_cast<std::size_t>(i)], {seg.x, seg.y, seg.w, seg.h - 2}, on ? TextStyle::bodyMedium : TextStyle::body, rgb, a,
                      DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, false);
-            if (on) fillRound({seg.x + seg.w / 2 - 8, seg.bottom() - 4, 16, 3}, 1.5f, pal_.accent, enabled ? 1 : 0.4f);
+            if (on) {
+                fillRound({seg.x + seg.w / 2 - 8, seg.bottom() - 4, 16, 3}, 1.5f, pal_.accent, enabled ? 1 : 0.4f);
+                if (focused(id)) focusRing(seg, kRadius);
+            }
         }
     }
     return changed;
@@ -533,12 +656,21 @@ bool Frame::slider(const std::string& id, double& value, double lo, double hi, d
     const Rect r = take(width, h);
     const Rect track{r.x + lw + 10, r.y + h / 2 - 2, width - lw - rw - 20, 4};
     const Rect hit{r.x + lw, r.y, width - lw - rw, h};
+    registerFocus(id, hit, enabled);
     bool changed = false;
+    auto apply = [&](double v) {
+        v = std::clamp(v, lo, hi);
+        if (v != value) {
+            value = v;
+            changed = true;
+            st_.anyDirty = true;
+        }
+    };
     if (!rt_ && enabled && !st_.consumed) {
         const bool over = hovered(hit);
         if (in_.kind == UiInput::Kind::down && over && !in_.rightButton) {
             st_.active = id;
-            st_.focus.clear();
+            st_.focus = id;
             st_.openDropdown.clear();
         }
         if (st_.active == id && (in_.kind == UiInput::Kind::down || in_.kind == UiInput::Kind::move)) {
@@ -546,14 +678,8 @@ bool Frame::slider(const std::string& id, double& value, double lo, double hi, d
             t = std::clamp(t, 0.0, 1.0);
             double v = lo + t * (hi - lo);
             if (step > 0) v = lo + std::round((v - lo) / step) * step;
-            v = std::clamp(v, lo, hi);
-            if (v != value) {
-                value = v;
-                changed = true;
-                st_.anyDirty = true;
-            }
+            apply(v);
         }
-        if (in_.kind == UiInput::Kind::up && st_.active == id) st_.active.clear();
         if (in_.kind == UiInput::Kind::wheel && over && st_.openDropdown.empty() && !st_.consumed) {
             // Whole notches only: the smooth-scroll stream delivers a notch as several small deltas.
             if (st_.wheelAccumId != id) {
@@ -565,13 +691,15 @@ bool Frame::slider(const std::string& id, double& value, double lo, double hi, d
             st_.wheelAccum -= static_cast<float>(notches) * 120.0f;
             st_.consumed = true;  // the slider took the event, whether or not it moved
             const double s = step > 0 ? step : (hi - lo) / 20;
-            const double v = std::clamp(value + notches * s, lo, hi);
-            if (v != value) {
-                value = v;
-                changed = true;
-                st_.anyDirty = true;
-            }
+            apply(value + notches * s);
         }
+    }
+    if (enabled) {
+        const double s = step > 0 ? step : (hi - lo) / 20;
+        const int arrow = arrowStep(id, true);
+        if (arrow != 0) apply(value + arrow * s);
+        const int edge = homeEnd(id);
+        if (edge != 0) apply(edge < 0 ? lo : hi);
     }
     if (rt_) {
         const float a = enabled ? 1.0f : 0.4f;
@@ -585,6 +713,7 @@ bool Frame::slider(const std::string& id, double& value, double lo, double hi, d
         rt_->FillEllipse(D2D1::Ellipse(D2D1::Point2F(kx, ky), 10, 10), brush(pal_.solidFill, a));
         rt_->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(kx, ky), 9.5f, 9.5f), brush(pal_.controlEdge.rgb, pal_.controlEdge.alpha * 2 * a), 1);
         rt_->FillEllipse(D2D1::Ellipse(D2D1::Point2F(kx, ky), down ? 5.0f : hot ? 7.0f : 6.0f, down ? 5.0f : hot ? 7.0f : 6.0f), brush(pal_.accent, a));
+        if (focused(id)) focusRing({kx - 10, ky - 10, 20, 20}, 10);
         if (!minLabel.empty()) drawText(minLabel, {r.x, r.y, lw, h}, TextStyle::detail, pal_.text3.rgb, pal_.text3.alpha * a, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, false);
         if (!maxLabel.empty()) drawText(maxLabel, {r.right() - rw, r.y, rw, h}, TextStyle::detail, pal_.text3.rgb, pal_.text3.alpha * a, DWRITE_TEXT_ALIGNMENT_TRAILING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, false);
     }
@@ -596,16 +725,24 @@ bool Frame::stepper(const std::string& id, int& value, int lo, int hi, int step,
     const float bw = 28;
     const Rect r = take(width, kControlH);
     const Rect up{r.right() - bw - 2, r.y + 2, bw, kControlH / 2 - 2}, down{r.right() - bw - 2, r.y + kControlH / 2, bw, kControlH / 2 - 2};
+    registerFocus(id, r, enabled);
     bool changed = false;
-    if (clicked(id + "/+", up, enabled && value < hi)) {
-        value = std::min(hi, value + step);
-        changed = true;
-        st_.anyDirty = true;
-    }
-    if (clicked(id + "/-", down, enabled && value > lo)) {
-        value = std::max(lo, value - step);
-        changed = true;
-        st_.anyDirty = true;
+    auto apply = [&](int v) {
+        v = std::clamp(v, lo, hi);
+        if (v != value) {
+            value = v;
+            changed = true;
+            st_.anyDirty = true;
+        }
+    };
+    if (clicked(id + "/+", up, enabled && value < hi)) apply(value + step);
+    if (clicked(id + "/-", down, enabled && value > lo)) apply(value - step);
+    if (st_.focus == id + "/+" || st_.focus == id + "/-") st_.focus = id;  // one focus stop
+    if (enabled) {
+        const int arrow = arrowStep(id, false);
+        if (arrow != 0) apply(value + arrow * step);
+        const int edge = homeEnd(id);
+        if (edge != 0) apply(edge < 0 ? lo : hi);
     }
     if (rt_) {
         const float a = enabled ? 1.0f : 0.4f;
@@ -616,6 +753,7 @@ bool Frame::stepper(const std::string& id, int& value, int lo, int hi, int step,
             if (enabled && ok && hovered(b)) fillRound(b, kRadius, pal_.subtleHover.rgb, pal_.subtleHover.alpha);
             glyph(g, b, pal_.text2.rgb, pal_.text2.alpha * (ok ? a : 0.4f * a), 8);
         }
+        if (focused(id)) focusRing(r, kRadius);
     }
     return changed;
 }
@@ -623,6 +761,7 @@ bool Frame::stepper(const std::string& id, int& value, int lo, int hi, int step,
 bool Frame::button(const std::string& id, std::wstring_view text, bool prominent, bool enabled, float width) {
     const float w = width > 0 ? width : std::max(64.0f, textWidth(text, TextStyle::body) + 24);
     const Rect b = take(w, kControlH);
+    registerFocus(id, b, enabled);
     const bool hit = clicked(id, b, enabled);
     if (rt_) {
         const bool hot = enabled && hovered(b);
@@ -636,12 +775,14 @@ bool Frame::button(const std::string& id, std::wstring_view text, bool prominent
             drawText(text, b, TextStyle::body, enabled ? (down ? pal_.text2.rgb : pal_.text) : pal_.textDisabled.rgb,
                      enabled ? (down ? pal_.text2.alpha : 1) : pal_.textDisabled.alpha, DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, false);
         }
+        if (focused(id)) focusRing(b, kRadius);
     }
     return hit;
 }
 
 bool Frame::iconButton(const std::string& id, wchar_t g, bool enabled, std::wstring_view) {
     const Rect b = take(kControlH, kControlH);
+    registerFocus(id, b, enabled);
     const bool hit = clicked(id, b, enabled);
     if (rt_) {
         const bool hot = enabled && hovered(b);
@@ -649,26 +790,47 @@ bool Frame::iconButton(const std::string& id, wchar_t g, bool enabled, std::wstr
         if (down) fillRound(b, kRadius, pal_.subtlePressed.rgb, pal_.subtlePressed.alpha);
         else if (hot) fillRound(b, kRadius, pal_.subtleHover.rgb, pal_.subtleHover.alpha);
         glyph(g, b, enabled ? pal_.text : pal_.textDisabled.rgb, enabled ? (down ? 0.7f : 1) : pal_.textDisabled.alpha, 16);
+        if (focused(id)) focusRing(b, kRadius);
     }
     return hit;
 }
 
 bool Frame::dropdown(const std::string& id, int& index, std::span<const std::wstring> options, float width, bool enabled) {
     const Rect b = take(width, kControlH);
+    registerFocus(id, b, enabled);
     bool changed = false;
     if (!rt_ && st_.pendingPopupId == id) {  // the popup row clicked on the previous pass
         st_.pendingPopupId.clear();
-        if (index != st_.pendingPopupIndex && st_.pendingPopupIndex >= 0 && st_.pendingPopupIndex < static_cast<int>(options.size())) {
+        if (enabled && index != st_.pendingPopupIndex && st_.pendingPopupIndex >= 0 && st_.pendingPopupIndex < static_cast<int>(options.size())) {
             index = st_.pendingPopupIndex;
             changed = true;
             st_.anyDirty = true;
         }
     }
+    auto open = [&] {
+        st_.openDropdown = id;
+        st_.focus = id;
+        st_.popupHighlight = index;
+        const int shown = std::max(1, static_cast<int>((winH_ - 16 - 2 * kPopupPad) / kPopupRowH));
+        st_.popupScroll = std::clamp(index - shown / 2, 0, std::max(0, static_cast<int>(options.size()) - shown));
+        st_.consumed = true;
+    };
     if (!rt_ && enabled && !st_.consumed) {
         if (in_.kind == UiInput::Kind::down && hovered(b) && !in_.rightButton) {
-            st_.openDropdown = id;
-            st_.focus.clear();
-            st_.consumed = true;
+            open();
+            st_.focusVisible = false;
+        } else if (activated(id)) {
+            open();
+        } else {
+            const int step = arrowStep(id, false);  // Up / Down on a closed box step through its options
+            if (step != 0) {
+                const int next = std::clamp(index + (step > 0 ? -1 : 1), 0, static_cast<int>(options.size()) - 1);
+                if (next != index) {
+                    index = next;
+                    changed = true;
+                    st_.anyDirty = true;
+                }
+            }
         }
     }
     if (st_.openDropdown == id) {
@@ -682,29 +844,38 @@ bool Frame::dropdown(const std::string& id, int& index, std::span<const std::wst
     }
     if (rt_) {
         const bool hot = enabled && hovered(b);
-        const bool open = st_.openDropdown == id;
-        controlSurface(b, hot, open, enabled);
+        const bool isOpen = st_.openDropdown == id;
+        controlSurface(b, hot, isOpen, enabled);
         const std::wstring text = index >= 0 && index < static_cast<int>(options.size()) ? options[static_cast<std::size_t>(index)] : L"";
         drawText(text, {b.x + 12, b.y, b.w - 44, b.h}, TextStyle::body, enabled ? pal_.text : pal_.textDisabled.rgb, enabled ? 1 : pal_.textDisabled.alpha,
                  DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, false);
         glyph(0xE70D, {b.right() - 30, b.y, 20, b.h}, enabled ? pal_.text2.rgb : pal_.textDisabled.rgb, enabled ? pal_.text2.alpha : pal_.textDisabled.alpha, 10);
+        if (focused(id) && !isOpen) focusRing(b, kRadius);
     }
     return changed;
 }
 
+int Frame::popupRowsVisible(const UiState::Popup& p) const {
+    const int fit = std::max(1, static_cast<int>((winH_ - 16 - 2 * kPopupPad) / kPopupRowH));
+    return std::min(fit, static_cast<int>(p.options.size()));
+}
+
 Rect Frame::popupBox(const UiState::Popup& p) const {
-    const float h = kPopupPad * 2 + kPopupRowH * static_cast<float>(p.options.size());
+    const int shown = popupRowsVisible(p);
+    const float h = kPopupPad * 2 + kPopupRowH * static_cast<float>(shown);
     float y = p.anchor.bottom() + 4;
     if (y + h > winH_ - 8) y = std::max(8.0f, p.anchor.y - 4 - h);  // flip up near the bottom edge
-    const float w = std::max(p.width, 120.0f);
-    const float x = std::min(p.anchor.x, winW_ - w - 8);
+    if (y + h > winH_ - 8) y = std::max(8.0f, winH_ - 8 - h);       // too tall for either side: as high as it goes, rows scroll
+    const float w = std::min(std::max(p.width, 120.0f), winW_ - 16);
+    const float x = std::max(8.0f, std::min(p.anchor.x, winW_ - w - 8));
     return {x, y, w, h};
 }
 
 bool Frame::textField(const std::string& id, std::string& value, float width, std::wstring_view placeholder, bool mono, bool enabled) {
     const Rect b = take(width, kControlH);
+    registerFocus(id, b, enabled);
     bool changed = false;
-    if (!rt_ && enabled && !st_.consumed && in_.kind == UiInput::Kind::down && hovered(b) && !in_.rightButton) {
+    auto beginEditing = [&] {
         st_.focus = id;
         st_.openDropdown.clear();
         st_.consumed = true;
@@ -712,6 +883,10 @@ bool Frame::textField(const std::string& id, std::string& value, float width, st
         st_.editId = id;
         st_.editMono = mono;
         if (st_.beginEdit) st_.beginEdit(nullptr, b, id);
+    };
+    if (!rt_ && enabled && !st_.consumed) {
+        if (in_.kind == UiInput::Kind::down && hovered(b) && !in_.rightButton) beginEditing();
+        else if (activated(id) || (st_.focus == id && isKey(in_, VK_F2))) beginEditing();
     }
     if (st_.editId == id && st_.editCommitted) {
         st_.editCommitted = false;
@@ -720,16 +895,17 @@ bool Frame::textField(const std::string& id, std::string& value, float width, st
     }
     if (rt_) {
         const float a = enabled ? 1.0f : 0.4f;
-        const bool focused = st_.focus == id;
+        const bool editing = st_.editId == id && st_.edit;
         fillRound(b, kRadius, pal_.controlFill.rgb, pal_.controlFill.alpha * a);
         strokeRound(b, kRadius, pal_.controlStroke.rgb, pal_.controlStroke.alpha);
-        // The text box's own elevation line: a hair of the strong stroke along the bottom, the accent while focused.
-        if (focused) rt_->FillRectangle(D2D1::RectF(b.x + kRadius, b.bottom() - 2, b.right() - kRadius, b.bottom()), brush(pal_.accent, 1));
+        // The text box's own elevation line: a hair of the strong stroke along the bottom, the accent while editing.
+        if (editing) rt_->FillRectangle(D2D1::RectF(b.x + kRadius, b.bottom() - 2, b.right() - kRadius, b.bottom()), brush(pal_.accent, 1));
         else rt_->FillRectangle(D2D1::RectF(b.x + kRadius, b.bottom() - 1, b.right() - kRadius, b.bottom()), brush(pal_.strongStroke.rgb, pal_.strongStroke.alpha * a));
-        if (st_.editId != id || !st_.edit) {
+        if (!editing) {
             const std::wstring text = wide(value);
             if (text.empty()) drawText(placeholder, {b.x + 12, b.y, b.w - 24, b.h}, mono ? TextStyle::mono : TextStyle::body, pal_.text2.rgb, pal_.text2.alpha * a, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, false);
             else drawText(text, {b.x + 12, b.y, b.w - 24, b.h}, mono ? TextStyle::mono : TextStyle::body, pal_.text, a, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, false);
+            if (focused(id)) focusRing(b, kRadius);
         }
     }
     if (st_.editId == id) st_.editRect = b;  // the owner keeps the native control aligned
@@ -738,11 +914,13 @@ bool Frame::textField(const std::string& id, std::string& value, float width, st
 
 bool Frame::listRow(const std::string& id, bool selected, float height) {
     const Rect r = take(0, height);
+    registerFocus(id, r, true);
     const bool hit = clicked(id, r);
     if (rt_) {
         const bool hot = hovered(r);
         if (selected || hot) fillRound(r, kRadius, pal_.subtleHover.rgb, pal_.subtleHover.alpha * (selected && hot ? 1.5f : 1));
         if (selected) selectionPill(r);
+        if (focused(id)) focusRing(r, kRadius);
     }
     return hit;
 }
@@ -750,6 +928,7 @@ bool Frame::listRow(const std::string& id, bool selected, float height) {
 bool Frame::navItem(const std::string& id, wchar_t g, std::wstring_view title, bool selected) {
     const Rect slot = take(0, 40);
     const Rect r{slot.x, slot.y + 2, slot.w, 36};
+    registerFocus(id, r, true);
     const bool hit = clicked(id, r);
     if (rt_) {
         const bool hot = hovered(r);
@@ -759,6 +938,7 @@ bool Frame::navItem(const std::string& id, wchar_t g, std::wstring_view title, b
         if (selected) selectionPill(r);
         glyph(g, {r.x + 12, r.y, 16, r.h}, pal_.text, down ? 0.7f : 1, 16);
         drawText(title, {r.x + 40, r.y, r.w - 48, r.h}, TextStyle::body, pal_.text, down ? 0.7f : 1, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, false);
+        if (focused(id)) focusRing(r, kRadius);
     }
     last_ = r;
     return hit;
@@ -770,6 +950,9 @@ void Frame::drawPopups() {
     if (!rt_) return;  // input against popups is resolved at the start of the next pass (Frame::Frame)
     for (auto& p : st_.popups) {
         const Rect box = popupBox(p);
+        const int shown = popupRowsVisible(p);
+        const int n = static_cast<int>(p.options.size());
+        const int first = std::clamp(st_.popupScroll, 0, std::max(0, n - shown));
         // A flyout: a soft shadow, the flyout surface, a hair of stroke, rows with the accent pill on the current one.
         for (int i = 3; i >= 1; --i) {
             const float spread = static_cast<float>(i) * 2;
@@ -778,21 +961,33 @@ void Frame::drawPopups() {
         }
         fillRound(box, kFlyoutRadius, pal_.flyout, 1);
         strokeRound(box, kFlyoutRadius, pal_.flyoutStroke.rgb, pal_.flyoutStroke.alpha);
-        for (std::size_t i = 0; i < p.options.size(); ++i) {
-            const Rect row{box.x + kPopupPad, box.y + kPopupPad + kPopupRowH * static_cast<float>(i), box.w - 2 * kPopupPad, kPopupRowH};
-            const bool on = p.current == static_cast<int>(i);
-            const bool hot = row.contains(st_.mouseX, st_.mouseY);
+        for (int k = 0; k < shown; ++k) {
+            const int i = first + k;
+            if (i >= n) break;
+            const Rect row{box.x + kPopupPad, box.y + kPopupPad + kPopupRowH * static_cast<float>(k), box.w - 2 * kPopupPad, kPopupRowH};
+            const bool on = p.current == i;
+            const bool hot = row.contains(st_.mouseX, st_.mouseY) || (st_.focusVisible && st_.popupHighlight == i);
             const Rect inner{row.x, row.y + 2, row.w, row.h - 4};
             if (hot || on) fillRound(inner, kRadius, pal_.subtleHover.rgb, pal_.subtleHover.alpha * (hot && on ? 1.5f : 1));
             if (on) selectionPill(inner);
-            drawText(p.options[i], {row.x + 12, row.y, row.w - 24, row.h}, TextStyle::body, pal_.text, 1, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, false);
+            drawText(p.options[static_cast<std::size_t>(i)], {row.x + 12, row.y, row.w - 24, row.h}, TextStyle::body, pal_.text, 1, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, false);
+        }
+        if (n > shown) {  // the rail says there is more
+            const float trackH = box.h - 2 * kPopupPad, thumbH = std::max(16.0f, trackH * static_cast<float>(shown) / static_cast<float>(n));
+            const float thumbY = box.y + kPopupPad + (trackH - thumbH) * static_cast<float>(first) / static_cast<float>(std::max(1, n - shown));
+            fillRound({box.right() - 6, thumbY, 3, thumbH}, 1.5f, pal_.text3.rgb, pal_.text3.alpha);
         }
     }
 }
 
 void Frame::finish() {
     drawPopups();
-    if (!rt_ && (in_.kind == UiInput::Kind::up || in_.kind == UiInput::Kind::cancel)) st_.active.clear();  // no widget may keep a press past its end
+    if (!rt_) {
+        if (in_.kind == UiInput::Kind::up || in_.kind == UiInput::Kind::cancel) st_.active.clear();  // no widget may keep a press past its end
+        st_.focusOrder = focusables_;
+        if (!st_.focus.empty() && !focusedSeen_ && st_.editId != st_.focus) st_.focus.clear();  // the focused widget left the page
+        if (st_.openDropdown.empty()) st_.popupHighlight = -1;
+    }
     if (!rt_ && st_.anyDirty && st_.onChanged) st_.onChanged();
 }
 

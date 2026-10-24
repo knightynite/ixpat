@@ -280,9 +280,12 @@ LRESULT GfxWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
             UiInput in;
             in.kind = UiInput::Kind::key;
             in.key = static_cast<int>(wp);
+            in.shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
             dispatch(in);
             return 0;
         }
+        case WM_GETDLGCODE:
+            return DLGC_WANTALLKEYS;  // Tab and the arrows are ours, not a dialog manager's
         case WM_CHAR: {
             UiInput in;
             in.kind = UiInput::Kind::chr;

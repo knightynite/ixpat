@@ -18,6 +18,7 @@ struct UiInput {
     wchar_t chr = 0;  // for Kind::chr
     bool leftDown = false;
     bool rightButton = false;
+    bool shift = false;  // for Kind::key: Shift is held (Shift+Tab walks backwards)
 };
 
 /// A framed Direct2D window with the Windows 11 shell: Mica through the frame and the client area (the client is

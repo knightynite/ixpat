@@ -1047,7 +1047,11 @@ void SettingsWindow::diagnosticsPane(Frame& f) {
     line(L"Low-level hooks", hooks ? L"installed (mouse + keyboard)" : L"NOT installed: nothing is shaped or hidden", hooks);
     line(L"Raw Input", model_.input.rawRegistered ? L"registered (mouse, keyboard, consumer)" : L"NOT registered", model_.input.rawRegistered);
     line(L"Hook calls", std::to_wstring(model_.input.mouseHookCalls) + L" mouse, " + std::to_wstring(model_.input.keyboardHookCalls) + L" keyboard, slowest " +
-                            std::to_wstring(model_.input.maxHookMicros) + L" us", model_.input.maxHookMicros < 100000);
+                            std::to_wstring(model_.input.maxHookMicros) + L" us (chain " + std::to_wstring(model_.input.maxChainMicros) + L" us), longest lag " +
+                            std::to_wstring(model_.input.maxHookLagMs) + L" ms, re-installed " + std::to_wstring(model_.input.hookReinstalls) + L"x" +
+                            (model_.input.hookInstallError ? L", install error " + std::to_wstring(model_.input.hookInstallError) : L""),
+         model_.input.maxHookMicros < 100000 && model_.input.maxHookLagMs < 200 && model_.input.hookReinstalls == 0 && model_.input.hookInstallError == 0);
+    line(L"Scroll frames", L"longest gap " + std::to_wstring(model_.input.maxCoastGapMs) + L" ms", model_.input.maxCoastGapMs < 25);
     line(L"Raw reports", std::to_wstring(model_.input.rawMouse) + L" mouse, " + std::to_wstring(model_.input.rawKeyboard) + L" keyboard");
     line(L"UI Automation", std::to_wstring(model_.uia.polls) + L" polls: " + std::to_wstring(model_.uia.menu) + L" menu, " +
                                std::to_wstring(model_.uia.control) + L" control, " + std::to_wstring(model_.uia.drop) + L" drop, " +

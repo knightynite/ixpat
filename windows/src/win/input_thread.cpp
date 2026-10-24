@@ -9,7 +9,8 @@ namespace {
 constexpr Seconds kSwallowReleaseWindow = 1.5;  // a swallowed press hides its release too, if it comes soon
 constexpr Seconds kOtherDeviceQuiet = 2.0;      // another device acted recently: do not claim unmatched events
 constexpr Seconds kRawMatchWindow = 0.05;
-constexpr Seconds kRawAwait = 0.002;           // a hook event waits this long for its Raw Input twin before deciding alone
+constexpr Seconds kHookTwinWindow = 0.03;    // a report and its hook callback lie this close (keyboard: hook first; mouse: report first)
+constexpr Seconds kHookAnswerWindow = 0.05;  // a physical report still without a hook callback after this: Windows dropped the hook
 constexpr double kDragThreshold = 20;
 constexpr double kHoldMoveCancel = 4;
 constexpr Seconds kCoastFrame = 1.0 / 120;
@@ -19,6 +20,25 @@ constexpr UINT WM_APP_REINSTALL = WM_APP + 0x40;
 bool isChordKey(DWORD vk) {
     return vk == VK_LWIN || vk == VK_RWIN || vk == VK_SHIFT || vk == VK_LSHIFT || vk == VK_RSHIFT || vk == 0x53 /*S*/ ||
            vk == 0x86 /*F23*/;
+}
+
+/// Raw Input reports VK_SHIFT where the hook reports VK_LSHIFT / VK_RSHIFT: one index for both views of a key.
+int chordIndex(DWORD vk) {
+    const int v = static_cast<int>(vk & 0xFF);
+    return (v == kVkLShift || v == kVkRShift) ? kVkShift : v;
+}
+
+bool isLetter(int vk) { return vk == kVkS || vk == kVkF23; }
+
+/// A popup menu (#32768) or a combo box's list under the pointer: these scroll a whole item per event and
+/// stutter under a stream of fractional deltas, so the wheel passes through there untouched.
+bool isMenuUnder(POINT pt) noexcept {
+    HWND w = WindowFromPoint(pt);
+    if (!w) return false;
+    wchar_t cls[32];
+    const int n = GetClassNameW(w, cls, 32);
+    if (n <= 0) return false;
+    return wcscmp(cls, L"#32768") == 0 || wcscmp(cls, L"ComboLBox") == 0;
 }
 
 std::uint16_t buttonFlagFor(WPARAM msg, DWORD mouseData) noexcept {
@@ -35,6 +55,12 @@ std::uint16_t buttonFlagFor(WPARAM msg, DWORD mouseData) noexcept {
     }
 }
 
+void raiseMax(std::atomic<std::uint32_t>& slot, std::uint32_t value) noexcept {
+    std::uint32_t cur = slot.load(std::memory_order_relaxed);
+    while (value > cur && !slot.compare_exchange_weak(cur, value, std::memory_order_relaxed)) {
+    }
+}
+
 }  // namespace
 
 InputThread* InputThread::instance_ = nullptr;
@@ -43,15 +69,19 @@ InputThread::InputThread() {
     LARGE_INTEGER f;
     QueryPerformanceFrequency(&f);
     qpcFreq_ = static_cast<double>(f.QuadPart);
+    hookMakeAt_.fill(-1e9);
+    hookBreakAt_.fill(-1e9);
 }
 
 InputThread::~InputThread() { stop(); }
 
-Seconds InputThread::now() const noexcept {
+std::int64_t InputThread::qpcNow() const noexcept {
     LARGE_INTEGER c;
     QueryPerformanceCounter(&c);
-    return static_cast<double>(c.QuadPart) / qpcFreq_;
+    return c.QuadPart;
 }
+
+Seconds InputThread::now() const noexcept { return static_cast<double>(qpcNow()) / qpcFreq_; }
 
 Seconds InputThread::lastPointerMove() const {
     // The Surface Mouse's own motion: the accessibility and cursor-shape ticks follow this mouse, not every device.
@@ -95,6 +125,11 @@ InputStatus InputThread::status() const {
     s.rawMouse = rawMouse_.load(std::memory_order_relaxed);
     s.rawKeyboard = rawKeyboard_.load(std::memory_order_relaxed);
     s.maxHookMicros = maxHookMicros_.load(std::memory_order_relaxed);
+    s.maxChainMicros = maxChainMicros_.load(std::memory_order_relaxed);
+    s.maxHookLagMs = maxHookLagMs_.load(std::memory_order_relaxed);
+    s.hookReinstalls = reinstalls_.load(std::memory_order_relaxed);
+    s.hookInstallError = installError_.load(std::memory_order_relaxed);
+    s.maxCoastGapMs = maxCoastGapMs_.load(std::memory_order_relaxed);
     return s;
 }
 
@@ -196,11 +231,20 @@ void InputThread::stop() {
 bool InputThread::installHooks() {
     removeHooks();
     HINSTANCE self = GetModuleHandleW(nullptr);
+    DWORD err = 0;
     mouseHook_ = SetWindowsHookExW(WH_MOUSE_LL, &InputThread::mouseHook, self, 0);
+    if (!mouseHook_) err = GetLastError();
     keyHook_ = SetWindowsHookExW(WH_KEYBOARD_LL, &InputThread::keyHook, self, 0);
+    if (!keyHook_ && !err) err = GetLastError();
     if (!mouseHook_ || !keyHook_) removeHooks();  // all or nothing: a half-installed pair would shape some events but not others
     mouseOk_ = mouseHook_ != nullptr;
     keyOk_ = keyHook_ != nullptr;
+    installError_.store(err, std::memory_order_relaxed);
+    // Alive from this moment: reports before now are not theirs to answer.
+    const std::int64_t q = qpcNow();
+    lastMouseHookQpc_.store(q, std::memory_order_relaxed);
+    lastKeyHookQpc_.store(q, std::memory_order_relaxed);
+    rawMouseUnanswered_ = rawKeyUnanswered_ = 0;
     return mouseHook_ && keyHook_;
 }
 
@@ -222,6 +266,9 @@ LRESULT CALLBACK InputThread::wndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         case WM_APP_REINSTALL:
             instance_->installHooks();
+            instance_->reinstalls_.fetch_add(1, std::memory_order_relaxed);
+            instance_->post({InputEvent::Kind::hooksReinstalled, 0, 0, static_cast<int>(instance_->installError_.load(std::memory_order_relaxed)),
+                             instance_->now()});
             return 0;
         default:
             return DefWindowProcW(h, msg, wp, lp);
@@ -236,7 +283,7 @@ void InputThread::loop() {
         DWORD timeoutMs = 5000;
         const Seconds t = now();
         if (holdArmed_) timeoutMs = static_cast<DWORD>(std::max(0.0, std::min(5.0, holdDeadline_ - t) * 1000));
-        if (const Seconds dl = chord_.nextDeadline(); dl > 0) timeoutMs = std::min(timeoutMs, static_cast<DWORD>(std::max(0.0, std::min(5.0, dl - t) * 1000)));
+        if (rawMouseUnanswered_ > 0 || rawKeyUnanswered_ > 0) timeoutMs = std::min<DWORD>(timeoutMs, 60);  // a report awaits its hook callback
         if (t >= nextMonitorRefresh_) {
             refreshMonitors();
             nextMonitorRefresh_ = t + 5;
@@ -253,15 +300,12 @@ void InputThread::loop() {
         if (disableRequested_.exchange(false)) applyDisable();
         if (anyMouseRequested_.load() != cfg_.anyMouse) raw_.setAnyMouse(anyMouseRequested_.load());
         if (holdArmed_ && now() >= holdDeadline_) fireHoldAction(now());
-        pollChord(now());
+        if (maskPending_) {
+            maskPending_ = false;
+            sendMaskKey();
+        }
+        checkHookLiveness();
     }
-}
-
-void InputThread::pollChord(Seconds t) noexcept {
-    const ChordOutput out = chord_.poll(t);
-    if (out == ChordOutput::none) return;
-    if (out == ChordOutput::holdEnd) endGestureNow();
-    post({InputEvent::Kind::chord, 0, static_cast<int>(out), 0, t});
 }
 
 void InputThread::applyDisable() noexcept {
@@ -288,6 +332,51 @@ void InputThread::refreshMonitors() noexcept {
             return TRUE;
         },
         reinterpret_cast<LPARAM>(this));
+}
+
+// MARK: the chord decoder (fed from the hooks and from attributed Raw Input, fires only on what it heard)
+
+void InputThread::feedChord(int vk, bool down, Seconds t) noexcept {
+    const ChordOutput out = chord_.key(vk, down, t);
+    if (out == ChordOutput::none) return;
+    // A hold ends on the input thread at once, so moves after the physical release never feed the
+    // accumulator (main's gesturesEnd() follows and is idempotent).
+    if (out == ChordOutput::holdEnd) endGestureNow();
+    post({InputEvent::Kind::chord, 0, static_cast<int>(out), 0, t});
+}
+
+// MARK: hook liveness
+
+void InputThread::noteRawForLiveness(bool mouse, Seconds at) noexcept {
+    // Every physical report has a hook callback within a few microseconds of it: the mouse hook runs just
+    // before Raw Input posts the report, the keyboard hook just before the report is generated at all. A
+    // report with no callback near it starts a clock; checkHookLiveness() reads it.
+    Seconds& unanswered = mouse ? rawMouseUnanswered_ : rawKeyUnanswered_;
+    if (unanswered > 0) return;
+    const auto& lastHook = mouse ? lastMouseHookQpc_ : lastKeyHookQpc_;
+    if (static_cast<double>(lastHook.load(std::memory_order_relaxed)) / qpcFreq_ < at - kHookTwinWindow) unanswered = at;
+}
+
+void InputThread::checkHookLiveness() noexcept {
+    const Seconds t = now();
+    auto dead = [&](Seconds& unanswered, const std::atomic<std::int64_t>& lastHook) {
+        if (unanswered <= 0) return false;
+        if (static_cast<double>(lastHook.load(std::memory_order_relaxed)) / qpcFreq_ >= unanswered - kHookTwinWindow) {
+            unanswered = 0;  // its callback came (the mouse hook's a moment after the report)
+            return false;
+        }
+        if (t - unanswered < kHookAnswerWindow) return false;
+        unanswered = 0;
+        return true;
+    };
+    const bool mouseDead = dead(rawMouseUnanswered_, lastMouseHookQpc_);
+    const bool keyDead = dead(rawKeyUnanswered_, lastKeyHookQpc_);
+    if (!mouseDead && !keyDead) return;
+    // Windows removed a hook (it does so silently when a callback, ours or one further down the chain, stalls).
+    installHooks();
+    reinstalls_.fetch_add(1, std::memory_order_relaxed);
+    post({InputEvent::Kind::hooksReinstalled, 0, (mouseDead ? 1 : 0) | (keyDead ? 2 : 0),
+          static_cast<int>(installError_.load(std::memory_order_relaxed)), t});
 }
 
 // MARK: attribution bookkeeping
@@ -331,17 +420,6 @@ bool InputThread::retireExpected(const RawEntry& raw) noexcept {
     return false;
 }
 
-bool InputThread::awaitRaw(const RawEntry& probe, Seconds now, bool& surface) noexcept {
-    if (matchRaw(probe, now, surface)) return true;
-    const Seconds deadline = now + kRawAwait;
-    for (;;) {
-        YieldProcessor();
-        drainRawInput();
-        if (matchRaw(probe, now, surface)) return true;
-        if (this->now() >= deadline) return false;
-    }
-}
-
 // MARK: raw input (device side)
 
 void InputThread::handleRawMessage(HRAWINPUT h, bool allowResolve) noexcept {
@@ -352,9 +430,9 @@ void InputThread::handleRawMessage(HRAWINPUT h, bool allowResolve) noexcept {
 
 void InputThread::onRaw(const RawEvent& e) noexcept {
     const Seconds t = static_cast<double>(e.qpc) / qpcFreq_;
-    pollChord(t);  // a deadline may have passed while no message woke the loop
     if (e.kind == RawKind::key) rawKeyboard_.fetch_add(1, std::memory_order_relaxed);
     else rawMouse_.fetch_add(1, std::memory_order_relaxed);
+    if (!e.injected) noteRawForLiveness(e.kind != RawKind::key, t);
     // Remember recent physical entries for the hooks' content matching, unless a hook already decided this one.
     if (!e.injected && (e.kind == RawKind::wheel || e.kind == RawKind::hwheel || e.kind == RawKind::key || e.kind == RawKind::button)) {
         RawEntry entry{e.kind, e.surfaceMouse, e.wheel, e.scan, e.keyDown, e.keyE0, e.buttonFlags, t};
@@ -400,29 +478,48 @@ void InputThread::onRaw(const RawEvent& e) noexcept {
                 if (mask != surfaceButtons_) {
                     const std::uint8_t old = surfaceButtons_;
                     surfaceButtons_ = mask;
-                    post({InputEvent::Kind::rawButtons, old, mask, 0, t});
-                    if ((mask & ~old) & 0x01) {
-                        const ChordOutput out = chord_.mouseLeftDown(t);
-                        if (out != ChordOutput::none) post({InputEvent::Kind::chord, 0, static_cast<int>(out), 0, t});
-                    }
+                    post({InputEvent::Kind::rawButtons, old, mask, 0, t});  // haptics only; the fake click is the hook's to judge
                 }
             } else if (!e.injected) {
                 lastOtherButton_ = t;
             }
             break;
-        case RawKind::key:
-            if (!e.surfaceMouse && !e.injected && isChordKey(e.vk)) post({InputEvent::Kind::rawKey, 1, e.vk, e.keyDown, t});  // a = 1: another device
-            if (e.surfaceMouse) {
-                const ChordOutput out = chord_.key(e.vk, e.keyDown, t);
-                post({InputEvent::Kind::rawKey, 0, e.vk, e.keyDown, t});
-                if (out != ChordOutput::none) {
-                    // A hold ends on the input thread at once, so moves after the physical release never
-                    // feed the accumulator (main's gesturesEnd() follows and is idempotent).
-                    if (out == ChordOutput::holdEnd) endGestureNow();
-                    post({InputEvent::Kind::chord, 0, static_cast<int>(out), 0, t});
+        case RawKind::key: {
+            if (!isChordKey(e.vk)) break;
+            if (!e.surfaceMouse) {
+                if (!e.injected) post({InputEvent::Kind::rawKey, 1, e.vk, e.keyDown ? 1 : 0, t});
+                break;
+            }
+            // The mouse's keyboard collection. Its letters never show here (the hook ate them, or kbdhid dropped
+            // them); its Shift and Win do, about a millisecond after the hook passed them. A report the hook never
+            // saw means the hook is gone and Windows has already acted on this chord: the decoder stays silent, and
+            // checkHookLiveness() puts the hooks back.
+            const int idx = chordIndex(e.vk);
+            const Seconds seen = (e.keyDown ? hookMakeAt_ : hookBreakAt_)[static_cast<std::size_t>(idx)];
+            const bool hookSaw = t - seen < kHookTwinWindow;
+            post({InputEvent::Kind::rawKey, 0, e.vk, (e.keyDown ? 1 : 0) | (hookSaw ? 0 : 2), t});
+            if (!hookSaw) break;
+            if (e.keyDown) {
+                if (fedMake_[static_cast<std::size_t>(idx)]) break;  // typematic repeat
+                fedMake_[static_cast<std::size_t>(idx)] = true;
+                const bool wasInFlight = chord_.inFlight(t);
+                feedChord(e.vk, true, t);
+                if (!wasInFlight && chord_.inFlight(t)) {
+                    // Windows holds this Win down too (it had to pass for Raw Input to name its device). A key that
+                    // means nothing, between its make and its break, keeps the Start menu shut on the release.
+                    const InputConfig cfg = config();
+                    if (cfg.swallowChords && cfg.enabled) {
+                        if (hookDepth_ > 0) maskPending_ = true;  // not from inside a hook callback
+                        else sendMaskKey();
+                    }
                 }
+            } else {
+                if (!fedMake_[static_cast<std::size_t>(idx)]) break;
+                fedMake_[static_cast<std::size_t>(idx)] = false;
+                feedChord(e.vk, false, t);
             }
             break;
+        }
         default:
             break;
     }
@@ -442,37 +539,59 @@ void InputThread::drainRawInput() noexcept {
     }
 }
 
+// MARK: hook timing
+
 void InputThread::noteHookTime(Seconds start) noexcept {
-    const auto us = static_cast<std::uint32_t>(std::max(0.0, (now() - start) * 1e6));
-    std::uint32_t cur = maxHookMicros_.load(std::memory_order_relaxed);
-    while (us > cur && !maxHookMicros_.compare_exchange_weak(cur, us, std::memory_order_relaxed)) {
-    }
+    raiseMax(maxHookMicros_, static_cast<std::uint32_t>(std::max(0.0, (now() - start) * 1e6)));
+}
+
+void InputThread::noteChainTime(Seconds start) noexcept {
+    raiseMax(maxChainMicros_, static_cast<std::uint32_t>(std::max(0.0, (now() - start) * 1e6)));
+}
+
+void InputThread::noteHookLag(DWORD eventTime) noexcept {
+    // The hook structs carry the event's tick count: how long it queued before reaching us says whether this
+    // thread (or something ahead of it) ever stalls long enough for Windows to drop the hook.
+    const DWORD lag = GetTickCount() - eventTime;
+    if (lag < 60000) raiseMax(maxHookLagMs_, lag);
 }
 
 // MARK: hooks (system side)
 
 LRESULT CALLBACK InputThread::mouseHook(int code, WPARAM wp, LPARAM lp) noexcept {
     if (code == HC_ACTION && instance_) {
-        instance_->mouseCalls_.fetch_add(1, std::memory_order_relaxed);
-        ++instance_->hookDepth_;
-        const Seconds t0 = instance_->now();
-        const bool swallow = instance_->onMouse(wp, *reinterpret_cast<const MSLLHOOKSTRUCT*>(lp));
-        instance_->noteHookTime(t0);
-        --instance_->hookDepth_;
+        InputThread& self = *instance_;
+        self.mouseCalls_.fetch_add(1, std::memory_order_relaxed);
+        ++self.hookDepth_;
+        const Seconds t0 = self.now();
+        self.lastMouseHookQpc_.store(self.qpcNow(), std::memory_order_relaxed);
+        const bool swallow = self.onMouse(wp, *reinterpret_cast<const MSLLHOOKSTRUCT*>(lp));
+        self.noteHookTime(t0);
+        --self.hookDepth_;
         if (swallow) return 1;
+        const Seconds t1 = self.now();
+        const LRESULT r = CallNextHookEx(nullptr, code, wp, lp);  // other programs' hooks run inside this call
+        self.noteChainTime(t1);
+        return r;
     }
     return CallNextHookEx(nullptr, code, wp, lp);
 }
 
 LRESULT CALLBACK InputThread::keyHook(int code, WPARAM wp, LPARAM lp) noexcept {
     if (code == HC_ACTION && instance_) {
-        instance_->keyCalls_.fetch_add(1, std::memory_order_relaxed);
-        ++instance_->hookDepth_;
-        const Seconds t0 = instance_->now();
-        const bool swallow = instance_->onKey(wp, *reinterpret_cast<const KBDLLHOOKSTRUCT*>(lp));
-        instance_->noteHookTime(t0);
-        --instance_->hookDepth_;
+        InputThread& self = *instance_;
+        self.keyCalls_.fetch_add(1, std::memory_order_relaxed);
+        ++self.hookDepth_;
+        const Seconds t0 = self.now();
+        self.lastKeyHookQpc_.store(self.qpcNow(), std::memory_order_relaxed);
+        const bool swallow = self.onKey(wp, *reinterpret_cast<const KBDLLHOOKSTRUCT*>(lp));
+        self.noteHookTime(t0);
+        --self.hookDepth_;
         if (swallow) return 1;
+        const Seconds t1 = self.now();
+        const LRESULT r = CallNextHookEx(nullptr, code, wp, lp);
+        self.noteChainTime(t1);
+        return r;
     }
     return CallNextHookEx(nullptr, code, wp, lp);
 }
@@ -480,7 +599,8 @@ LRESULT CALLBACK InputThread::keyHook(int code, WPARAM wp, LPARAM lp) noexcept {
 bool InputThread::onMouse(WPARAM msg, const MSLLHOOKSTRUCT& m) noexcept {
     const Seconds t = now();
     if (isOurs(m.dwExtraInfo)) return false;  // our own synthesised event
-    drainRawInput();
+    noteHookLag(m.time);
+    drainRawInput();  // the mouse's reports are usually in already: the hook sees the device without waiting
     if (disableRequested_.exchange(false)) applyDisable();
     const InputConfig cfg = config();
     const bool injected = (m.flags & LLMHF_INJECTED) != 0;
@@ -508,9 +628,7 @@ bool InputThread::onMouse(WPARAM msg, const MSLLHOOKSTRUCT& m) noexcept {
 
     switch (msg) {
         case WM_MOUSEMOVE: {
-            LARGE_INTEGER c;
-            QueryPerformanceCounter(&c);
-            lastMoveQpc_.store(c.QuadPart, std::memory_order_relaxed);
+            lastMoveQpc_.store(qpcNow(), std::memory_order_relaxed);
             if (gestureActive_ && !injected) {
                 // The pointer stays put: block the move, feed the travel to the accumulator.
                 const double dx = m.pt.x - gestureAnchor_.x, dy = m.pt.y - gestureAnchor_.y;
@@ -545,9 +663,9 @@ bool InputThread::onMouse(WPARAM msg, const MSLLHOOKSTRUCT& m) noexcept {
         case WM_LBUTTONDOWN: {
             bool surface = false;
             RawEntry probe{RawKind::button, false, 0, 0, false, false, RI_MOUSE_LEFT_BUTTON_DOWN, t};
-            bool matched = injected ? false : awaitRaw(probe, t, surface);
+            const bool matched = injected ? false : matchRaw(probe, t, surface);
             if (!matched && !injected) {
-                // Still no raw entry: this mouse is live and nothing else clicked lately -> ours; the raw entry is retired when it lands.
+                // Its report is not in yet: this mouse is live and nothing else clicked lately -> ours; the report is retired when it lands.
                 surface = cfg.anyMouse || (cfg.shapeWheel && t - lastOtherButton_ > kOtherDeviceQuiet);
                 expectRaw(probe);
             }
@@ -557,9 +675,14 @@ bool InputThread::onMouse(WPARAM msg, const MSLLHOOKSTRUCT& m) noexcept {
                 swallowLeftUpUntil_ = t + kSwallowReleaseWindow;
                 return true;
             }
-            if (cfg.swallowChords && cfg.enabled && surface && chord_.swallowLeftClick(t) && !injected) {  // the firmware's fake click
-                swallowLeftUpUntil_ = t + kSwallowReleaseWindow;
-                return true;
+            if (surface && !injected && chord_.swallowLeftClick(t)) {
+                // The fake click of the double-press chord, or one in its wake: the decoder hears it here, never from Raw Input.
+                const ChordOutput out = chord_.mouseLeftDown(t);
+                if (out != ChordOutput::none) post({InputEvent::Kind::chord, 0, static_cast<int>(out), 0, t});
+                if (cfg.swallowChords && cfg.enabled) {
+                    swallowLeftUpUntil_ = t + kSwallowReleaseWindow;
+                    return true;
+                }
             }
             leftDown_ = true;
             dragStart_ = m.pt;
@@ -616,20 +739,27 @@ bool InputThread::onMouse(WPARAM msg, const MSLLHOOKSTRUCT& m) noexcept {
             const auto delta = static_cast<std::int16_t>(HIWORD(m.mouseData));
             RawEntry probe{msg == WM_MOUSEWHEEL ? RawKind::wheel : RawKind::hwheel, false, delta, 0, false, false, 0, t};
             bool surface = false;
-            if (!awaitRaw(probe, t, surface)) {
-                // Still no WM_INPUT: the Mac's rule, while this mouse is live and no other
-                // device scrolled recently, the notch is ours. The late raw entry is retired when it lands.
+            if (!matchRaw(probe, t, surface)) {
+                // Its report is not in yet: the Mac's rule, while this mouse is live and no other device scrolled
+                // recently, the notch is ours. The late report is retired when it lands.
                 surface = cfg.anyMouse || (cfg.shapeWheel && t - lastOtherWheel_ > kOtherDeviceQuiet);
                 expectRaw(probe);
             }
             if (!surface || !cfg.shapeWheel || !cfg.enabled) return false;
+            if (isMenuUnder(m.pt)) return false;  // popup menus and combo lists: one notch, one step, as Windows does it
             const double notches = static_cast<double>(delta) / WHEEL_DELTA;
             if (cfg.kinetic.enabled) {
+                const bool coasting = kinetic_.active();
                 if (msg == WM_MOUSEWHEEL) kinetic_.notch(notches, 0, t, cfg.kinetic);
                 else kinetic_.notch(0, notches, t, cfg.kinetic);
-                LARGE_INTEGER due;
-                due.QuadPart = -static_cast<LONGLONG>(kCoastFrame * 1e7);
-                SetWaitableTimer(timer_, &due, static_cast<LONG>(kCoastFrame * 1000), nullptr, nullptr, FALSE);
+                if (!coasting) {
+                    // The frame clock starts with the first notch and keeps its phase through the rest: restarting
+                    // it on every notch stretched frames to 16 ms and made a spin stutter.
+                    LARGE_INTEGER due;
+                    due.QuadPart = -static_cast<LONGLONG>(kCoastFrame * 1e7);
+                    SetWaitableTimer(timer_, &due, static_cast<LONG>(kCoastFrame * 1000), nullptr, nullptr, FALSE);
+                    lastCoastTick_ = 0;
+                }
                 return true;
             }
             if (cfg.reverseOnly) {
@@ -647,8 +777,9 @@ bool InputThread::onMouse(WPARAM msg, const MSLLHOOKSTRUCT& m) noexcept {
 bool InputThread::onKey(WPARAM msg, const KBDLLHOOKSTRUCT& k) noexcept {
     const Seconds t = now();
     if (isOurs(k.dwExtraInfo)) return false;
+    noteHookLag(k.time);
     const bool injected = (k.flags & LLKHF_INJECTED) != 0;
-    drainRawInput();
+    drainRawInput();  // the reports of the keys before this one are in: the chord they started is known by now
     if (disableRequested_.exchange(false)) applyDisable();
     const InputConfig cfg = config();
     const bool down = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
@@ -660,23 +791,44 @@ bool InputThread::onKey(WPARAM msg, const KBDLLHOOKSTRUCT& k) noexcept {
         return true;
     }
     if (!isChordKey(k.vkCode)) return false;
-    RawEntry probe{RawKind::key, false, 0, static_cast<std::uint16_t>(k.scanCode), down, (k.flags & LLKHF_EXTENDED) != 0, 0, t};
-    bool surface = false;
-    const bool matched = awaitRaw(probe, t, surface);
-    if (!matched) expectRaw(probe);
-    if (!cfg.swallowChords || !cfg.enabled) return false;
-    // The chords arrive as Win+Shift+S / Win+Shift+F23: swallow their keys only while the mouse is sending one.
-    if (matched) return surface && chord_.chordActive(t);
-    return chord_.chordActive(t);
+    const int idx = chordIndex(k.vkCode);
+    const auto slot = static_cast<std::size_t>(idx);
+    (down ? hookMakeAt_ : hookBreakAt_)[slot] = t;
+    bool swallow = false;
+    if (!down) {
+        // A break follows its make: a letter the hook ate stays hidden to the end. The decoder hears the break of
+        // every letter it heard the make of; Shift and Win breaks pass, and their report feeds it a moment later.
+        swallow = swallowedMake_[slot];
+        swallowedMake_[slot] = false;
+        if (isLetter(idx) && fedMake_[slot]) {
+            fedMake_[slot] = false;
+            feedChord(idx, false, t);
+        }
+    } else if (isLetter(idx)) {
+        // S or F23 while the mouse's Win chord is in flight completes it. Hidden from Windows by default (no
+        // Snipping Tool, no Copilot), and the decoder hears it from here either way. Shift and Win makes pass:
+        // Raw Input names their device a millisecond later and feeds the decoder then (onRaw).
+        if (chord_.inFlight(t) || swallowedMake_[slot]) {
+            swallow = swallowedMake_[slot] || (cfg.swallowChords && cfg.enabled);
+            swallowedMake_[slot] = swallow;
+            fedMake_[slot] = true;
+            feedChord(idx, true, t);
+        }
+    }
+    post({InputEvent::Kind::rawKey, static_cast<std::uint8_t>(swallow ? 3 : 2), idx, down ? 1 : 0, t});
+    return swallow;
 }
 
 // MARK: timers
 
 void InputThread::tick(Seconds t) noexcept {
+    if (lastCoastTick_ > 0) raiseMax(maxCoastGapMs_, static_cast<std::uint32_t>((t - lastCoastTick_) * 1000));
+    lastCoastTick_ = t;
     const auto step = kinetic_.tick(t);
     if (!step.active) {
         CancelWaitableTimer(timer_);
         wheelOut_.reset();
+        lastCoastTick_ = 0;
         return;
     }
     if (step.dy || step.dx) wheelOut_.emit(step.dy, step.dx, config().kinetic.pxPerNotch);

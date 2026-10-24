@@ -626,8 +626,14 @@ void App::onInputEvents() {
                 if (router_->freeSpinActive() != lastFreeSpin_) pushConfig();
                 break;
             case win::InputEvent::Kind::rawKey: {
-                char buf[48];
-                std::snprintf(buf, sizeof buf, "keyboard vk %02x %s%s", e.b, e.c ? "down" : "up", e.a ? " (other device)" : "");
+                char buf[64];
+                const bool down = (e.c & 1) != 0;
+                if (e.a >= 2) {
+                    std::snprintf(buf, sizeof buf, "hook vk %02x %s %s", e.b, down ? "down" : "up", e.a == 3 ? "swallowed" : "passed");
+                } else {
+                    std::snprintf(buf, sizeof buf, "keyboard vk %02x %s%s%s", e.b, down ? "down" : "up", e.a == 1 ? " (other device)" : "",
+                                  (e.c & 2) ? " (no hook callback)" : "");
+                }
                 win::reportLog(buf);
                 model_.reportLog.push_back(buf);
                 if (model_.reportLog.size() > 150) model_.reportLog.pop_front();
@@ -672,6 +678,15 @@ void App::onInputEvents() {
             case win::InputEvent::Kind::ringOpenRequest:
                 ring_.toggle(settings_.effRingItems(), false, settings_.accentHex);
                 break;
+            case win::InputEvent::Kind::hooksReinstalled: {
+                const auto st = input_.status();
+                std::string why = e.b == 0 ? "asked by the watchdog" : std::string(e.b & 1 ? "mouse" : "") + ((e.b & 3) == 3 ? " and " : "") +
+                                                                       (e.b & 2 ? "keyboard" : "") + " reports went unanswered";
+                win::debugLog("hooks re-installed (" + why + "; " + std::to_string(st.hookReinstalls) + " so far; slowest callback " +
+                              std::to_string(st.maxHookMicros) + " us, slowest chain " + std::to_string(st.maxChainMicros) + " us, longest lag " +
+                              std::to_string(st.maxHookLagMs) + " ms" + (e.c ? ", SetWindowsHookEx error " + std::to_string(e.c) : std::string()) + ")");
+                break;
+            }
 
         }
     }

@@ -112,7 +112,7 @@ private:
     void removeHooks();
     bool onMouse(WPARAM msg, const MSLLHOOKSTRUCT& m) noexcept;  // true = swallow
     bool onKey(WPARAM msg, const KBDLLHOOKSTRUCT& k) noexcept;
-    void drainRawInput() noexcept;
+    void drainRawInput(int budget) noexcept;
     void handleRawMessage(HRAWINPUT h, bool allowResolve) noexcept;
     void onRaw(const RawEvent& e) noexcept;
     void post(InputEvent e) noexcept;
@@ -125,6 +125,7 @@ private:
     std::int64_t qpcNow() const noexcept;
     void feedChord(int vk, bool down, Seconds now) noexcept;
     void forgetStaleChord(Seconds now) noexcept;
+    void reconcileLetters() noexcept;
     void flushMask() noexcept;
     void noteHookTime(Seconds start) noexcept;
     void noteChainTime(Seconds start) noexcept;
@@ -158,11 +159,13 @@ private:
     std::thread thread_;
     double qpcFreq_ = 1;
 
-    // Config snapshots: main writes the next slot and publishes its index; a hook copies the published slot
-    // without ever waiting on main. Sixteen slots outlast any reader a writer could lap.
-    static constexpr std::size_t kConfigSlots = 16;
+    // Config snapshots: main writes a free slot and publishes its index; a hook registers the slot it is copying
+    // and copies it without ever waiting on main; the writer never touches the published slot or the one being
+    // read. No lock on either side.
+    static constexpr std::size_t kConfigSlots = 4;
     std::array<InputConfig, kConfigSlots> cfgSlots_{};
     std::atomic<std::size_t> cfgIndex_{0};
+    mutable std::atomic<std::size_t> cfgReading_{kConfigSlots};  // the slot a reader is copying (kConfigSlots = none)
     InputConfig cfgLast_;  // the writer's own copy, for change detection
     std::atomic<bool> ringOpen_{false};
     std::atomic<bool> ringHold_{false};

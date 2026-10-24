@@ -13,6 +13,7 @@ void StallWatch::start(HWND owner, UINT message) {
     owner_ = owner;
     message_ = message;
     stopEvent_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    if (!stopEvent_) return;  // no way to stop it later: better no watch than a thread that cannot be joined
     thread_ = std::thread([this] { loop(); });
 }
 
@@ -30,7 +31,7 @@ void StallWatch::loop() {
     QueryPerformanceFrequency(&f);
     QueryPerformanceCounter(&last);
     for (;;) {
-        if (WaitForSingleObject(stopEvent_, kStepMs) == WAIT_OBJECT_0) return;
+        if (WaitForSingleObject(stopEvent_, kStepMs) != WAIT_TIMEOUT) return;  // stopped, or the wait itself failed
         LARGE_INTEGER now;
         QueryPerformanceCounter(&now);
         const double lateMs = static_cast<double>(now.QuadPart - last.QuadPart) * 1000.0 / static_cast<double>(f.QuadPart) - kStepMs;

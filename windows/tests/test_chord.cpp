@@ -270,3 +270,30 @@ TEST_CASE("chord: once a hold is recognised, a stray S does not turn it into a p
     d.key(ixpat::kVkShift, false, 2.0);
     CHECK(d.key(ixpat::kVkLWin, false, 2.0) == O::holdEnd);
 }
+
+TEST_CASE("chord: a hold whose keys go quiet expires with a holdEnd; a press or Win alone expires silently") {
+    D d;
+    d.key(ixpat::kVkShift, true, 1.0);
+    d.key(ixpat::kVkLWin, true, 1.0);
+    CHECK(d.key(ixpat::kVkF23, true, 1.0) == O::holdBegin);
+    CHECK(d.expire(1.5) == O::none);      // still fresh
+    CHECK(d.expire(3.0) == O::holdEnd);   // 2 s of silence: the hold is over
+    CHECK_FALSE(d.pressed());
+    CHECK(d.expire(3.1) == O::none);      // only once
+    D e;
+    e.key(ixpat::kVkLWin, true, 1.0);
+    CHECK(e.expire(3.0) == O::none);
+    CHECK_FALSE(e.inFlight(3.0));
+}
+
+TEST_CASE("chord: once classified, a chord wants only its own letter") {
+    D d;
+    CHECK_FALSE(d.wantsLetter(ixpat::kVkS));  // no chord: nothing is wanted
+    d.key(ixpat::kVkShift, true, 1.0);
+    d.key(ixpat::kVkLWin, true, 1.0);
+    CHECK(d.wantsLetter(ixpat::kVkS));   // Win alone: either letter completes it
+    CHECK(d.wantsLetter(ixpat::kVkF23));
+    d.key(ixpat::kVkF23, true, 1.0);
+    CHECK(d.wantsLetter(ixpat::kVkF23));
+    CHECK_FALSE(d.wantsLetter(ixpat::kVkS));  // a hold: S is the user's
+}

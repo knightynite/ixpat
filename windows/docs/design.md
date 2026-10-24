@@ -68,7 +68,7 @@ windows/
   src/win/       hid_device, raw_input, hooks, input_thread, send_input, uia_watch, foreground, snap,
                  cursor_shape, tray, pointer_settings, bridge_server, updater, single_instance, log,
                  startup (Run key), dpi, timers, com
-  src/ui/        d2d device/context, theme (Palette from Theme.swift), controls, tabs, settings window,
+  src/ui/        d2d device/context, theme (the Fluent tokens), controls, navigation, settings window,
                  schematic, ring window, setup guide, about
   src/app/       main.cpp: wiring (the macOS AppDelegate), version.h
   tests/         doctest, one file per core unit, plus a Mac-written settings.json fixture
@@ -185,19 +185,21 @@ Exactly the split the Mac app has (IOHID reports vs. the CGEvent tap):
 
 ### 3.6 UI
 
-Direct2D 1.1 + DirectWrite on a per-monitor-DPI-v2, frameless window (`WM_NCCALCSIZE` client-area
-title bar, DWM shadow, `DWMWA_SYSTEMBACKDROP_TYPE` Mica when available). `Palette` is `Theme.swift`'s
-colour table; theme follows `settings.theme` (system via `AppsUseLightTheme` + `WM_SETTINGCHANGE`).
-Controls are drawn, not native: toggle, slider, segmented picker, dropdown (popup window), stepper, button,
-list (ring items, profiles, rules), pill tabs, text field (a themed native `EDIT` child for the few
-free-text inputs: app path, shell command, shortcut recorder). The backdrop (gradient + blurred glows) is
-rendered once per size/theme into a bitmap. Tabs and sections mirror `MainWindow.swift`: Haptics, Action
-Button, Action Ring, Apps, Pointer & Scroll, Diagnostics; hero tile with the live schematic (buttons light
-from Raw Input, wheel turns, action button glows, pulse rings on every haptic). The Action Ring is a
-layered, topmost, click-through (`WS_EX_TRANSPARENT | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW`) window drawn
-with the same renderer, polled at 90 Hz like the Mac. The setup guide and About are small windows of the
-same kind. Main controls expose UI Automation providers (toggle, slider, button, tab) so screen readers
-can drive them.
+Direct2D 1.1 + DirectWrite on a per-monitor-DPI-v2 window with the Windows 11 shell: Mica through the frame and
+the client (the frame is extended over the client, the target paints with per-pixel alpha, the solid base is the
+fallback without Mica), the system title bar in the theme's tone. `Palette` holds the Fluent tokens, named after
+the WinUI resources they stand in for; the accent is Windows' own from the Explorer accent ramp (light 2 on dark,
+dark 1 on light) unless `settings.accentHex` names one; theme follows `settings.theme` (system via
+`AppsUseLightTheme`, refreshed on `WM_SETTINGCHANGE` and the DWM colorization message). Controls are drawn, not
+native, and are the Fluent ones: toggle, slider, selector bar, combo box with its flyout, number box, button, icon
+button, check box, list row, navigation row; the text field is a themed native `EDIT` child (layered, so it stays
+opaque over Mica) for the few free-text inputs. Type is Segoe UI Variable, Display from 20 px up and Text below,
+nothing under 12 px. The window is a navigation pane (the live mouse at its head: buttons light from Raw Input, the
+wheel turns, the action button glows, pulse rings on every haptic; then Haptics, Action button, Action Ring, Apps,
+Pointer and scroll, Diagnostics; the master switch and About at the foot) beside a content layer with the page
+title and the page as a stack of settings cards. The Action Ring is a layered, topmost, click-through
+(`WS_EX_TRANSPARENT | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW`) window drawn with the same renderer, polled at 90 Hz
+like the Mac, in the same accent. Plan 8 (`plan-8-fluent-shell.md`) has the details.
 
 ### 3.7 Services
 

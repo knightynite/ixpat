@@ -312,9 +312,10 @@ void InputThread::loop() {
         // While nothing is in flight, put the hooks back every few seconds: Windows drops them silently and tells
         // nobody, and a dropped hook must not wait for the next key to be found out.
         const Seconds t2 = now();
-        if (t2 - lastHookRefresh_ >= kHookRefresh && !chord_.chordActive(t2) && !leftDown_ && fedMake_.none() && swallowedMake_.none() &&
-            letterPassed_.none() && !holdArmed_ && !gestureActive_) {
-            installHooks();
+        const Seconds sinceKey = t2 - static_cast<double>(lastKeyHookQpc_.load(std::memory_order_relaxed)) / qpcFreq_;
+        if (t2 - lastHookRefresh_ >= kHookRefresh && sinceKey > 0.2 && !chord_.chordActive(t2) && !leftDown_ && fedMake_.none() &&
+            swallowedMake_.none() && letterPassed_.none() && !holdArmed_ && !gestureActive_) {
+            installHooks();  // only with the keyboard quiet: a refresh voids the observation a report in flight still needs
         }
     }
 }

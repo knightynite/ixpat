@@ -24,8 +24,9 @@ enum class ChordOutput : std::uint8_t { none, press, doublePress, holdBegin, hol
 /// a chord Windows already acted on (the hooks were down) never fires here as well.
 class ChordDecoder {
 public:
-    /// Asked when a chord is recognised; return true to consume it (the Action Ring is open in
-    /// toggle mode and this press commits it). The chord's keys and fake click stay hidden.
+    /// Asked when a gesture is recognised (the letter of a press or hold, the fake click of a double press);
+    /// return true to consume it (the Action Ring is open in toggle mode and this commits it). The chord's
+    /// remaining keys stay hidden. A bare Win make never asks: Windows may still act on what follows.
     std::function<bool()> pressIntercept;
 
     ChordOutput key(int vk, bool down, Seconds now);
@@ -40,8 +41,9 @@ public:
     bool inFlight(Seconds now) const { return chord_ != Chord::none && !stale(now); }
     /// Keys from the mouse are in flight or just were.
     bool chordActive(Seconds now) const { return now < deviceKeyUntil_ || inFlight(now); }
-    /// The fake click of the double-press chord is pending or recent: the hook swallows left clicks.
-    bool swallowLeftClick(Seconds now) const { return (chord_ == Chord::win && !stale(now)) || now < swallowClicksUntil_; }
+    /// The fake click of the double-press chord is pending or recent: the hook swallows left clicks. Shift in the
+    /// chord means a press or hold instead, and a click then is the user's own.
+    bool swallowLeftClick(Seconds now) const { return (chord_ == Chord::win && !shiftInChord_ && !stale(now)) || now < swallowClicksUntil_; }
     /// A chord whose release never arrived (a lost break) is dropped once the mouse has been quiet this long.
     bool stale(Seconds now) const { return (chord_ != Chord::none || down_.any()) && now > deviceKeyUntil_ - kKeyWindow + kStaleAfter; }
     void reset();

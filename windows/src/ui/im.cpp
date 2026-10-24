@@ -558,7 +558,7 @@ bool Frame::slider(const std::string& id, double& value, double lo, double hi, d
             }
             st_.wheelAccum += in_.wheel;
             const int notches = static_cast<int>(st_.wheelAccum / 120);
-            st_.wheelAccum -= notches * 120.0f;
+            st_.wheelAccum -= static_cast<float>(notches) * 120.0f;
             st_.consumed = true;  // the slider took the event, whether or not it moved
             const double s = step > 0 ? step : (hi - lo) / 20;
             const double v = std::clamp(value + notches * s, lo, hi);

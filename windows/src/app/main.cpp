@@ -22,6 +22,7 @@
 #include "win/log.h"
 #include "win/paths.h"
 #include "win/settings_store.h"
+#include "win/stall_watch.h"
 #include "win/tray.h"
 #include "win/uia_watch.h"
 #include "core/version.h"
@@ -44,6 +45,7 @@ constexpr UINT WM_APP_TRAY = WM_APP + 5;
 constexpr UINT WM_APP_SHOW = WM_APP + 6;
 constexpr UINT WM_APP_UIA = WM_APP + 7;
 constexpr UINT WM_APP_UPDATE = WM_APP + 8;
+constexpr UINT WM_APP_STALL = WM_APP + 9;
 
 constexpr UINT_PTR kTimerFlush = 4, kTimerWatchdog = 5, kTimerSnapCheck = 7, kTimerPointerApply = 8, kTimerRingCommit = 9,
                    kTimerDemoClose = 10, kTimerDetachExpiry = 11, kTimerPointerOwner = 12,
@@ -107,6 +109,7 @@ private:
     win::PointerSettings pointer_;
     win::Tray tray_;
     win::UiaWatch uia_;
+    win::StallWatch stalls_;
     win::Updater updater_;
     win::UpdateState updateState_;
     void scheduledUpdateCheck();
@@ -287,6 +290,7 @@ void App::start() {
     uia_.lastPointerMove = [this] { return input_.lastPointerMove(); };
     uia_.leftButtonDown = [this] { return input_.leftButtonDown(); };
     uia_.start(hwnd_, WM_APP_UIA);
+    stalls_.start(hwnd_, WM_APP_STALL);
     arrowCursor_ = LoadCursorW(nullptr, IDC_ARROW);
     waitCursor_ = LoadCursorW(nullptr, IDC_WAIT);
     appStartingCursor_ = LoadCursorW(nullptr, IDC_APPSTARTING);
@@ -470,6 +474,8 @@ void App::syncModel() {
     model_.lastPlayed = engine_.lastPlayed();
     model_.input = input_.status();
     model_.uia = uia_.stats();
+    model_.stallMaxMs = stalls_.maxStallMs();
+    model_.stallCount = stalls_.count();
     model_.bridgeRunning = bridge_.running();
     model_.frontApp = settings_.frontBundleID.value_or("");
     if (window_) window_->refresh();
@@ -494,6 +500,7 @@ void App::quit() {
     ring_.destroy();
     input_.stop();
     uia_.stop();
+    stalls_.stop();
     updater_.stop();
     foreground_.stop();
     bridge_.stop();
@@ -929,6 +936,12 @@ LRESULT App::handle(UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
         case WM_APP_INPUT:
             onInputEvents();
+            return 0;
+        case WM_APP_STALL:
+            // The whole machine stood still: Windows drops a low-level hook it could not deliver a callback to in
+            // time, and tells nobody. Put ours back now rather than at the next keypress.
+            win::debugLog("system stall: " + std::to_string(static_cast<unsigned>(wp)) + " ms; re-installing the hooks in case Windows dropped them");
+            input_.reinstallHooks();
             return 0;
         case WM_APP_UIA:
             if (router_) router_->systemEvent(static_cast<HapticEvent>(wp), now());

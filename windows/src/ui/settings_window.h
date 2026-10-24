@@ -58,7 +58,7 @@ struct SettingsActions {
     std::function<void(const std::string&)> openUrl;
 };
 
-/// The settings window (MainWindow.swift): header, hero + live tiles, pill tabs and six panes.
+/// The settings window: a navigation pane with the live mouse, and a page of settings cards per section.
 class SettingsWindow : public GfxWindow {
 public:
     SettingsWindow(Settings& settings, SettingsModel& model, SettingsActions actions);
@@ -78,11 +78,10 @@ protected:
     void onTimer() override;
     LRESULT onMessage(UINT msg, WPARAM wp, LPARAM lp, bool& handled) override;
     bool consumeRerun() override;
+    void onSystemThemeChanged() override { applyTheme(); }
 
 private:
-    void header(Frame& f);
-    void heroTile(Frame& f, float width, float height);
-    void liveTile(Frame& f, float width, float height);
+    void navPane(Frame& f, float H0);
     void hapticsPane(Frame& f);
     void buttonPane(Frame& f);
     void ringPane(Frame& f);

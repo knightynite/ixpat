@@ -18,20 +18,34 @@ TEST_CASE("glyphs: the Mac's SF Symbol names map to Segoe icon code points") {
     CHECK(ixpat::ui::glyphFor("") == 0);
 }
 
-TEST_CASE("theme: the palette follows the theme choice and the accent") {
-    auto dark = ixpat::ui::resolve(ixpat::AppTheme::dark, false, 0x0A84FF);
+TEST_CASE("theme: the palette follows the theme choice; a chosen accent is lighter on dark and darker on light") {
+    auto dark = ixpat::ui::resolve(ixpat::AppTheme::dark, false, 0x0078D4);
     CHECK(dark.isDark);
-    CHECK(dark.accent == 0x0A84FFu);
-    CHECK(dark.bg == 0x1F1F22u);
+    CHECK(dark.base == 0x202020u);
     CHECK(dark.text == 0xFFFFFFu);
-    auto light = ixpat::ui::resolve(ixpat::AppTheme::light, true, 0xBF5AF2);
+    CHECK(dark.textOnAccent == 0x000000u);
+    CHECK(dark.accent == ixpat::ui::accentRamp(0x0078D4).light2);
+    auto light = ixpat::ui::resolve(ixpat::AppTheme::light, true, 0x0078D4);
     CHECK_FALSE(light.isDark);
-    CHECK(light.accent == 0xBF5AF2u);
-    CHECK(light.bg == 0xECECEEu);
-    CHECK(light.text == 0x1D1D1Fu);
+    CHECK(light.base == 0xF3F3F3u);
+    CHECK(light.textOnAccent == 0xFFFFFFu);
+    CHECK(light.accent == ixpat::ui::accentRamp(0x0078D4).dark1);
     CHECK(ixpat::ui::resolve(ixpat::AppTheme::system, true, 0).isDark);
     CHECK_FALSE(ixpat::ui::resolve(ixpat::AppTheme::system, false, 0).isDark);
-    REQUIRE(ixpat::ui::accents().size() == 7);
-    CHECK(ixpat::ui::accents()[0].hex == 0x0A84FFu);
-    CHECK(ixpat::ui::accents()[6].hex == 0x98989Du);
+}
+
+TEST_CASE("theme: the ramp of a chosen accent keeps its base and orders light to dark") {
+    const auto r = ixpat::ui::accentRamp(0x0078D4);
+    CHECK(r.base == 0x0078D4u);
+    auto lum = [](std::uint32_t c) { return ((c >> 16) & 0xFF) + ((c >> 8) & 0xFF) + (c & 0xFF); };
+    CHECK(lum(r.light3) > lum(r.light2));
+    CHECK(lum(r.light2) > lum(r.light1));
+    CHECK(lum(r.light1) > lum(r.base));
+    CHECK(lum(r.base) > lum(r.dark1));
+    CHECK(lum(r.dark1) > lum(r.dark2));
+    CHECK(lum(r.dark2) > lum(r.dark3));
+    // 0 and the first release's fixed blue both mean Windows' own accent: the same ramp either way.
+    CHECK(ixpat::ui::accentRamp(0).base == ixpat::ui::accentRamp(0x0A84FF).base);
+    CHECK(ixpat::ui::accentFill(0x0078D4, true) == r.light2);
+    CHECK(ixpat::ui::accentFill(0x0078D4, false) == r.dark1);
 }

@@ -21,7 +21,10 @@ struct Rect {
     D2D1_RECT_F d2d() const { return D2D1::RectF(x, y, x + w, y + h); }
 };
 
-enum class TextStyle { title, body, bodyMedium, detail, footnote, footnoteSemibold, mono, monoSmall, caption, wordmark, heading };
+/// The Fluent type ramp, Segoe UI Variable: Display above 20 px, Text below. Nothing under 12 px.
+///   pageTitle 28 semibold · subtitle 20 semibold · heading 16 semibold · title / bodyMedium 14 semibold (body strong)
+///   body 14 · detail / caption 12 · footnote 12 (tertiary) · footnoteSemibold 12 semibold · mono / monoSmall 12 Cascadia
+enum class TextStyle { title, body, bodyMedium, detail, footnote, footnoteSemibold, mono, monoSmall, caption, wordmark, heading, subtitle, pageTitle };
 
 /// Persistent state the immediate-mode toolkit keeps between frames.
 struct UiState {
@@ -52,6 +55,7 @@ struct UiState {
     bool wheelPending = false;        // a wheel event inside the scroll viewport, applied at endScroll unless a child took it
     std::string wheelAccumId;         // the slider collecting wheel deltas, and how much of a notch it has so far
     float wheelAccum = 0;
+    std::vector<float> cardHeights;   // each card's height from the previous pass, in order of appearance (drawn before its content)
     std::function<void()> onChanged;  // called once per frame when anyDirty
     std::function<void(HWND, const Rect&, const std::string&)> beginEdit;  // owner creates the native edit
 };
@@ -78,15 +82,19 @@ public:
     void setX(float x) { cx_ = x; }
     Rect take(float w, float h);         // next widget rect in the current flow
 
-    // Panels
-    void beginCard(float padding = 18, bool accentTint = false);  // glass tile: draws background, indents
+    // Surfaces
+    void layer(const Rect& r);           // the content area: a layer over the backdrop with its top-left corner rounded
+    void beginCard(float padding = 16, bool accentTint = false);  // a settings card: fill, 1 px stroke, 4 px corners
     void endCard();
-    void backdrop();                     // the window backdrop gradient with glows
+    /// A page as a stack of cards: beginSections opens the first card, sectionBreak closes it and opens the next,
+    /// endSections closes the last. divider() inside stays a line within the card.
+    void beginSections(float padding = 16);
+    void sectionBreak();
+    void endSections();
 
     // Text
     void label(std::wstring_view text, TextStyle style = TextStyle::body, float width = 0, std::uint32_t rgbOverride = 0, float alphaOverride = -1);
     float measureHeight(std::wstring_view text, TextStyle style, float width);
-    void sectionTitle(std::wstring_view text);
     void divider(float alpha = 1);
 
     // Widgets (return true when the value changed / the button was clicked)
@@ -98,9 +106,9 @@ public:
     bool iconButton(const std::string& id, wchar_t glyph, bool enabled = true, std::wstring_view tooltip = {});
     bool dropdown(const std::string& id, int& index, std::span<const std::wstring> options, float width, bool enabled = true);
     bool textField(const std::string& id, std::string& value, float width, std::wstring_view placeholder = {}, bool mono = false, bool enabled = true);
-    bool pillTabs(const std::string& id, int& index, std::span<const std::wstring> titles);
     bool checkbox(const std::string& id, bool& value, std::wstring_view title);
     bool listRow(const std::string& id, bool selected, float height);  // returns clicked; draws selection; caller draws content at the rect
+    bool navItem(const std::string& id, wchar_t glyph, std::wstring_view title, bool selected);  // a navigation pane row
     Rect lastRect() const { return last_; }
     void dot(float cx, float cy, float r, std::uint32_t rgb, float alpha = 1, bool glow = false);
     void glyph(wchar_t g, const Rect& r, std::uint32_t rgb, float alpha, float size);
@@ -126,6 +134,8 @@ private:
     ID2D1SolidColorBrush* brush(std::uint32_t rgb, float alpha);
     std::uint32_t textColor(TextStyle style, float& alpha) const;
     void drawPopups();
+    void controlSurface(const Rect& b, bool hot, bool down, bool enabled);  // a button-like control's fill and elevation border
+    void selectionPill(const Rect& row);                                    // the 3 x 16 accent pill at a selected row's left edge
 
     ID2D1RenderTarget* rt_;
     const Palette& pal_;
@@ -146,7 +156,10 @@ private:
     std::vector<Saved> stack_;
     std::vector<Rect> cards_;
     std::vector<float> cardPadding_;
-    std::vector<float>* cardHeights_ = nullptr;
+    std::vector<std::size_t> cardIndex_;  // each open card's slot in st_.cardHeights
+    std::size_t cardSeq_ = 0;
+    bool inSections_ = false;
+    float sectionPadding_ = 16;
     Rect scrollViewport_{};
     float scrollStartY_ = 0;
     bool inScroll_ = false;

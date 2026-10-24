@@ -2,58 +2,141 @@
 
 #include <windows.h>
 
-#include <array>
+#include <algorithm>
 
 namespace ixpat::ui {
 namespace {
 
-constexpr std::array<AccentOption, 7> kAccents{{
-    {L"Blue", 0x0A84FF}, {L"Purple", 0xBF5AF2}, {L"Pink", 0xFF375F}, {L"Orange", 0xFF9F0A},
-    {L"Green", 0x30D158}, {L"Teal", 0x40C8E0}, {L"Graphite", 0x98989D},
-}};
+constexpr std::uint32_t kLegacyDefaultAccent = 0x0A84FF;  // the first release's fixed accent: now "Windows' own"
+
+std::uint32_t blend(std::uint32_t rgb, std::uint32_t towards, float t) {
+    auto ch = [&](int shift) {
+        const float a = static_cast<float>((rgb >> shift) & 0xFF), b = static_cast<float>((towards >> shift) & 0xFF);
+        return static_cast<std::uint32_t>(std::clamp(a + (b - a) * t, 0.0f, 255.0f)) << shift;
+    };
+    return ch(16) | ch(8) | ch(0);
+}
+
+/// Settings > Personalization > Colors keeps the chosen accent and its ramp in
+/// HKCU\...\Explorer\Accent\AccentPalette: eight RGBA entries, light 3 to dark 3 and a complement.
+bool readAccentPalette(AccentRamp& out) {
+    BYTE bytes[32]{};
+    DWORD size = sizeof bytes;
+    if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Accent", L"AccentPalette", RRF_RT_REG_BINARY,
+                     nullptr, bytes, &size) != ERROR_SUCCESS || size < 28) {
+        return false;
+    }
+    auto rgb = [&](int i) {
+        return (static_cast<std::uint32_t>(bytes[i * 4]) << 16) | (static_cast<std::uint32_t>(bytes[i * 4 + 1]) << 8) | bytes[i * 4 + 2];
+    };
+    out = {rgb(0), rgb(1), rgb(2), rgb(3), rgb(4), rgb(5), rgb(6)};
+    return true;
+}
+
+AccentRamp rampFrom(std::uint32_t base) {
+    return {blend(base, 0xFFFFFF, 0.6f), blend(base, 0xFFFFFF, 0.4f), blend(base, 0xFFFFFF, 0.2f), base,
+            blend(base, 0x000000, 0.15f), blend(base, 0x000000, 0.3f), blend(base, 0x000000, 0.5f)};
+}
+
+AccentRamp systemRamp() {
+    AccentRamp r{};
+    if (readAccentPalette(r)) return r;
+    DWORD abgr = 0, size = sizeof abgr;
+    if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\DWM", L"AccentColor", RRF_RT_REG_DWORD, nullptr, &abgr, &size) == ERROR_SUCCESS) {
+        return rampFrom(((abgr & 0xFF) << 16) | (abgr & 0xFF00) | ((abgr >> 16) & 0xFF));
+    }
+    return rampFrom(0x0078D4);  // Windows blue
+}
 
 }  // namespace
 
+AccentRamp accentRamp(std::uint32_t accentHex) {
+    const std::uint32_t hex = accentHex & 0xFFFFFF;
+    if (hex == 0 || hex == kLegacyDefaultAccent) return systemRamp();
+    return rampFrom(hex);
+}
+
+std::uint32_t accentFill(std::uint32_t accentHex, bool dark) {
+    const AccentRamp r = accentRamp(accentHex);
+    return dark ? r.light2 : r.dark1;
+}
+
 Palette resolve(AppTheme theme, bool systemDark, std::uint32_t accentHex) {
     const bool dark = theme == AppTheme::dark || (theme == AppTheme::system && systemDark);
+    const AccentRamp ramp = accentRamp(accentHex);
     Palette p{};
     p.isDark = dark;
-    p.accent = accentHex & 0xFFFFFF;
     if (dark) {
-        p.stageTop = 0x3A3A45;
-        p.stageBottom = 0x101013;
-        p.bg = 0x1F1F22;
-        p.bar = 0x2A2A2D;
-        p.panel = 0x2C2C2E;
-        p.tile = 0x2C2C2E;
+        p.accent = ramp.light2;
+        p.accentHover = blend(ramp.light2, 0x202020, 0.1f);
+        p.accentPressed = blend(ramp.light2, 0x202020, 0.2f);
+        p.accentText = ramp.light3;
+        p.textOnAccent = 0x000000;
+        p.base = 0x202020;
+        p.layer = {0x3A3A3A, 0.30f};
+        p.card = {0xFFFFFF, 0.0512f};
+        p.cardStroke = {0x000000, 0.10f};
+        p.controlFill = {0xFFFFFF, 0.0605f};
+        p.controlFillHover = {0xFFFFFF, 0.0837f};
+        p.controlFillPressed = {0xFFFFFF, 0.0326f};
+        p.controlAlt = {0x000000, 0.10f};
+        p.controlStroke = {0xFFFFFF, 0.0698f};
+        p.controlEdge = {0xFFFFFF, 0.093f};
+        p.edgeOnTop = true;
+        p.strongStroke = {0xFFFFFF, 0.6047f};
+        p.strongFill = {0xFFFFFF, 0.5442f};
+        p.solidFill = 0x454545;
+        p.subtleHover = {0xFFFFFF, 0.0605f};
+        p.subtlePressed = {0xFFFFFF, 0.0419f};
+        p.flyout = 0x2C2C2C;
+        p.flyoutStroke = {0x000000, 0.20f};
         p.text = 0xFFFFFF;
-        p.mouseShell = 0x3B3B41;
-        p.text2 = {0xEBEBF5, 0.60f};
-        p.text3 = {0xEBEBF5, 0.32f};
-        p.hair = {0xFFFFFF, 0.09f};
-        p.field = {0x787880, 0.26f};
-        p.track = {0x787880, 0.34f};
-        p.rowSel = {0xFFFFFF, 0.07f};
-        p.rowHover = {0xFFFFFF, 0.05f};
-        p.mouseEdge = {0xFFFFFF, 0.18f};
+        p.text2 = {0xFFFFFF, 0.786f};
+        p.text3 = {0xFFFFFF, 0.5442f};
+        p.textDisabled = {0xFFFFFF, 0.3628f};
+        p.hair = {0xFFFFFF, 0.0837f};
+        p.mouseShell = 0x3A3A3A;
+        p.mouseEdge = {0xFFFFFF, 0.16f};
+        p.ok = 0x6CCB5F;
+        p.warn = 0xFCE100;
+        p.bad = 0xFF99A4;
     } else {
-        p.stageTop = 0xDFE3EA;
-        p.stageBottom = 0xB7BCC7;
-        p.bg = 0xECECEE;
-        p.bar = 0xF7F7F9;
-        p.panel = 0xFFFFFF;
-        p.tile = 0xECECED;
-        p.text = 0x1D1D1F;
+        p.accent = ramp.dark1;
+        p.accentHover = blend(ramp.dark1, 0xF3F3F3, 0.1f);
+        p.accentPressed = blend(ramp.dark1, 0xF3F3F3, 0.2f);
+        p.accentText = ramp.dark2;
+        p.textOnAccent = 0xFFFFFF;
+        p.base = 0xF3F3F3;
+        p.layer = {0xFFFFFF, 0.50f};
+        p.card = {0xFFFFFF, 0.70f};
+        p.cardStroke = {0x000000, 0.0578f};
+        p.controlFill = {0xFFFFFF, 0.70f};
+        p.controlFillHover = {0xF9F9F9, 0.50f};
+        p.controlFillPressed = {0xF9F9F9, 0.30f};
+        p.controlAlt = {0x000000, 0.0241f};
+        p.controlStroke = {0x000000, 0.0578f};
+        p.controlEdge = {0x000000, 0.1622f};
+        p.edgeOnTop = false;
+        p.strongStroke = {0x000000, 0.4458f};
+        p.strongFill = {0x000000, 0.4458f};
+        p.solidFill = 0xFFFFFF;
+        p.subtleHover = {0x000000, 0.0373f};
+        p.subtlePressed = {0x000000, 0.0241f};
+        p.flyout = 0xF9F9F9;
+        p.flyoutStroke = {0x000000, 0.0578f};
+        p.text = 0x1B1B1B;
+        p.text2 = {0x000000, 0.6063f};
+        p.text3 = {0x000000, 0.4458f};
+        p.textDisabled = {0x000000, 0.3614f};
+        p.hair = {0x000000, 0.0803f};
         p.mouseShell = 0xF4F4F6;
-        p.text2 = {0x3C3C43, 0.60f};
-        p.text3 = {0x3C3C43, 0.30f};
-        p.hair = {0x000000, 0.09f};
-        p.field = {0x787880, 0.16f};
-        p.track = {0x787880, 0.26f};
-        p.rowSel = {0x000000, 0.055f};
-        p.rowHover = {0x000000, 0.035f};
         p.mouseEdge = {0x000000, 0.16f};
+        p.ok = 0x0F7B0F;
+        p.warn = 0x9D5D00;
+        p.bad = 0xC42B1C;
     }
+    p.field = p.controlFill;
+    p.track = p.strongFill;
     return p;
 }
 
@@ -63,7 +146,5 @@ bool systemPrefersDark() {
                                    L"AppsUseLightTheme", RRF_RT_REG_DWORD, nullptr, &value, &size);
     return r == ERROR_SUCCESS && value == 0;
 }
-
-std::span<const AccentOption> accents() { return kAccents; }
 
 }  // namespace ixpat::ui

@@ -8,7 +8,13 @@
 namespace ixpat::ui {
 namespace {
 constexpr UINT_PTR kAnimTimer = 1;
-}
+constexpr DWORD kDwmUseImmersiveDarkMode = 20;
+constexpr DWORD kDwmCaptionColor = 35;
+constexpr DWORD kDwmSystemBackdropType = 38;
+constexpr DWORD kDwmBackdropMica = 2;  // DWMSBT_MAINWINDOW
+constexpr COLORREF kDwmColorDefault = 0xFFFFFFFF;
+constexpr UINT kDwmColorizationChanged = 0x0320;  // WM_DWMCOLORIZATIONCOLORCHANGED
+}  // namespace
 
 GfxWindow::~GfxWindow() {
     if (hwnd_) {
@@ -57,21 +63,31 @@ bool GfxWindow::create(HINSTANCE inst, const wchar_t* className, const wchar_t* 
     GetClientRect(hwnd_, &c);
     clientW_ = c.right;
     clientH_ = c.bottom;
-    applyDarkTitle();
+    // Mica: the frame extends over the whole client, so pixels left transparent show the backdrop.
+    MARGINS whole{-1, -1, -1, -1};
+    DwmExtendFrameIntoClientArea(hwnd_, &whole);
+    const DWORD backdrop = kDwmBackdropMica;
+    micaOn_ = SUCCEEDED(DwmSetWindowAttribute(hwnd_, kDwmSystemBackdropType, &backdrop, sizeof backdrop));
+    if (!micaOn_) {
+        MARGINS none{};
+        DwmExtendFrameIntoClientArea(hwnd_, &none);
+    }
+    applyFrame();
     return true;
 }
 
-void GfxWindow::applyDarkTitle() {
+void GfxWindow::applyFrame() {
     if (!hwnd_) return;
     const BOOL dark = palette_.isDark ? TRUE : FALSE;
-    DwmSetWindowAttribute(hwnd_, 20 /*DWMWA_USE_IMMERSIVE_DARK_MODE*/, &dark, sizeof dark);
-    const COLORREF caption = RGB((palette_.bar >> 16) & 0xFF, (palette_.bar >> 8) & 0xFF, palette_.bar & 0xFF);
-    DwmSetWindowAttribute(hwnd_, 35 /*DWMWA_CAPTION_COLOR*/, &caption, sizeof caption);
+    DwmSetWindowAttribute(hwnd_, kDwmUseImmersiveDarkMode, &dark, sizeof dark);
+    // With Mica the title bar is the backdrop itself; without it, the base colour so the caption matches the client.
+    const COLORREF caption = micaOn_ ? kDwmColorDefault : RGB((palette_.base >> 16) & 0xFF, (palette_.base >> 8) & 0xFF, palette_.base & 0xFF);
+    DwmSetWindowAttribute(hwnd_, kDwmCaptionColor, &caption, sizeof caption);
 }
 
 void GfxWindow::setPalette(const Palette& p) {
     palette_ = p;
-    applyDarkTitle();
+    applyFrame();
     invalidate();
 }
 
@@ -120,7 +136,8 @@ void GfxWindow::ensureTarget() {
     auto* factory = Gfx::d2d();
     if (!factory) return;
     D2D1_RENDER_TARGET_PROPERTIES props = D2D1::RenderTargetProperties(
-        D2D1_RENDER_TARGET_TYPE_DEFAULT, D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_IGNORE), dpi_, dpi_);
+        D2D1_RENDER_TARGET_TYPE_DEFAULT,
+        D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, micaOn_ ? D2D1_ALPHA_MODE_PREMULTIPLIED : D2D1_ALPHA_MODE_IGNORE), dpi_, dpi_);
     D2D1_HWND_RENDER_TARGET_PROPERTIES hp = D2D1::HwndRenderTargetProperties(
         hwnd_, D2D1::SizeU(static_cast<UINT32>(std::max(1, clientW_)), static_cast<UINT32>(std::max(1, clientH_))));
     factory->CreateHwndRenderTarget(&props, &hp, target_.put());
@@ -131,10 +148,11 @@ void GfxWindow::paint() {
     PAINTSTRUCT ps;
     BeginPaint(hwnd_, &ps);
     if (target_) {
+        UiInput none;
+        build(nullptr, none);  // a layout pass first: card backgrounds are drawn with the heights it measures
         target_->BeginDraw();
         target_->SetDpi(dpi_, dpi_);
-        target_->Clear(color(palette_.bg));
-        UiInput none;
+        target_->Clear(micaOn_ ? D2D1::ColorF(0, 0, 0, 0) : color(palette_.base));
         build(target_.get(), none);
         if (target_->EndDraw() == D2DERR_RECREATE_TARGET) target_.reset();
     }
@@ -228,8 +246,8 @@ LRESULT GfxWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
         }
         case WM_LBUTTONUP:
         case WM_RBUTTONUP: {
+            leftDown_ = false;  // before ReleaseCapture: its WM_CAPTURECHANGED must not synthesise a second release
             ReleaseCapture();
-            leftDown_ = false;
             UiInput in;
             in.kind = UiInput::Kind::up;
             in.x = GET_X_LPARAM(lp) / s;
@@ -271,6 +289,9 @@ LRESULT GfxWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
             }
             break;
         case WM_SETTINGCHANGE:
+        case WM_THEMECHANGED:
+        case kDwmColorizationChanged:
+            onSystemThemeChanged();
             invalidate();
             break;
         case WM_CLOSE:

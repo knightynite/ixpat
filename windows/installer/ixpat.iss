@@ -1,9 +1,9 @@
 ; iXpat for Windows: per-user installer (Inno Setup 6). Built by CI on win-v* tags:
-;   ISCC.exe /DMyAppVersion=0.2.0 /DSourceDir=<dir with iXpat.exe> /O<out dir> windows\installer\ixpat.iss
+;   ISCC.exe /DMyAppVersion=0.2.1 /DSourceDir=<dir with iXpat.exe> /O<out dir> windows\installer\ixpat.iss
 ; No elevation, no services, no drivers: files under %LOCALAPPDATA%\Programs\iXpat, settings under %LOCALAPPDATA%\iXpat.
 
 #ifndef MyAppVersion
-  #define MyAppVersion "0.2.0"
+  #define MyAppVersion "0.2.1"
 #endif
 #ifndef SourceDir
   #define SourceDir "..\build\x64-release"

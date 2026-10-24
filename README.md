@@ -48,10 +48,10 @@ Needs Xcode 16+ and macOS 14+.
 ### Windows
 
 Windows builds are separate releases tagged `win-vX.Y.Z` (marked pre-release so the
-Mac updater ignores them). From the [Windows release page](https://github.com/knightynite/ixpat/releases/tag/win-v0.2.2):
+Mac updater ignores them). From the [Windows release page](https://github.com/knightynite/ixpat/releases/tag/win-v0.2.3):
 
-* [`iXpat-Setup-0.2.2-x64.exe`](https://github.com/knightynite/ixpat/releases/download/win-v0.2.2/iXpat-Setup-0.2.2-x64.exe): per-user installer, no elevation, optional start at login.
-* [`iXpat-0.2.2-windows-x64.zip`](https://github.com/knightynite/ixpat/releases/download/win-v0.2.2/iXpat-0.2.2-windows-x64.zip) / [`-arm64.zip`](https://github.com/knightynite/ixpat/releases/download/win-v0.2.2/iXpat-0.2.2-windows-arm64.zip): a single `iXpat.exe`, run it from anywhere.
+* [`iXpat-Setup-0.2.3-x64.exe`](https://github.com/knightynite/ixpat/releases/download/win-v0.2.3/iXpat-Setup-0.2.3-x64.exe): per-user installer, no elevation, optional start at login.
+* [`iXpat-0.2.3-windows-x64.zip`](https://github.com/knightynite/ixpat/releases/download/win-v0.2.3/iXpat-0.2.3-windows-x64.zip) / [`-arm64.zip`](https://github.com/knightynite/ixpat/releases/download/win-v0.2.3/iXpat-0.2.3-windows-arm64.zip): a single `iXpat.exe`, run it from anywhere.
 
 The binaries are not code-signed: SmartScreen shows *More info > Run anyway* once.
 Build from source with Visual Studio 2022 Build Tools (C++ workload):

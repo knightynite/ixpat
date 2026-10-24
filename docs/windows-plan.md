@@ -50,6 +50,15 @@ the measurements are [`windows/docs/measurements-2026-10.md`](../windows/docs/me
   letter whose release never came is the user's again after two seconds either way.
 * **The text box** in the settings window takes the theme's colours.
 
+### win-v0.2.3
+
+* **The settings window, reviewed.** Mica only when both DWM calls succeed; the native text box follows DPI and
+  the field's monospaced style, commits its whole text, keeps its commit when the page changes, and is committed
+  once its field scrolls out of view; a lost render target repaints at once; a press ends on a lost capture
+  without activating; flyouts select by row, left button only, and close on a page change; ring rows fit the card
+  at every width; light tertiary text at 4.5:1; a custom accent's text follows its brightness. Known gaps:
+  keyboard navigation between the drawn controls, flyouts taller than the window.
+
 ## 2. What the first plan got wrong
 
 * **Language and UI.** The plan weighed Rust + WinUI 3 or egui. The port is C++20 with

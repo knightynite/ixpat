@@ -28,6 +28,10 @@ Where things live
 * Settings:   %LOCALAPPDATA%\iXpat\settings.json (same layout as the Mac app;
               edits are picked up live)
 * Logs:       %LOCALAPPDATA%\iXpat\debug.log and reports.log
+* Crash dumps: %LOCALAPPDATA%\iXpat\crash-<time>-<pid>.dmp, the last five kept.
+              A dump is a copy of the app's memory at the moment it failed and
+              can hold your settings and the state of recent input. It stays on
+              this PC; attach one to an issue only if you are happy to share it.
 * Portable:   set IXPAT_DATA_DIR to keep everything in a folder of your choice
 * ixpat-probe.exe lists the mouse's HID collections, reads the waveform table
   and plays a waveform (ixpat-probe list | table | play <ordinal> <intensity>).

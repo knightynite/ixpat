@@ -214,13 +214,22 @@ like the Mac, in the same accent. Plan 8 (`plan-8-fluent-shell.md`) has the deta
   Team ID check).
 - **Single instance** via a named mutex; a second launch asks the first to show settings. A launch that finds
   the mutex held but no window (a relaunch right after `--quit`, while the previous instance is still leaving)
-  waits for the mutex, up to 5 s, and then runs.
+  waits for the mutex, up to 5 s, and then runs. A mutex that cannot be created at all stops the launch with a
+  message: two unguarded instances would both shape the input.
 - **Start at login** via the HKCU `Run` key.
 - **Logs**: `%LOCALAPPDATA%\iXpat\debug.log` and `reports.log`, 512 KB rotation, never key or text
   content, exactly the Mac policy.
-- **Crash dumps**: an unhandled exception writes a minidump beside the logs (`crash-<time>.dmp`, the last five
-  kept) and one line in debug.log, then the process ends as it would have. `iXpat.exe --crash` raises one on
-  purpose to prove the handler on a given machine.
+- **Crash dumps**: an unhandled exception, a stack overflow, abort(), an uncaught C++ exception or a CRT fault
+  writes a minidump beside the logs (`crash-<time>-<pid>.dmp`, the last five kept) and one line in debug.log,
+  then the process ends as it would have. A dump thread and the paths are prepared at startup, so the fatal
+  path allocates nothing, takes no lock and does not use the logger. A dump is a copy of the process's memory
+  at that moment: it can hold the settings, the chord state and recent input reports, which is why it stays on
+  the PC and is never sent anywhere; the installed readme says so. `iXpat.exe --crash[=abort|throw|overflow|param]`
+  dies on purpose to prove the handler on a given machine.
+- **`--quit`** asks the running instance to close and waits until its window and then its instance mutex are
+  gone (5 s each), so a script or an installer that relaunches right after finds the way clear; it returns 1 when
+  an instance remains. A launch that finds the mutex held for more than 5 s with no window returns 1 too, with a
+  line in debug.log. Command-line options are matched as whole tokens.
 
 ## 4. Error handling
 

@@ -3,6 +3,7 @@
 
 #include <array>
 #include <atomic>
+#include <bitset>
 #include <cstdint>
 #include <thread>
 
@@ -37,7 +38,8 @@ struct InputEvent {
     enum class Kind : std::uint8_t {
         rawButtons,    // a = old mask, b = new mask (Surface Mouse)
         rawWheel,      // b = notches (signed)
-        rawKey,        // b = vk, c = down (Surface Mouse keyboard collection), for the report log
+        rawKey,        // for the report log: a = 0 the mouse's keyboard (Raw Input), 1 another device, 2 hook passed, 3 hook swallowed;
+                       // b = vk; c = bit 0 down, bit 1 the hook never saw it
         chord,         // b = ChordOutput
         systemEvent,   // b = HapticEvent (screenEdge, dragEnd, forceClick)
         gestureAction, // b = direction (GestureDir), c = gesture session id
@@ -47,6 +49,7 @@ struct InputEvent {
         dragEnded,     // b = x, c = y of the release (snap check follows on main)
         pointerOwner,  // b = 1 the Surface Mouse moved the pointer last, 0 another device did
         overflow,      // the ring buffer overflowed: main re-synchronises gesture / hold state
+        hooksReinstalled,  // b = why (0 asked by main, bit 0 mouse reports unanswered, bit 1 keyboard), c = SetWindowsHookEx error (0 = none)
     };
     Kind kind;
     std::uint8_t a = 0;
@@ -60,11 +63,22 @@ struct InputStatus {
     bool mouseHook = false, keyboardHook = false;
     std::uint32_t mouseHookCalls = 0, keyboardHookCalls = 0;
     std::uint32_t rawMouse = 0, rawKeyboard = 0;
-    std::uint32_t maxHookMicros = 0;  // the slowest hook callback so far (Windows drops hooks that stall)
+    std::uint32_t maxHookMicros = 0;    // the slowest callback of ours (Windows drops a hook that stalls)
+    std::uint32_t maxChainMicros = 0;   // the slowest pass down the chain: other programs' hooks run inside our call
+    std::uint32_t maxHookLagMs = 0;     // the longest an event waited between the system and our callback
+    std::uint32_t hookReinstalls = 0;   // times the hooks had to be put back
+    std::uint32_t hookInstallError = 0; // the last SetWindowsHookEx error (0 = none)
+    std::uint32_t maxCoastGapMs = 0;    // the longest gap between two smooth-scroll frames
 };
 
 /// Owns the low-level hooks, Raw Input, the chord decoder, the kinetic coast timer and gesture mode,
-/// all on one TIME_CRITICAL thread. Decides pass / block / replace; never does I/O.
+/// all on one TIME_CRITICAL thread. Decides pass / block / replace; never does I/O, never waits.
+///
+/// Who hears what: Windows runs the keyboard hook before it generates a key's Raw Input (and generates
+/// none for a key the hook ate), and the mouse hook just after. So the hooks decide alone, at once, and
+/// Raw Input names the device a moment later. The mouse's Shift and Win pass (the Win release is kept
+/// from opening Start by a mask key), its letters are swallowed once its Win chord is in flight, and a
+/// report the hooks never saw is the signal that Windows dropped a hook: nothing fires, the hooks go back.
 class InputThread {
 public:
     InputThread();
@@ -105,8 +119,13 @@ private:
     void endGestureNow() noexcept;
     void refreshMonitors() noexcept;
     Seconds now() const noexcept;
+    std::int64_t qpcNow() const noexcept;
+    void feedChord(int vk, bool down, Seconds now) noexcept;
     void noteHookTime(Seconds start) noexcept;
-    void pollChord(Seconds t) noexcept;
+    void noteChainTime(Seconds start) noexcept;
+    void noteHookLag(DWORD eventTime) noexcept;
+    void noteRawForLiveness(bool mouse, Seconds at) noexcept;
+    void checkHookLiveness() noexcept;
     InputConfig config() const noexcept;
 
     // Attribution: recent raw entries the hooks match on content, and hook events that had to decide
@@ -121,9 +140,6 @@ private:
         Seconds at = 0;
     };
     bool matchRaw(const RawEntry& probe, Seconds now, bool& surface) noexcept;
-    /// matchRaw, and when the raw entry has not landed yet, a short wait for it (it follows the hook by well
-    /// under a millisecond on real devices); false only when it still has not arrived.
-    bool awaitRaw(const RawEntry& probe, Seconds now, bool& surface) noexcept;
     void expectRaw(const RawEntry& probe) noexcept;
     bool retireExpected(const RawEntry& raw) noexcept;
 
@@ -167,6 +183,11 @@ private:
     Seconds lastSurfaceWheel_ = -1e9, lastOtherWheel_ = -1e9, lastOtherButton_ = -1e9;
     Seconds swallowLeftUpUntil_ = 0, swallowRightUpUntil_ = 0;
     bool leftDownSurface_ = false;  // the press in progress came from the Surface Mouse
+    // The chord keys as the hook saw them (indexed by chordIndex): when, and what the decoder was told.
+    std::array<Seconds, 256> hookMakeAt_{}, hookBreakAt_{};
+    std::bitset<256> swallowedMake_;  // the hook ate this make: its break is eaten too
+    std::bitset<256> fedMake_;        // the decoder heard this make: it hears the break
+    bool maskPending_ = false;        // send the Start-menu mask key once the hook callback in progress returns
     POINT dragStart_{};
     double dragDistance_ = 0;
     bool atEdge_ = false;
@@ -181,13 +202,18 @@ private:
     std::size_t fifoHead_ = 0, fifoCount_ = 0;
     std::array<RawEntry, 8> expected_{};
     std::size_t expectedNext_ = 0;
+    Seconds lastCoastTick_ = 0;
+    // Liveness: the oldest physical report of each kind still waiting for a hook callback near it (0 = none).
+    Seconds rawMouseUnanswered_ = 0, rawKeyUnanswered_ = 0;
 
     std::atomic<std::uint32_t> mouseCalls_{0}, keyCalls_{0}, rawMouse_{0}, rawKeyboard_{0};
     std::atomic<bool> rawOk_{false}, mouseOk_{false}, keyOk_{false};
     std::atomic<bool> leftDown_{false};
     std::atomic<std::int64_t> lastMoveQpc_{0};         // any pointing device (the hook)
     std::atomic<std::int64_t> lastSurfaceMoveQpc_{0};  // the Surface Mouse (Raw Input)
-    std::atomic<std::uint32_t> maxHookMicros_{0};
+    std::atomic<std::int64_t> lastMouseHookQpc_{0}, lastKeyHookQpc_{0};
+    std::atomic<std::uint32_t> maxHookMicros_{0}, maxChainMicros_{0}, maxHookLagMs_{0}, maxCoastGapMs_{0};
+    std::atomic<std::uint32_t> reinstalls_{0}, installError_{0};
 };
 
 }  // namespace ixpat::win

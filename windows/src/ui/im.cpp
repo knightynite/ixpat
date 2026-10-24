@@ -535,13 +535,21 @@ bool Frame::slider(const std::string& id, double& value, double lo, double hi, d
         }
         if (in_.kind == UiInput::Kind::up && st_.active == id) st_.active.clear();
         if (in_.kind == UiInput::Kind::wheel && over && st_.openDropdown.empty() && !st_.consumed) {
+            // Whole notches only: the smooth-scroll stream delivers a notch as several small deltas.
+            if (st_.wheelAccumId != id) {
+                st_.wheelAccumId = id;
+                st_.wheelAccum = 0;
+            }
+            st_.wheelAccum += in_.wheel;
+            const int notches = static_cast<int>(st_.wheelAccum / 120);
+            st_.wheelAccum -= notches * 120.0f;
+            st_.consumed = true;  // the slider took the event, whether or not it moved
             const double s = step > 0 ? step : (hi - lo) / 20;
-            const double v = std::clamp(value + (in_.wheel > 0 ? s : -s), lo, hi);
+            const double v = std::clamp(value + notches * s, lo, hi);
             if (v != value) {
                 value = v;
                 changed = true;
                 st_.anyDirty = true;
-                st_.consumed = true;
             }
         }
     }

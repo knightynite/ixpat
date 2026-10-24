@@ -50,6 +50,8 @@ struct UiState {
     int pendingPopupIndex = -1;
     bool rerun = false;               // the owner should run one more input pass (a pending selection waits)
     bool wheelPending = false;        // a wheel event inside the scroll viewport, applied at endScroll unless a child took it
+    std::string wheelAccumId;         // the slider collecting wheel deltas, and how much of a notch it has so far
+    float wheelAccum = 0;
     std::function<void()> onChanged;  // called once per frame when anyDirty
     std::function<void(HWND, const Rect&, const std::string&)> beginEdit;  // owner creates the native edit
 };

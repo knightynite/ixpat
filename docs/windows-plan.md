@@ -99,6 +99,10 @@ the measurements are [`windows/docs/measurements-2026-10.md`](../windows/docs/me
   settings window, the window drawn right without Mica, hooks and raw input up, the offline update check failing
   in one line, `--quit` returning 0 with nothing left running, `--crash` leaving its dump, uninstall removing the
   program folder. The whole round trip takes under a minute and needs no elevation.
+* **Seventeen seconds of the real mouse on 0.2.5.** At 18:53Z the mouse attached to the PC, three left clicks
+  were attributed from its own reports, the pointer's first control and menu ticks fired, and it detached again;
+  no watchdog alarm, no hook re-install, no stall in between. The action button was not pressed in that window,
+  so its live check on the current code is still open.
 
 ## 2. What the first plan got wrong
 

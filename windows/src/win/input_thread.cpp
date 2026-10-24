@@ -269,6 +269,10 @@ LRESULT CALLBACK InputThread::wndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             return DefWindowProcW(h, msg, wp, lp);  // required after RIDEV_INPUTSINK delivery
         case WM_INPUT_DEVICE_CHANGE:
             instance_->raw_.deviceChanged(wp, reinterpret_cast<HANDLE>(lp));
+            // Both hook losses seen so far came with the first press after the mouse reconnected. A program that
+            // re-installs its own hooks on a device change goes ahead of ours in the chain, and one that does not
+            // chain starves everything behind it: so ours go back to the head a moment after any device change.
+            instance_->rehookAt_ = instance_->now() + 1.0;
             return 0;
         case WM_APP_REINSTALL:
             instance_->installHooks();
@@ -290,6 +294,7 @@ void InputThread::loop() {
         const Seconds t = now();
         if (holdArmed_) timeoutMs = static_cast<DWORD>(std::max(0.0, std::min(1.0, holdDeadline_ - t) * 1000));
         if (rawMouseUnanswered_ > 0 || rawKeyUnanswered_ > 0) timeoutMs = std::min<DWORD>(timeoutMs, 50);  // a report awaits its hook callback
+        if (rehookAt_ > 0) timeoutMs = std::min(timeoutMs, static_cast<DWORD>(std::max(0.0, std::min(1.0, rehookAt_ - t) * 1000)));
         if (t >= nextMonitorRefresh_) {
             refreshMonitors();
             nextMonitorRefresh_ = t + 5;
@@ -315,9 +320,11 @@ void InputThread::loop() {
         // nobody, and a dropped hook must not wait for the next key to be found out.
         const Seconds t2 = now();
         const Seconds sinceKey = t2 - static_cast<double>(lastKeyHookQpc_.load(std::memory_order_relaxed)) / qpcFreq_;
-        if (t2 - lastHookRefresh_ >= kHookRefresh && sinceKey > 0.2 && !chord_.chordActive(t2) && !leftDown_ && fedMake_.none() &&
-            swallowedMake_.none() && letterPassed_.none() && !holdArmed_ && !gestureActive_) {
+        const bool due = (t2 - lastHookRefresh_ >= kHookRefresh) || (rehookAt_ > 0 && t2 >= rehookAt_);
+        if (due && sinceKey > 0.2 && !chord_.chordActive(t2) && !leftDown_ && fedMake_.none() && swallowedMake_.none() && letterPassed_.none() &&
+            !holdArmed_ && !gestureActive_) {
             installHooks();  // only with the keyboard quiet: a refresh voids the observation a report in flight still needs
+            rehookAt_ = 0;
         }
     }
 }

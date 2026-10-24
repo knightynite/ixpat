@@ -10,6 +10,18 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 add_compile_options(/W4 /WX /permissive- /utf-8 /EHsc /Zc:__cplusplus /Zc:preprocessor /external:W0)
 add_compile_definitions(UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
 
+# Two extra passes, off by default (build.ps1 -Analyze / -Sanitize): the MSVC static analyser over our own sources
+# only, and AddressSanitizer for the test run. Either one changes the whole build, so expect a full rebuild.
+option(IXPAT_ANALYZE "Compile with /analyze (warnings are errors like the rest)" OFF)
+option(IXPAT_ASAN "Build with AddressSanitizer" OFF)
+if(IXPAT_ANALYZE)
+  add_compile_options(/analyze /analyze:external- /external:anglebrackets)
+endif()
+if(IXPAT_ASAN)
+  add_compile_options(/fsanitize=address /Zi)
+  string(REPLACE "/RTC1" "" CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG}")  # incompatible with the sanitizer
+endif()
+
 # Platform-free engine: no <windows.h> anywhere under src/core.
 file(GLOB CORE_SOURCES CONFIGURE_DEPENDS src/core/*.cpp)
 add_library(ixpat_core STATIC ${CORE_SOURCES})

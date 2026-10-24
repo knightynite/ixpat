@@ -59,7 +59,29 @@ SettingsWindow::SettingsWindow(Settings& settings, SettingsModel& model, Setting
 }
 
 SettingsWindow::~SettingsWindow() {
+    if (edit_) {
+        HWND h = edit_;
+        edit_ = nullptr;
+        DestroyWindow(h);
+    }
     if (editBrush_) DeleteObject(editBrush_);
+    if (editFont_) DeleteObject(editFont_);
+}
+
+void SettingsWindow::ensureEditFont(bool mono) {
+    const float s = dpiScale();
+    if (editFont_ && editFontScale_ == s && editFontMono_ == mono) return;
+    HFONT old = editFont_;
+    editFont_ = CreateFontW(static_cast<int>(-14 * s), 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0,
+                            mono ? L"Cascadia Mono" : L"Segoe UI Variable Text");
+    editFontScale_ = s;
+    editFontMono_ = mono;
+    if (edit_ && editFont_) SendMessageW(edit_, WM_SETFONT, reinterpret_cast<WPARAM>(editFont_), TRUE);
+    if (old) DeleteObject(old);  // after the replacement is in place
+}
+
+void SettingsWindow::onDpiChanged() {
+    if (edit_) ensureEditFont(editFontMono_);
 }
 
 void SettingsWindow::create(HINSTANCE inst, HICON icon) {
@@ -67,7 +89,10 @@ void SettingsWindow::create(HINSTANCE inst, HICON icon) {
     GfxWindow::create(inst, L"iXpat.Settings", L"iXpat", 1040, 720, 860, 600, icon, true);
 }
 
-void SettingsWindow::applyTheme() { setPalette(resolve(settings_.theme, systemPrefersDark(), settings_.accentHex)); }
+void SettingsWindow::applyTheme() {
+    setPalette(resolve(settings_.theme, systemPrefersDark(), settings_.accentHex));
+    if (edit_) InvalidateRect(edit_, nullptr, TRUE);  // the native child repaints in the new colours
+}
 
 void SettingsWindow::refresh() { invalidate(); }
 
@@ -115,11 +140,7 @@ void SettingsWindow::beginEdit(const Rect& r, const std::string& id, std::string
                             GetModuleHandleW(nullptr), nullptr);
     if (!edit_) return;
     SetLayeredWindowAttributes(edit_, 0, 255, LWA_ALPHA);  // a GDI child over the Mica surface stays opaque this way
-    static HFONT font = nullptr;
-    const int fontPx = static_cast<int>(-14 * s);
-    if (font) DeleteObject(font);
-    font = CreateFontW(fontPx, 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI Variable Text");
-    SendMessageW(edit_, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
+    ensureEditFont(st_.editMono);
     SendMessageW(edit_, EM_SETSEL, 0, -1);
     SetWindowSubclass(edit_, &SettingsWindow::editProc, 1, reinterpret_cast<DWORD_PTR>(this));
     SetFocus(edit_);
@@ -150,6 +171,10 @@ LRESULT CALLBACK SettingsWindow::editProc(HWND h, UINT msg, WPARAM wp, LPARAM lp
             break;
         case WM_NCDESTROY:
             RemoveWindowSubclass(h, &SettingsWindow::editProc, 1);
+            if (self && self->edit_ == h) {  // destroyed from outside commit / cancel: nothing may point at it any more
+                self->edit_ = nullptr;
+                self->st_.edit = nullptr;
+            }
             break;
         default:
             break;
@@ -162,20 +187,37 @@ void SettingsWindow::commitEdit() {
     HWND h = edit_;
     edit_ = nullptr;  // detached first: DestroyWindow raises EN_KILLFOCUS synchronously
     st_.edit = nullptr;
-    wchar_t buf[2048];
-    GetWindowTextW(h, buf, 2048);
-    const std::string text = N(buf);
-    DestroyWindow(h);
-    if (editTarget_ && *editTarget_ != text) {
-        *editTarget_ = text;
-        st_.editCommitted = true;
-        UiInput none;
-        build(nullptr, none);  // lets the field see the commit and mark the settings dirty
+    // The whole text, whatever its length; a failed read leaves the setting as it was.
+    std::wstring wide;
+    const int len = GetWindowTextLengthW(h);
+    bool read = len == 0;
+    if (len > 0) {
+        wide.resize(static_cast<std::size_t>(len) + 1);
+        const int got = GetWindowTextW(h, wide.data(), len + 1);
+        wide.resize(static_cast<std::size_t>(std::max(0, got)));
+        read = got > 0;
     }
+    DestroyWindow(h);
+    // The transaction's state goes first, so whatever the change callback does (even begin another edit) finds none of it.
+    std::string* target = editTarget_;
     editTarget_ = nullptr;
     editId_.clear();
     st_.editId.clear();
+    st_.editTarget = nullptr;
     st_.focus.clear();
+    if (read && target) {
+        const std::string text = N(wide);
+        if (*target != text) {
+            *target = text;
+            st_.editCommitted = true;
+            UiInput none;
+            build(nullptr, none);  // lets the field see the commit and mark the settings dirty
+            if (st_.editCommitted) {  // the field is not on the page any more: the change still counts
+                st_.editCommitted = false;
+                changed();
+            }
+        }
+    }
     if (GetActiveWindow() == hwnd()) SetFocus(hwnd());  // never pull focus back from another window
     invalidate();
 }
@@ -189,6 +231,7 @@ void SettingsWindow::cancelEdit() {
     editTarget_ = nullptr;
     editId_.clear();
     st_.editId.clear();
+    st_.editTarget = nullptr;
     st_.focus.clear();
     invalidate();
 }
@@ -199,7 +242,7 @@ LRESULT SettingsWindow::onMessage(UINT msg, WPARAM wp, LPARAM lp, bool& handled)
     if (msg == WM_CTLCOLOREDIT && edit_ && reinterpret_cast<HWND>(lp) == edit_) {
         // The native edit in the theme's colours: the text box surface and the primary text, not Windows' white box.
         const Palette& pal = palette();
-        const std::uint32_t bg = pal.isDark ? 0x353535 : 0xFFFFFF;
+        const std::uint32_t bg = pal.editBackground;
         const COLORREF bgRef = RGB((bg >> 16) & 0xFF, (bg >> 8) & 0xFF, bg & 0xFF);
         if (!editBrush_ || editBrushColor_ != bgRef) {
             if (editBrush_) DeleteObject(editBrush_);
@@ -271,6 +314,13 @@ LRESULT SettingsWindow::onMessage(UINT msg, WPARAM wp, LPARAM lp, bool& handled)
 void SettingsWindow::build(ID2D1RenderTarget* rt, const UiInput& in) {
     const Palette pal = resolve(settings_.theme, systemPrefersDark(), settings_.accentHex);
     if (pal.isDark != palette().isDark || pal.accent != palette().accent) setPalette(pal);
+    if (tab_ != lastTab_) {  // a page change leaves no flyout or pending selection behind
+        lastTab_ = tab_;
+        st_.openDropdown.clear();
+        st_.popups.clear();
+        st_.pendingPopupId.clear();
+        st_.pendingPopupIndex = -1;
+    }
     Frame f(rt, palette(), in, st_, dpiScale(), widthDip(), heightDip());
     if (in.kind == UiInput::Kind::key && in.key == VK_ESCAPE && edit_) cancelEdit();
     if (in.kind == UiInput::Kind::key && in.key == VK_RETURN && edit_) commitEdit();
@@ -301,11 +351,16 @@ void SettingsWindow::build(ID2D1RenderTarget* rt, const UiInput& in) {
     f.space(36);
     f.endScroll();
     f.finish();
-    // Keep the native edit where its field is (it scrolls with the content).
+    // Keep the native edit where its field is (it scrolls with the content); once its field leaves the viewport the
+    // edit is committed, since a child window ignores the page's clip.
     if (edit_ && st_.editId == editId_) {
         const float s = dpiScale();
         const Rect r = st_.editRect;
-        SetWindowPos(edit_, nullptr, static_cast<int>((r.x + 11) * s), static_cast<int>((r.y + 5) * s), static_cast<int>((r.w - 22) * s), static_cast<int>((r.h - 10) * s), SWP_NOZORDER);
+        if (r.y < top || r.bottom() > H0) {
+            if (!rt) PostMessageW(hwnd(), kEditCommandMsg, 1, 0);
+        } else {
+            SetWindowPos(edit_, nullptr, static_cast<int>((r.x + 11) * s), static_cast<int>((r.y + 5) * s), static_cast<int>((r.w - 22) * s), static_cast<int>((r.h - 10) * s), SWP_NOZORDER);
+        }
     }
 }
 
@@ -488,14 +543,16 @@ void SettingsWindow::hapticsPane(Frame& f) {
 
 // MARK: Action button pane
 
-void SettingsWindow::actionPicker(Frame& f, const std::string& id, ButtonAction& action) {
+void SettingsWindow::actionPicker(Frame& f, const std::string& id, ButtonAction& action, float reserveRight) {
     std::vector<std::wstring> kinds;
     for (int k = 0; k <= static_cast<int>(ActionKind::shell); ++k) kinds.emplace_back(W(title(static_cast<ActionKind>(k))));
     int index = static_cast<int>(action.kind);
     const int before = index;
-    f.dropdown(id + "/kind", index, kinds, 180);
+    const float room = f.areaX() + f.contentWidth() - reserveRight - f.cursorX();  // what is left of the row for this picker
+    f.dropdown(id + "/kind", index, kinds, room < 420 ? 160.0f : 180.0f);
     if (index != before) { action = ButtonAction::blank(static_cast<ActionKind>(index)); st_.anyDirty = true; }
     f.gap(10);
+    const float detailW = std::clamp(f.areaX() + f.contentWidth() - reserveRight - f.cursorX(), 120.0f, 220.0f);
     switch (action.kind) {
         case ActionKind::launchApp: {
             std::string name = action.path.empty() ? "Choose app..." : action.path.substr(action.path.find_last_of("\\/") + 1);
@@ -523,7 +580,7 @@ void SettingsWindow::actionPicker(Frame& f, const std::string& id, ButtonAction&
             break;
         }
         case ActionKind::shell:
-            f.textField(id + "/cmd", action.command, 220, L"PowerShell command", true);
+            f.textField(id + "/cmd", action.command, detailW, L"PowerShell command", true);
             break;
         case ActionKind::actionRing:
             f.label(L"opens the ring (hold: sweep and release · press: click a chamber)", TextStyle::detail, 320);
@@ -632,11 +689,12 @@ void SettingsWindow::ringEditor(Frame& f, const std::string& id, std::vector<Rin
         if (g) f.glyph(g, ic, pal.text, 1, 16);
         else f.drawText(items[i].title.empty() ? L"?" : W(items[i].title.substr(0, 1)), ic, TextStyle::bodyMedium, pal.text, 1, DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, false);
         f.gap(10);
-        f.textField(id + "/title/" + items[i].id, items[i].title, 130, L"Title");
+        const bool narrow = f.contentWidth() < 760;
+        f.textField(id + "/title/" + items[i].id, items[i].title, narrow ? 100.0f : 130.0f, L"Title");
         f.gap(10);
-        f.textField(id + "/symbol/" + items[i].id, items[i].symbol, 150, L"Symbol", true);
+        f.textField(id + "/symbol/" + items[i].id, items[i].symbol, narrow ? 120.0f : 150.0f, L"Symbol", true);
         f.gap(10);
-        actionPicker(f, id + "/act/" + items[i].id, items[i].action);
+        actionPicker(f, id + "/act/" + items[i].id, items[i].action, 44);
         f.setX(f.areaX() + f.contentWidth() - 32);
         if (f.iconButton(id + "/rm/" + items[i].id, 0xE738, items.size() > 2)) remove = static_cast<int>(i);
         f.endRow();
@@ -829,7 +887,7 @@ void SettingsWindow::appsPane(Frame& f) {
             }
             f.endRow();
         }
-        f.sectionBreak();
+        f.divider();
         bool ownGestures = p.gestureUp.has_value();
         if (f.toggle("apps/gestures", ownGestures, L"Own hold-and-move gestures")) {
             if (ownGestures) { p.gestureUp = settings_.gestureUp; p.gestureDown = settings_.gestureDown; p.gestureLeft = settings_.gestureLeft; p.gestureRight = settings_.gestureRight; }
@@ -849,7 +907,7 @@ void SettingsWindow::appsPane(Frame& f) {
             row(L"Left", "left", p.gestureLeft);
             row(L"Right", "right", p.gestureRight);
         }
-        f.sectionBreak();
+        f.divider();
         bool ownRing = p.ringItems.has_value();
         if (f.toggle("apps/ring", ownRing, L"Own Action Ring")) {
             if (ownRing) p.ringItems = settings_.ringItems;

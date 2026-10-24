@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <map>
+#include <tuple>
 
 #include "ui/glyphs.h"
 
@@ -62,8 +63,10 @@ Frame::Frame(ID2D1RenderTarget* rt, const Palette& pal, const UiInput& in, UiSta
     if (!rt_ && in.kind == UiInput::Kind::down && !st_.openDropdown.empty()) {
         for (const auto& p : st_.popups) {
             const Rect box = popupBox(p);
-            if (!box.contains(in.x, in.y)) continue;
-            const int i = static_cast<int>((in.y - box.y - kPopupPad) / kPopupRowH);
+            if (!box.contains(in.x, in.y) || in.rightButton) continue;
+            const Rect rows{box.x + kPopupPad, box.y + kPopupPad, box.w - 2 * kPopupPad, kPopupRowH * static_cast<float>(p.options.size())};
+            if (!rows.contains(in.x, in.y)) continue;  // the padding selects nothing
+            const int i = static_cast<int>(std::floor((in.y - rows.y) / kPopupRowH));
             if (i >= 0 && i < static_cast<int>(p.options.size())) {
                 st_.pendingPopupId = p.id;
                 st_.pendingPopupIndex = i;
@@ -94,6 +97,7 @@ Frame::~Frame() = default;
 IDWriteTextFormat* Frame::format(TextStyle style) {
     auto it = gFormats.find(style);
     if (it != gFormats.end() && it->second) return it->second.get();
+    if (!Gfx::dwrite()) return nullptr;
     const FontSpec f = spec(style);
     Com<IDWriteTextFormat> fmt;
     Gfx::dwrite()->CreateTextFormat(f.family, nullptr, f.weight, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, f.px, L"en-us", fmt.put());
@@ -133,7 +137,7 @@ void Frame::drawText(std::wstring_view text, const Rect& r, TextStyle style, std
                      DWRITE_PARAGRAPH_ALIGNMENT valign, bool wrap) {
     if (!rt_ || text.empty()) return;
     IDWriteTextFormat* f = format(style);
-    if (!f) return;
+    if (!f) return;  // no factory, no text (format() returns null without one)
     Com<IDWriteTextLayout> layout;
     Gfx::dwrite()->CreateTextLayout(text.data(), static_cast<UINT32>(text.size()), f, std::max(1.0f, r.w), std::max(1.0f, r.h), layout.put());
     if (!layout) return;
@@ -354,7 +358,7 @@ void Frame::glyph(wchar_t g, const Rect& r, std::uint32_t rgb, float alpha, floa
     static std::map<int, Com<IDWriteTextFormat>> cache;
     const int key = static_cast<int>(size * 4);
     auto& fmt = cache[key];
-    if (!fmt) {
+    if (!fmt && Gfx::dwrite()) {
         Gfx::dwrite()->CreateTextFormat(iconFontFamily(), nullptr, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, size, L"en-us", fmt.put());
         if (fmt) {
             fmt->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
@@ -406,17 +410,17 @@ bool Frame::hovered(const Rect& r) const {
 }
 
 bool Frame::clicked(const std::string& id, const Rect& r, bool enabled) {
-    if (rt_ || st_.consumed || !enabled) return false;
-    const bool over = hovered(r);
-    if (in_.kind == UiInput::Kind::down && over && !in_.rightButton) {
+    if (rt_) return false;
+    // A release or a cancel ends this widget's press whatever its state now (disabled since, consumed, elsewhere).
+    if ((in_.kind == UiInput::Kind::up || in_.kind == UiInput::Kind::cancel) && st_.active == id) {
+        st_.active.clear();
+        return in_.kind == UiInput::Kind::up && enabled && !st_.consumed && !in_.rightButton && hovered(r);
+    }
+    if (st_.consumed || !enabled) return false;
+    if (in_.kind == UiInput::Kind::down && hovered(r) && !in_.rightButton) {
         st_.active = id;
         if (st_.focus != id) st_.focus.clear();
         if (!st_.openDropdown.empty() && st_.openDropdown != id) st_.openDropdown.clear();
-        return false;
-    }
-    if (in_.kind == UiInput::Kind::up && st_.active == id) {
-        st_.active.clear();
-        return over;
     }
     return false;
 }
@@ -706,6 +710,7 @@ bool Frame::textField(const std::string& id, std::string& value, float width, st
         st_.consumed = true;
         st_.editTarget = &value;
         st_.editId = id;
+        st_.editMono = mono;
         if (st_.beginEdit) st_.beginEdit(nullptr, b, id);
     }
     if (st_.editId == id && st_.editCommitted) {
@@ -787,6 +792,7 @@ void Frame::drawPopups() {
 
 void Frame::finish() {
     drawPopups();
+    if (!rt_ && (in_.kind == UiInput::Kind::up || in_.kind == UiInput::Kind::cancel)) st_.active.clear();  // no widget may keep a press past its end
     if (!rt_ && st_.anyDirty && st_.onChanged) st_.onChanged();
 }
 

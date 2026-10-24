@@ -51,15 +51,28 @@ bool LayeredSurface::resize(int width, int height) {
     dib_ = CreateDIBSection(nullptr, &bmi, DIB_RGB_COLORS, &bits, nullptr, 0);
     if (!dib_) return false;
     dc_ = CreateCompatibleDC(nullptr);
+    if (!dc_) {
+        release();
+        return false;
+    }
     oldBitmap_ = SelectObject(dc_, dib_);
+    if (!oldBitmap_) {
+        release();
+        return false;
+    }
     auto* factory = Gfx::d2d();
-    if (!factory) return false;
+    if (!factory) {
+        release();
+        return false;
+    }
     D2D1_RENDER_TARGET_PROPERTIES props = D2D1::RenderTargetProperties(
         D2D1_RENDER_TARGET_TYPE_DEFAULT, D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED),
         96.0f, 96.0f, D2D1_RENDER_TARGET_USAGE_GDI_COMPATIBLE);
-    if (FAILED(factory->CreateDCRenderTarget(&props, target_.put()))) return false;
     RECT rc{0, 0, width, height};
-    if (FAILED(target_->BindDC(dc_, &rc))) return false;
+    if (FAILED(factory->CreateDCRenderTarget(&props, target_.put())) || FAILED(target_->BindDC(dc_, &rc))) {
+        release();  // half a surface is no surface: begin() must find nothing
+        return false;
+    }
     width_ = width;
     height_ = height;
     return true;

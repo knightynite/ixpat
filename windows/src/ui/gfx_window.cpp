@@ -65,12 +65,15 @@ bool GfxWindow::create(HINSTANCE inst, const wchar_t* className, const wchar_t* 
     clientH_ = c.bottom;
     // Mica: the frame extends over the whole client, so pixels left transparent show the backdrop.
     MARGINS whole{-1, -1, -1, -1};
-    DwmExtendFrameIntoClientArea(hwnd_, &whole);
+    const bool extended = SUCCEEDED(DwmExtendFrameIntoClientArea(hwnd_, &whole));
     const DWORD backdrop = kDwmBackdropMica;
-    micaOn_ = SUCCEEDED(DwmSetWindowAttribute(hwnd_, kDwmSystemBackdropType, &backdrop, sizeof backdrop));
+    micaOn_ = extended && SUCCEEDED(DwmSetWindowAttribute(hwnd_, kDwmSystemBackdropType, &backdrop, sizeof backdrop));
     if (!micaOn_) {
+        // Either call declined (Windows 10, or DWM saying no): back to an ordinary frame and an opaque client.
         MARGINS none{};
         DwmExtendFrameIntoClientArea(hwnd_, &none);
+        const DWORD noBackdrop = 1;  // DWMSBT_NONE
+        DwmSetWindowAttribute(hwnd_, kDwmSystemBackdropType, &noBackdrop, sizeof noBackdrop);
     }
     applyFrame();
     return true;
@@ -147,6 +150,7 @@ void GfxWindow::paint() {
     ensureTarget();
     PAINTSTRUCT ps;
     BeginPaint(hwnd_, &ps);
+    bool lost = false;
     if (target_) {
         UiInput none;
         build(nullptr, none);  // a layout pass first: card backgrounds are drawn with the heights it measures
@@ -154,9 +158,13 @@ void GfxWindow::paint() {
         target_->SetDpi(dpi_, dpi_);
         target_->Clear(micaOn_ ? D2D1::ColorF(0, 0, 0, 0) : color(palette_.base));
         build(target_.get(), none);
-        if (target_->EndDraw() == D2DERR_RECREATE_TARGET) target_.reset();
+        if (target_->EndDraw() == D2DERR_RECREATE_TARGET) {
+            target_.reset();
+            lost = true;
+        }
     }
     EndPaint(hwnd_, &ps);
+    if (lost) invalidate();  // the device went away mid-frame: paint again with a fresh target rather than wait for a reason
 }
 
 void GfxWindow::dispatch(const UiInput& in) {
@@ -187,7 +195,7 @@ LRESULT GfxWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_SIZE:
             clientW_ = LOWORD(lp);
             clientH_ = HIWORD(lp);
-            if (target_) target_->Resize(D2D1::SizeU(std::max<UINT32>(1, clientW_), std::max<UINT32>(1, clientH_)));
+            if (target_ && FAILED(target_->Resize(D2D1::SizeU(std::max<UINT32>(1, clientW_), std::max<UINT32>(1, clientH_))))) target_.reset();
             invalidate();
             return 0;
         case WM_GETMINMAXINFO: {
@@ -204,6 +212,7 @@ LRESULT GfxWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
             const RECT* nr = reinterpret_cast<const RECT*>(lp);
             SetWindowPos(hwnd_, nullptr, nr->left, nr->top, nr->right - nr->left, nr->bottom - nr->top, SWP_NOZORDER | SWP_NOACTIVATE);
             target_.reset();
+            onDpiChanged();
             invalidate();
             return 0;
         }
@@ -299,24 +308,23 @@ LRESULT GfxWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
             onClosed();
             return 0;
         case WM_CAPTURECHANGED:
-            if (leftDown_ && reinterpret_cast<HWND>(lp) != hwnd_) {  // capture taken away mid-drag: end the drag
+            if (leftDown_ && reinterpret_cast<HWND>(lp) != hwnd_) {  // capture taken away mid-drag: the press is cancelled, not released
                 leftDown_ = false;
-                POINT pt{};
-                GetCursorPos(&pt);
-                ScreenToClient(hwnd_, &pt);
                 UiInput in;
-                in.kind = UiInput::Kind::up;
-                in.x = pt.x / s;
-                in.y = pt.y / s;
+                in.kind = UiInput::Kind::cancel;
+                in.x = in.y = -1;
                 dispatch(in);
             }
             return 0;
         case WM_DESTROY:
             target_.reset();
             return 0;
-        case WM_NCDESTROY:
+        case WM_NCDESTROY: {
+            HWND h = hwnd_;
             hwnd_ = nullptr;
-            return 0;
+            SetWindowLongPtrW(h, GWLP_USERDATA, 0);
+            return DefWindowProcW(h, msg, wp, lp);  // the default processing frees what the window still owns
+        }
         default:
             break;
     }

@@ -37,6 +37,19 @@ the measurements are [`windows/docs/measurements-2026-10.md`](../windows/docs/me
 * **Still open.** Windows drops the low-level hooks of this process now and then, with our callbacks at tens of
   microseconds; the stall watch is there to show whether the machine stands still when it happens.
 
+### win-v0.2.2
+
+* **The hook chain.** Both hook losses seen with real input were the first press after the mouse reconnected: a
+  program that re-installs its hooks on a device change goes ahead of ours, and one that does not chain starves
+  everything behind it. The hooks now go back to the head of the chain a second after any device change, and a
+  re-install asked by the watchdog or the stall watch waits for a quiet keyboard instead of running at once.
+* **The watchdog counts physical reports only.** Input injected by another process reaches Raw Input without
+  passing the low-level hooks (measured with a standalone probe), so comparing all reports with hook calls raised
+  false alarms.
+* **Chords.** With the ring open, the double press's click commits the ring and still closes the chord; a swallowed
+  letter whose release never came is the user's again after two seconds either way.
+* **The text box** in the settings window takes the theme's colours.
+
 ## 2. What the first plan got wrong
 
 * **Language and UI.** The plan weighed Rust + WinUI 3 or egui. The port is C++20 with

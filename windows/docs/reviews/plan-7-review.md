@@ -33,3 +33,10 @@ Added alongside the triage: a system stall watch (a thread that measures how lat
 drops a low-level hook it could not deliver a callback to in time and tells nobody; the hooks were still being
 dropped with our callbacks at 18 µs and the chain at 59 µs, so the remaining suspect is the machine itself standing
 still. A stall of 100 ms or more is logged, shown in Diagnostics, and followed by an immediate re-install.
+
+Measured after the triage, with a standalone probe (a process that installs both hooks and prints every callback):
+input injected by another process (`keybd_event`, `mouse_event`, `SendInput`) reached Raw Input but never a low-level
+hook, on this machine, at equal integrity. So the main thread's watchdog now compares hook calls with *physical*
+reports only; its earlier "raw input flowing but no keyboard hook callbacks" lines during test runs were the test
+harness's own injected keys, not dropped hooks. The two genuine drops in the logs (the first press after a long idle,
+twice) remain unexplained and covered by the re-install paths.

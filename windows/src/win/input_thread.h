@@ -62,7 +62,8 @@ struct InputStatus {
     bool rawRegistered = false;
     bool mouseHook = false, keyboardHook = false;
     std::uint32_t mouseHookCalls = 0, keyboardHookCalls = 0;
-    std::uint32_t rawMouse = 0, rawKeyboard = 0;
+    std::uint32_t rawMouse = 0, rawKeyboard = 0;              // every report, injected ones included
+    std::uint32_t physicalMouse = 0, physicalKeyboard = 0;    // reports from devices: only these must have hook callbacks
     std::uint32_t maxHookMicros = 0;    // the slowest callback of ours (Windows drops a hook that stalls)
     std::uint32_t maxChainMicros = 0;   // the slowest pass down the chain: other programs' hooks run inside our call
     std::uint32_t maxHookLagMs = 0;     // the longest an event waited between the system and our callback
@@ -224,7 +225,7 @@ private:
     // Liveness: the oldest physical report of each kind still waiting for a hook callback near it (0 = none).
     Seconds rawMouseUnanswered_ = 0, rawKeyUnanswered_ = 0;
 
-    std::atomic<std::uint32_t> mouseCalls_{0}, keyCalls_{0}, rawMouse_{0}, rawKeyboard_{0};
+    std::atomic<std::uint32_t> mouseCalls_{0}, keyCalls_{0}, rawMouse_{0}, rawKeyboard_{0}, physMouse_{0}, physKeyboard_{0};
     std::atomic<bool> rawOk_{false}, mouseOk_{false}, keyOk_{false};
     std::atomic<bool> leftDown_{false};
     std::atomic<std::int64_t> lastMoveQpc_{0};         // any pointing device (the hook)

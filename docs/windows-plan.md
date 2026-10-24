@@ -18,11 +18,24 @@ the measurements are [`windows/docs/measurements-2026-10.md`](../windows/docs/me
 | Menu, control, drop, text, slider, selection and scroll-end ticks | yes | UI Automation on a worker thread; cursor-shape hover on main. |
 | Pointer settings for this mouse only | yes | Applied while the Surface Mouse drives the pointer, restored when another device does. |
 | Plugin bridge | yes | Same loopback HTTP API and token. |
-| Settings window | yes | Direct2D, light/dark, per-monitor DPI, the Mac's six tabs plus About. |
+| Settings window | yes | A Windows 11 app: Mica, a navigation pane with the live mouse, settings cards, the Fluent controls, Segoe UI Variable, the Windows accent; light/dark, per-monitor DPI. |
 | Updates | check only | Asks GitHub daily for a newer `win-v` release and opens the release page. The builds are unsigned, so nothing installs itself. |
 | Start at login | yes | HKCU Run value. |
 | Elevated windows | no | Windows does not deliver input aimed at UAC prompts and admin tools to a normal process; the mouse works there, nothing is shaped. A UIAccess-signed binary would be needed. |
 | Firmware updates | no (see 3) | Windows Update already does this. |
+
+### win-v0.2.1
+
+* **The action button, redone.** The hooks decide alone and never wait: Windows runs the keyboard hook before it
+  generates a key's Raw Input report (and generates none for a key the hook ate), so a hook that waited for the
+  report could only stall the system's input thread. Raw Input names the device a millisecond later and never
+  fires an action; a report the hook never saw means Windows dropped the hook and already acted, so nothing fires
+  twice, and the hooks are put back within 50 ms (and every 5 s while idle regardless). A mask key keeps the Win
+  release from opening Start. The decoder fires only on keys it was fed; its time-based guesses are gone.
+* **Smooth scrolling.** No more 2 ms stall per notch; the coast clock keeps its phase across notches.
+* **A Windows 11 window** (above), and a Diagnostics page that shows hook timing, re-installs and system stalls.
+* **Still open.** Windows drops the low-level hooks of this process now and then, with our callbacks at tens of
+  microseconds; the stall watch is there to show whether the machine stands still when it happens.
 
 ## 2. What the first plan got wrong
 

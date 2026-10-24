@@ -77,6 +77,9 @@ the measurements are [`windows/docs/measurements-2026-10.md`](../windows/docs/me
 * **Relaunch right after a quit.** A launch that finds the previous instance still leaving (its window gone, the
   instance mutex still held) waits for it, up to 5 s, and then runs; before, it exited silently, which an
   installer or a script that quits and relaunches could trip over.
+* **One version, two places.** The executable's fixed version block (what Explorer's Details tab and the
+  installer compare) said 0.2.0.0 in every release since 0.2.1 while the version string said the release. The
+  strings now derive from the three numbers, so the two cannot diverge again.
 
 ## 2. What the first plan got wrong
 

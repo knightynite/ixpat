@@ -58,6 +58,10 @@ SettingsWindow::SettingsWindow(Settings& settings, SettingsModel& model, Setting
     st_.beginEdit = [this](HWND, const Rect& r, const std::string& id) { beginEdit(r, id, st_.editTarget, false); };
 }
 
+SettingsWindow::~SettingsWindow() {
+    if (editBrush_) DeleteObject(editBrush_);
+}
+
 void SettingsWindow::create(HINSTANCE inst, HICON icon) {
     applyTheme();
     GfxWindow::create(inst, L"iXpat.Settings", L"iXpat", 1040, 720, 860, 600, icon, true);
@@ -192,6 +196,22 @@ void SettingsWindow::cancelEdit() {
 LRESULT SettingsWindow::onMessage(UINT msg, WPARAM wp, LPARAM lp, bool& handled) {
     (void)lp;
     handled = false;
+    if (msg == WM_CTLCOLOREDIT && edit_ && reinterpret_cast<HWND>(lp) == edit_) {
+        // The native edit in the theme's colours: the text box surface and the primary text, not Windows' white box.
+        const Palette& pal = palette();
+        const std::uint32_t bg = pal.isDark ? 0x353535 : 0xFFFFFF;
+        const COLORREF bgRef = RGB((bg >> 16) & 0xFF, (bg >> 8) & 0xFF, bg & 0xFF);
+        if (!editBrush_ || editBrushColor_ != bgRef) {
+            if (editBrush_) DeleteObject(editBrush_);
+            editBrush_ = CreateSolidBrush(bgRef);
+            editBrushColor_ = bgRef;
+        }
+        HDC dc = reinterpret_cast<HDC>(wp);
+        SetBkColor(dc, bgRef);
+        SetTextColor(dc, RGB((pal.text >> 16) & 0xFF, (pal.text >> 8) & 0xFF, pal.text & 0xFF));
+        handled = true;
+        return reinterpret_cast<LRESULT>(editBrush_);
+    }
     if (msg == WM_COMMAND && LOWORD(wp) == kEditId && HIWORD(wp) == EN_KILLFOCUS) {
         if (edit_) commitEdit();
         handled = true;

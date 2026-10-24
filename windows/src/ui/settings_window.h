@@ -63,6 +63,7 @@ struct SettingsActions {
 class SettingsWindow : public GfxWindow {
 public:
     SettingsWindow(Settings& settings, SettingsModel& model, SettingsActions actions);
+    ~SettingsWindow() override;
     void create(HINSTANCE inst, HICON icon);
     /// The model changed (device, engine stats, buttons): repaint.
     void refresh();
@@ -113,6 +114,8 @@ private:
     std::optional<ButtonAction> pendingShortcut_;  // recorded, to be applied by the picker that asked
     std::string pendingTarget_;
     HWND edit_ = nullptr;
+    HBRUSH editBrush_ = nullptr;      // the native edit's background, in the theme's colour
+    COLORREF editBrushColor_ = 0;
     std::string* editTarget_ = nullptr;
     std::string editId_;
     bool editNumeric_ = false;

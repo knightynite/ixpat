@@ -275,10 +275,10 @@ LRESULT CALLBACK InputThread::wndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             instance_->rehookAt_ = instance_->now() + 1.0;
             return 0;
         case WM_APP_REINSTALL:
-            instance_->installHooks();
-            instance_->reinstalls_.fetch_add(1, std::memory_order_relaxed);
-            instance_->post({InputEvent::Kind::hooksReinstalled, 0, 0, static_cast<int>(instance_->installError_.load(std::memory_order_relaxed)),
-                             instance_->now()});
+            // Not at once: the loop puts the hooks back as soon as the keyboard is quiet, so a callback's observation
+            // that a report in flight still needs is never voided under it.
+            instance_->rehookAt_ = instance_->now();
+            instance_->reinstallAsked_ = true;
             return 0;
         default:
             return DefWindowProcW(h, msg, wp, lp);
@@ -325,6 +325,11 @@ void InputThread::loop() {
             !holdArmed_ && !gestureActive_) {
             installHooks();  // only with the keyboard quiet: a refresh voids the observation a report in flight still needs
             rehookAt_ = 0;
+            if (reinstallAsked_) {
+                reinstallAsked_ = false;
+                reinstalls_.fetch_add(1, std::memory_order_relaxed);
+                post({InputEvent::Kind::hooksReinstalled, 0, 0, static_cast<int>(installError_.load(std::memory_order_relaxed)), t2});
+            }
         }
     }
 }
@@ -719,19 +724,25 @@ bool InputThread::onMouse(WPARAM msg, const MSLLHOOKSTRUCT& m) noexcept {
                 expectRaw(probe);
             }
             leftDownSurface_ = surface;
+            if (surface && !injected && chord_.swallowLeftClick(t)) {
+                // The fake click of the double-press chord, or one in its wake: the decoder hears it here, never from
+                // Raw Input, and before the ring does, so the chord closes properly. With the ring open the click is
+                // the ring's commit (the decoder asks it through pressIntercept; a late click is handed over here).
+                const bool ringWasOpen = ringOpen_;
+                const ChordOutput out = chord_.mouseLeftDown(t);
+                if (out != ChordOutput::none) {
+                    if (ringWasOpen) post({InputEvent::Kind::ringClick, 0, 0, 0, t});
+                    else post({InputEvent::Kind::chord, 0, static_cast<int>(out), 0, t});
+                }
+                if (ringWasOpen || (cfg.swallowChords && cfg.enabled)) {
+                    swallowLeftUpUntil_ = t + kSwallowReleaseWindow;
+                    return true;
+                }
+            }
             if (ringOpen_ && !injected) {
                 post({InputEvent::Kind::ringClick, 0, 0, 0, t});
                 swallowLeftUpUntil_ = t + kSwallowReleaseWindow;
                 return true;
-            }
-            if (surface && !injected && chord_.swallowLeftClick(t)) {
-                // The fake click of the double-press chord, or one in its wake: the decoder hears it here, never from Raw Input.
-                const ChordOutput out = chord_.mouseLeftDown(t);
-                if (out != ChordOutput::none) post({InputEvent::Kind::chord, 0, static_cast<int>(out), 0, t});
-                if (cfg.swallowChords && cfg.enabled) {
-                    swallowLeftUpUntil_ = t + kSwallowReleaseWindow;
-                    return true;
-                }
             }
             leftDown_ = true;
             dragStart_ = m.pt;

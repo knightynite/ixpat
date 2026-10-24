@@ -627,7 +627,7 @@ void App::onInputEvents() {
                 break;
             case win::InputEvent::Kind::rawKey: {
                 char buf[48];
-                std::snprintf(buf, sizeof buf, "keyboard vk %02x %s", e.b, e.c ? "down" : "up");
+                std::snprintf(buf, sizeof buf, "keyboard vk %02x %s%s", e.b, e.c ? "down" : "up", e.a ? " (other device)" : "");
                 win::reportLog(buf);
                 model_.reportLog.push_back(buf);
                 if (model_.reportLog.size() > 150) model_.reportLog.pop_front();

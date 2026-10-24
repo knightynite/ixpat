@@ -1046,7 +1046,8 @@ void SettingsWindow::diagnosticsPane(Frame& f) {
     const bool hooks = model_.input.mouseHook && model_.input.keyboardHook;
     line(L"Low-level hooks", hooks ? L"installed (mouse + keyboard)" : L"NOT installed: nothing is shaped or hidden", hooks);
     line(L"Raw Input", model_.input.rawRegistered ? L"registered (mouse, keyboard, consumer)" : L"NOT registered", model_.input.rawRegistered);
-    line(L"Hook calls", std::to_wstring(model_.input.mouseHookCalls) + L" mouse, " + std::to_wstring(model_.input.keyboardHookCalls) + L" keyboard");
+    line(L"Hook calls", std::to_wstring(model_.input.mouseHookCalls) + L" mouse, " + std::to_wstring(model_.input.keyboardHookCalls) + L" keyboard, slowest " +
+                            std::to_wstring(model_.input.maxHookMicros) + L" us", model_.input.maxHookMicros < 100000);
     line(L"Raw reports", std::to_wstring(model_.input.rawMouse) + L" mouse, " + std::to_wstring(model_.input.rawKeyboard) + L" keyboard");
     line(L"UI Automation", std::to_wstring(model_.uia.polls) + L" polls: " + std::to_wstring(model_.uia.menu) + L" menu, " +
                                std::to_wstring(model_.uia.control) + L" control, " + std::to_wstring(model_.uia.drop) + L" drop, " +

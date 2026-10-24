@@ -80,6 +80,11 @@ the measurements are [`windows/docs/measurements-2026-10.md`](../windows/docs/me
 * **One version, two places.** The executable's fixed version block (what Explorer's Details tab and the
   installer compare) said 0.2.0.0 in every release since 0.2.1 while the version string said the release. The
   strings now derive from the three numbers, so the two cannot diverge again.
+* **Reviewed.** An independent review of the two changes produced ten findings; eight were fixed before the tag
+  (the fatal path no longer uses the logger or allocates, a dump thread is prepared at startup, dump names carry
+  the process id and never overwrite, `--quit` waits for the instance mutex and reports failure, a mutex that
+  cannot be created stops the launch, options are whole tokens) and two were documented (the dump's privacy, the
+  retention that trims on launch). The write-up is `windows/docs/reviews/0.2.5-review.md`.
 
 ## 2. What the first plan got wrong
 

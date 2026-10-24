@@ -187,6 +187,11 @@ int App::run(HINSTANCE inst, bool ringDemo) {
     // window is still coming up or on its way out (a relaunch right after a quit): this launch waits for the mutex,
     // up to 5 s, and goes on as the one instance when it comes free.
     HANDLE mutex = CreateMutexW(nullptr, TRUE, kMutexName);
+    if (!mutex) {  // never seen; two unguarded instances would both shape the input, so this one does not start
+        win::debugLog("single instance: the mutex could not be created (error " + std::to_string(GetLastError()) + "); not starting");
+        MessageBoxW(nullptr, L"iXpat could not start: its single-instance lock could not be created.", L"iXpat", MB_ICONERROR | MB_OK);
+        return 1;
+    }
     if (GetLastError() == ERROR_ALREADY_EXISTS) {
         if (HWND other = FindWindowW(kWindowClass, nullptr)) {
             PostMessageW(other, WM_APP_SHOW, 0, 0);
@@ -195,8 +200,13 @@ int App::run(HINSTANCE inst, bool ringDemo) {
         const ULONGLONG t0 = GetTickCount64();
         const DWORD r = WaitForSingleObject(mutex, 5000);
         if (r != WAIT_OBJECT_0 && r != WAIT_ABANDONED) {
-            if (HWND other = FindWindowW(kWindowClass, nullptr)) PostMessageW(other, WM_APP_SHOW, 0, 0);  // it came up after all
-            return 0;
+            if (HWND other = FindWindowW(kWindowClass, nullptr)) {  // it came up after all
+                PostMessageW(other, WM_APP_SHOW, 0, 0);
+                return 0;
+            }
+            win::debugLog(r == WAIT_FAILED ? "single instance: waiting for the previous instance failed (error " + std::to_string(GetLastError()) + ")"
+                                           : "single instance: the previous instance did not leave within 5 s; not starting");
+            return 1;
         }
         win::debugLog("single instance: waited " + std::to_string(GetTickCount64() - t0) + " ms for the previous instance to leave");
     }
@@ -1082,17 +1092,43 @@ LRESULT App::handle(UINT msg, WPARAM wp, LPARAM lp) {
 
 }  // namespace
 
-int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmdLine, int) {
-    win::installCrashHandler();
-    if (cmdLine && wcsstr(cmdLine, L"--crash") != nullptr) win::crashNow();  // a diagnostic: proves the dump on this machine
-    App app;
-    if (cmdLine && wcsstr(cmdLine, L"--quit") != nullptr) {  // the uninstaller / scripts: ask the running instance to leave
-        if (HWND other = FindWindowW(kWindowClass, nullptr)) {
-            PostMessageW(other, WM_CLOSE, 0, 0);
-            for (int i = 0; i < 50 && IsWindow(other); ++i) Sleep(100);
-        }
-        return 0;
+// `--quit` (the uninstaller, scripts): asks the running instance to close and waits until it has left, so a
+// relaunch right after finds the way clear. 0 when no instance remains, 1 when one still does.
+int quitRunningInstance() {
+    if (HWND other = FindWindowW(kWindowClass, nullptr)) {
+        PostMessageW(other, WM_CLOSE, 0, 0);
+        for (int i = 0; i < 50 && IsWindow(other); ++i) Sleep(100);
+        if (IsWindow(other)) return 1;
     }
-    const bool demo = cmdLine && wcsstr(cmdLine, L"--ring-demo") != nullptr;
+    // The window goes before the process does: wait for the instance mutex to come free as well.
+    HANDLE m = OpenMutexW(SYNCHRONIZE, FALSE, kMutexName);
+    if (!m) return 0;  // nobody holds it
+    const DWORD r = WaitForSingleObject(m, 5000);
+    CloseHandle(m);
+    return (r == WAIT_OBJECT_0 || r == WAIT_ABANDONED) ? 0 : 1;
+}
+
+int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
+    win::installCrashHandler();
+    // Whole tokens only. `--quit` wins over anything else; `--crash[=kind]` is the handler's self-test.
+    bool quit = false, demo = false;
+    static wchar_t crashKind[32];
+    bool crash = false;
+    int argc = 0;
+    if (LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc)) {
+        for (int i = 1; i < argc; ++i) {
+            if (wcscmp(argv[i], L"--quit") == 0) quit = true;
+            else if (wcscmp(argv[i], L"--ring-demo") == 0) demo = true;
+            else if (wcscmp(argv[i], L"--crash") == 0) crash = true;
+            else if (wcsncmp(argv[i], L"--crash=", 8) == 0) {
+                crash = true;
+                wcsncpy_s(crashKind, argv[i] + 8, _TRUNCATE);
+            }
+        }
+        LocalFree(argv);
+    }
+    if (quit) return quitRunningInstance();
+    if (crash) win::crashNow(crashKind);
+    App app;
     return app.run(inst, demo);
 }

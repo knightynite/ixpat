@@ -1,3 +1,4 @@
+#include "win/crash_dump.h"
 #include "win/input_thread.h"
 
 #include <algorithm>
@@ -182,6 +183,7 @@ bool InputThread::start(HWND mainWindow, UINT message) {
         return true;
     };
     thread_ = std::thread([this] {
+        ixpat::win::reserveStackForCrashHandler();  // the crash handler needs room here after a stack overflow
         SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
         WNDCLASSW wc{};
         wc.lpfnWndProc = &InputThread::wndProc;

@@ -990,19 +990,20 @@ LRESULT App::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 if (++flushTicks_ % 5 == 0 && window_ && window_->isVisible()) syncModel();  // counters move without events
                 store_->flushIfDue(now());
             } else if (id == kTimerWatchdog) {
-                // Each hook is checked against its own raw stream: mouse input without mouse hook calls, or
-                // keyboard input without keyboard hook calls, means Windows dropped that hook.
+                // Each hook is checked against its own stream of physical reports: mouse input without mouse hook
+                // calls, or keyboard input without keyboard hook calls, means Windows dropped that hook. Injected
+                // input does not count: another process's synthetic keys reach Raw Input without passing our hooks.
                 const auto st = input_.status();
-                const bool mouseDead = st.rawMouse != lastRawMouse_ && st.mouseHookCalls == lastMouseCalls_ && lastRawMouse_ != 0;
-                const bool keyDead = st.rawKeyboard != lastRawKey_ && st.keyboardHookCalls == lastKeyCalls_ && lastRawKey_ != 0;
+                const bool mouseDead = st.physicalMouse != lastRawMouse_ && st.mouseHookCalls == lastMouseCalls_ && lastRawMouse_ != 0;
+                const bool keyDead = st.physicalKeyboard != lastRawKey_ && st.keyboardHookCalls == lastKeyCalls_ && lastRawKey_ != 0;
                 if (mouseDead || keyDead) {
                     win::debugLog(std::string("watchdog: raw input flowing but no ") + (mouseDead ? "mouse" : "keyboard") + " hook callbacks; re-installing hooks");
                     input_.reinstallHooks();
                 }
                 lastMouseCalls_ = st.mouseHookCalls;
                 lastKeyCalls_ = st.keyboardHookCalls;
-                lastRawMouse_ = st.rawMouse;
-                lastRawKey_ = st.rawKeyboard;
+                lastRawMouse_ = st.physicalMouse;
+                lastRawKey_ = st.physicalKeyboard;
             } else if (id == kTimerCursor) {
                 cursorTick();
             } else if (id == kTimerUpdateFirst) {

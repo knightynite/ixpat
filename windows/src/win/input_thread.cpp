@@ -122,6 +122,8 @@ InputStatus InputThread::status() const {
     s.keyboardHookCalls = keyCalls_.load(std::memory_order_relaxed);
     s.rawMouse = rawMouse_.load(std::memory_order_relaxed);
     s.rawKeyboard = rawKeyboard_.load(std::memory_order_relaxed);
+    s.physicalMouse = physMouse_.load(std::memory_order_relaxed);
+    s.physicalKeyboard = physKeyboard_.load(std::memory_order_relaxed);
     s.maxHookMicros = maxHookMicros_.load(std::memory_order_relaxed);
     s.maxChainMicros = maxChainMicros_.load(std::memory_order_relaxed);
     s.maxHookLagMs = maxHookLagMs_.load(std::memory_order_relaxed);
@@ -459,7 +461,10 @@ void InputThread::onRaw(const RawEvent& e) noexcept {
     const Seconds t = static_cast<double>(e.qpc) / qpcFreq_;
     if (e.kind == RawKind::key) rawKeyboard_.fetch_add(1, std::memory_order_relaxed);
     else rawMouse_.fetch_add(1, std::memory_order_relaxed);
-    if (!e.injected) noteRawForLiveness(e.kind != RawKind::key, t);
+    if (!e.injected) {
+        (e.kind == RawKind::key ? physKeyboard_ : physMouse_).fetch_add(1, std::memory_order_relaxed);
+        noteRawForLiveness(e.kind != RawKind::key, t);
+    }
     // Remember recent physical entries for the hooks' content matching, unless a hook already decided this one.
     if (!e.injected && (e.kind == RawKind::wheel || e.kind == RawKind::hwheel || e.kind == RawKind::key || e.kind == RawKind::button)) {
         RawEntry entry{e.kind, e.surfaceMouse, e.wheel, e.scan, e.keyDown, e.keyE0, e.buttonFlags, t};

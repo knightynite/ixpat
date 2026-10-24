@@ -7,7 +7,7 @@
 #include <cstdint>
 #include <thread>
 
-#include "core/chord.h"
+#include "core/chord_gate.h"
 #include "core/clock.h"
 #include "core/events.h"
 #include "core/gesture.h"
@@ -123,7 +123,7 @@ private:
     void refreshMonitors() noexcept;
     Seconds now() const noexcept;
     std::int64_t qpcNow() const noexcept;
-    void feedChord(int vk, bool down, Seconds now) noexcept;
+    void postChord(ChordOutput out, Seconds now) noexcept;
     void forgetStaleChord(Seconds now) noexcept;
     void reconcileLetters() noexcept;
     void flushMask() noexcept;
@@ -182,7 +182,7 @@ private:
 
     // Thread-only state
     RawInput raw_;
-    ChordDecoder chord_;
+    ChordGate gate_;  // the chord decisions, platform-free and replayed in tests; its decoder is the Mac's
     Kinetic kinetic_;
     WheelEmitter wheelOut_;
     GestureAccumulator gestures_;
@@ -195,19 +195,6 @@ private:
     Seconds lastSurfaceWheel_ = -1e9, lastOtherWheel_ = -1e9, lastOtherButton_ = -1e9;
     Seconds swallowLeftUpUntil_ = 0, swallowRightUpUntil_ = 0;
     bool leftDownSurface_ = false;  // the press in progress came from the Surface Mouse
-    // What the keyboard hook saw of each chord key, by chordIndex: one observation, consumed by the one report it
-    // belongs to (matched by direction, scan code and a short window), so a report the hook never saw is never
-    // vouched for by an older callback.
-    struct HookSeen {
-        Seconds at = -1e9;
-        std::uint16_t scan = 0;
-        bool used = true;
-    };
-    std::array<HookSeen, 256> hookMake_{}, hookBreak_{};
-    std::bitset<256> swallowedMake_;  // the hook ate this make: its break is eaten too
-    std::bitset<256> fedMake_;        // the decoder heard this make: it hears the break
-    std::bitset<256> letterPassed_;   // Windows holds this letter from a make the hook passed: nothing of it is ever eaten
-    std::array<Seconds, 256> swallowedAt_{};
     bool maskPending_ = false;        // send the Start-menu mask key once the hook callback in progress returns
     POINT dragStart_{};
     double dragDistance_ = 0;

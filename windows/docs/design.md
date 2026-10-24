@@ -212,10 +212,15 @@ like the Mac, in the same accent. Plan 8 (`plan-8-fluent-shell.md`) has the deta
   download is only auto-opened when it carries a valid Authenticode signature from a pinned publisher;
   until releases are signed the updater opens the release page instead (fails closed, like the Mac's
   Team ID check).
-- **Single instance** via a named mutex; a second launch asks the first to show settings.
+- **Single instance** via a named mutex; a second launch asks the first to show settings. A launch that finds
+  the mutex held but no window (a relaunch right after `--quit`, while the previous instance is still leaving)
+  waits for the mutex, up to 5 s, and then runs.
 - **Start at login** via the HKCU `Run` key.
 - **Logs**: `%LOCALAPPDATA%\iXpat\debug.log` and `reports.log`, 512 KB rotation, never key or text
   content, exactly the Mac policy.
+- **Crash dumps**: an unhandled exception writes a minidump beside the logs (`crash-<time>.dmp`, the last five
+  kept) and one line in debug.log, then the process ends as it would have. `iXpat.exe --crash` raises one on
+  purpose to prove the handler on a given machine.
 
 ## 4. Error handling
 

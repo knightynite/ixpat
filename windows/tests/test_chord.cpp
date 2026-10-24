@@ -86,10 +86,59 @@ TEST_CASE("chord: Win + fake left click is one double press, click swallowed") {
 TEST_CASE("chord: Win released before the click still yields exactly one double press") {
     D d;
     d.key(ixpat::kVkLWin, true, 5.0);
-    CHECK(d.key(ixpat::kVkLWin, false, 5.03) == O::doublePress);
-    CHECK(d.swallowLeftClick(5.05));          // the late fake click is still hidden
-    CHECK(d.mouseLeftDown(5.05) == O::none);  // and does not fire again
+    CHECK(d.key(ixpat::kVkLWin, false, 5.03) == O::none);  // the release waits a moment for what follows
+    CHECK(d.swallowLeftClick(5.05));                       // the late fake click is still hidden
+    CHECK(d.mouseLeftDown(5.05) == O::doublePress);        // and it is what decides
+    CHECK(d.poll(5.2) == O::none);                         // nothing fires twice
     CHECK_FALSE(d.swallowLeftClick(5.6));
+}
+
+TEST_CASE("chord: a press whose S make was lost (Win+Shift makes, breaks, then the S break) is one press") {
+    D d;
+    CHECK(d.key(ixpat::kVkShift, true, 1.000) == O::none);
+    CHECK(d.key(ixpat::kVkLWin, true, 1.001) == O::none);
+    CHECK(d.key(ixpat::kVkShift, false, 1.082) == O::none);
+    CHECK(d.key(ixpat::kVkLWin, false, 1.083) == O::none);
+    CHECK(d.key(ixpat::kVkS, false, 1.085) == O::press);
+    CHECK(d.poll(1.5) == O::none);
+    CHECK_FALSE(d.swallowLeftClick(1.3));  // a press hides no click
+    CHECK_FALSE(d.pressed());
+}
+
+TEST_CASE("chord: Win+Shift makes and breaks with nothing after them: one double press when the grace ends") {
+    D d;
+    d.key(ixpat::kVkShift, true, 2.0);
+    d.key(ixpat::kVkLWin, true, 2.0);
+    d.key(ixpat::kVkShift, false, 2.08);
+    CHECK(d.key(ixpat::kVkLWin, false, 2.08) == O::none);
+    CHECK(d.poll(2.10) == O::none);
+    CHECK(d.poll(2.14) == O::doublePress);
+    CHECK(d.poll(2.5) == O::none);
+}
+
+TEST_CASE("chord: Win+Shift held with no further key is a hold after 0.3 s, ended by the release") {
+    D d;
+    d.key(ixpat::kVkShift, true, 3.0);
+    d.key(ixpat::kVkLWin, true, 3.0);
+    CHECK(d.poll(3.2) == O::none);
+    CHECK(d.poll(3.31) == O::holdBegin);
+    CHECK(d.pressed());
+    CHECK(d.key(ixpat::kVkShift, true, 3.8) == O::none);  // a typematic repeat keeps it alive
+    CHECK(d.key(ixpat::kVkShift, false, 4.0) == O::none);
+    CHECK(d.key(ixpat::kVkLWin, false, 4.0) == O::holdEnd);
+    CHECK(d.key(ixpat::kVkF23, false, 4.002) == O::none);  // its break; the make was never seen
+    CHECK(d.poll(4.5) == O::none);
+}
+
+TEST_CASE("chord: a short hold released with its F23 break before 0.3 s is a hold begin and end") {
+    D d;
+    d.key(ixpat::kVkShift, true, 6.0);
+    d.key(ixpat::kVkLWin, true, 6.0);
+    d.key(ixpat::kVkShift, false, 6.2);
+    CHECK(d.key(ixpat::kVkLWin, false, 6.2) == O::none);
+    CHECK(d.key(ixpat::kVkF23, false, 6.201) == O::holdBegin);
+    CHECK(d.poll(6.202) == O::holdEnd);
+    CHECK(d.poll(6.5) == O::none);
 }
 
 TEST_CASE("chord: consumed press hides the following fake click and does not fire") {
@@ -123,4 +172,21 @@ TEST_CASE("chord: chordActive follows any mouse key, pressed() only a recognised
     d.key(ixpat::kVkLShift, false, 1.2);
     CHECK(d.chordActive(1.59));
     CHECK_FALSE(d.chordActive(1.61));
+}
+
+TEST_CASE("chord: a Win chord whose release never arrives stops hiding left clicks once the mouse goes quiet") {
+    D d;
+    d.key(0x5B, true, 1.0);  // Win down, then nothing (the break was lost)
+    CHECK(d.swallowLeftClick(1.1));
+    CHECK_FALSE(d.swallowLeftClick(3.0));  // 2 s without a key from the mouse: the chord is stale
+    CHECK_FALSE(d.chordActive(3.0));
+    CHECK_FALSE(d.pressed(3.0));            // and it no longer glows as held
+    CHECK(d.key(0x5B, true, 3.0) == O::none);  // the next Win chord starts fresh
+    CHECK(d.pressed());
+}
+
+TEST_CASE("chord: a break without its make (S up alone) is harmless and ends nothing") {
+    D d;
+    CHECK(d.key(0x53, false, 1.0) == O::none);
+    CHECK_FALSE(d.chordActive(2.0));
 }

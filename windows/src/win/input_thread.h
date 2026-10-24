@@ -60,6 +60,7 @@ struct InputStatus {
     bool mouseHook = false, keyboardHook = false;
     std::uint32_t mouseHookCalls = 0, keyboardHookCalls = 0;
     std::uint32_t rawMouse = 0, rawKeyboard = 0;
+    std::uint32_t maxHookMicros = 0;  // the slowest hook callback so far (Windows drops hooks that stall)
 };
 
 /// Owns the low-level hooks, Raw Input, the chord decoder, the kinetic coast timer and gesture mode,
@@ -104,6 +105,8 @@ private:
     void endGestureNow() noexcept;
     void refreshMonitors() noexcept;
     Seconds now() const noexcept;
+    void noteHookTime(Seconds start) noexcept;
+    void pollChord(Seconds t) noexcept;
     InputConfig config() const noexcept;
 
     // Attribution: recent raw entries the hooks match on content, and hook events that had to decide
@@ -118,6 +121,9 @@ private:
         Seconds at = 0;
     };
     bool matchRaw(const RawEntry& probe, Seconds now, bool& surface) noexcept;
+    /// matchRaw, and when the raw entry has not landed yet, a short wait for it (it follows the hook by well
+    /// under a millisecond on real devices); false only when it still has not arrived.
+    bool awaitRaw(const RawEntry& probe, Seconds now, bool& surface) noexcept;
     void expectRaw(const RawEntry& probe) noexcept;
     bool retireExpected(const RawEntry& raw) noexcept;
 
@@ -160,6 +166,7 @@ private:
     bool lastMoverSurface_ = false, moverKnown_ = false;
     Seconds lastSurfaceWheel_ = -1e9, lastOtherWheel_ = -1e9, lastOtherButton_ = -1e9;
     Seconds swallowLeftUpUntil_ = 0, swallowRightUpUntil_ = 0;
+    bool leftDownSurface_ = false;  // the press in progress came from the Surface Mouse
     POINT dragStart_{};
     double dragDistance_ = 0;
     bool atEdge_ = false;
@@ -178,7 +185,9 @@ private:
     std::atomic<std::uint32_t> mouseCalls_{0}, keyCalls_{0}, rawMouse_{0}, rawKeyboard_{0};
     std::atomic<bool> rawOk_{false}, mouseOk_{false}, keyOk_{false};
     std::atomic<bool> leftDown_{false};
-    std::atomic<std::int64_t> lastMoveQpc_{0};
+    std::atomic<std::int64_t> lastMoveQpc_{0};         // any pointing device (the hook)
+    std::atomic<std::int64_t> lastSurfaceMoveQpc_{0};  // the Surface Mouse (Raw Input)
+    std::atomic<std::uint32_t> maxHookMicros_{0};
 };
 
 }  // namespace ixpat::win

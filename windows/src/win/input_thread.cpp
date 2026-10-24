@@ -9,6 +9,7 @@ namespace {
 constexpr Seconds kSwallowReleaseWindow = 1.5;  // a swallowed press hides its release too, if it comes soon
 constexpr Seconds kOtherDeviceQuiet = 2.0;      // another device acted recently: do not claim unmatched events
 constexpr Seconds kRawMatchWindow = 0.05;
+constexpr Seconds kRawAwait = 0.002;           // a hook event waits this long for its Raw Input twin before deciding alone
 constexpr double kDragThreshold = 20;
 constexpr double kHoldMoveCancel = 4;
 constexpr Seconds kCoastFrame = 1.0 / 120;
@@ -53,7 +54,8 @@ Seconds InputThread::now() const noexcept {
 }
 
 Seconds InputThread::lastPointerMove() const {
-    return static_cast<double>(lastMoveQpc_.load(std::memory_order_relaxed)) / qpcFreq_;
+    // The Surface Mouse's own motion: the accessibility and cursor-shape ticks follow this mouse, not every device.
+    return static_cast<double>(lastSurfaceMoveQpc_.load(std::memory_order_relaxed)) / qpcFreq_;
 }
 
 InputConfig InputThread::config() const noexcept {
@@ -92,6 +94,7 @@ InputStatus InputThread::status() const {
     s.keyboardHookCalls = keyCalls_.load(std::memory_order_relaxed);
     s.rawMouse = rawMouse_.load(std::memory_order_relaxed);
     s.rawKeyboard = rawKeyboard_.load(std::memory_order_relaxed);
+    s.maxHookMicros = maxHookMicros_.load(std::memory_order_relaxed);
     return s;
 }
 
@@ -233,6 +236,7 @@ void InputThread::loop() {
         DWORD timeoutMs = 5000;
         const Seconds t = now();
         if (holdArmed_) timeoutMs = static_cast<DWORD>(std::max(0.0, std::min(5.0, holdDeadline_ - t) * 1000));
+        if (const Seconds dl = chord_.nextDeadline(); dl > 0) timeoutMs = std::min(timeoutMs, static_cast<DWORD>(std::max(0.0, std::min(5.0, dl - t) * 1000)));
         if (t >= nextMonitorRefresh_) {
             refreshMonitors();
             nextMonitorRefresh_ = t + 5;
@@ -249,7 +253,15 @@ void InputThread::loop() {
         if (disableRequested_.exchange(false)) applyDisable();
         if (anyMouseRequested_.load() != cfg_.anyMouse) raw_.setAnyMouse(anyMouseRequested_.load());
         if (holdArmed_ && now() >= holdDeadline_) fireHoldAction(now());
+        pollChord(now());
     }
+}
+
+void InputThread::pollChord(Seconds t) noexcept {
+    const ChordOutput out = chord_.poll(t);
+    if (out == ChordOutput::none) return;
+    if (out == ChordOutput::holdEnd) endGestureNow();
+    post({InputEvent::Kind::chord, 0, static_cast<int>(out), 0, t});
 }
 
 void InputThread::applyDisable() noexcept {
@@ -319,6 +331,17 @@ bool InputThread::retireExpected(const RawEntry& raw) noexcept {
     return false;
 }
 
+bool InputThread::awaitRaw(const RawEntry& probe, Seconds now, bool& surface) noexcept {
+    if (matchRaw(probe, now, surface)) return true;
+    const Seconds deadline = now + kRawAwait;
+    for (;;) {
+        YieldProcessor();
+        drainRawInput();
+        if (matchRaw(probe, now, surface)) return true;
+        if (this->now() >= deadline) return false;
+    }
+}
+
 // MARK: raw input (device side)
 
 void InputThread::handleRawMessage(HRAWINPUT h, bool allowResolve) noexcept {
@@ -329,6 +352,7 @@ void InputThread::handleRawMessage(HRAWINPUT h, bool allowResolve) noexcept {
 
 void InputThread::onRaw(const RawEvent& e) noexcept {
     const Seconds t = static_cast<double>(e.qpc) / qpcFreq_;
+    pollChord(t);  // a deadline may have passed while no message woke the loop
     if (e.kind == RawKind::key) rawKeyboard_.fetch_add(1, std::memory_order_relaxed);
     else rawMouse_.fetch_add(1, std::memory_order_relaxed);
     // Remember recent physical entries for the hooks' content matching, unless a hook already decided this one.
@@ -343,6 +367,7 @@ void InputThread::onRaw(const RawEvent& e) noexcept {
     }
     switch (e.kind) {
         case RawKind::move:
+            if (e.surfaceMouse) lastSurfaceMoveQpc_.store(e.qpc, std::memory_order_relaxed);
             if (!e.injected && !e.unknownDevice) {
                 if (!moverKnown_ || lastMoverSurface_ != e.surfaceMouse) {
                     moverKnown_ = true;
@@ -386,6 +411,7 @@ void InputThread::onRaw(const RawEvent& e) noexcept {
             }
             break;
         case RawKind::key:
+            if (!e.surfaceMouse && !e.injected && isChordKey(e.vk)) post({InputEvent::Kind::rawKey, 1, e.vk, e.keyDown, t});  // a = 1: another device
             if (e.surfaceMouse) {
                 const ChordOutput out = chord_.key(e.vk, e.keyDown, t);
                 post({InputEvent::Kind::rawKey, 0, e.vk, e.keyDown, t});
@@ -416,13 +442,22 @@ void InputThread::drainRawInput() noexcept {
     }
 }
 
+void InputThread::noteHookTime(Seconds start) noexcept {
+    const auto us = static_cast<std::uint32_t>(std::max(0.0, (now() - start) * 1e6));
+    std::uint32_t cur = maxHookMicros_.load(std::memory_order_relaxed);
+    while (us > cur && !maxHookMicros_.compare_exchange_weak(cur, us, std::memory_order_relaxed)) {
+    }
+}
+
 // MARK: hooks (system side)
 
 LRESULT CALLBACK InputThread::mouseHook(int code, WPARAM wp, LPARAM lp) noexcept {
     if (code == HC_ACTION && instance_) {
         instance_->mouseCalls_.fetch_add(1, std::memory_order_relaxed);
         ++instance_->hookDepth_;
+        const Seconds t0 = instance_->now();
         const bool swallow = instance_->onMouse(wp, *reinterpret_cast<const MSLLHOOKSTRUCT*>(lp));
+        instance_->noteHookTime(t0);
         --instance_->hookDepth_;
         if (swallow) return 1;
     }
@@ -433,7 +468,9 @@ LRESULT CALLBACK InputThread::keyHook(int code, WPARAM wp, LPARAM lp) noexcept {
     if (code == HC_ACTION && instance_) {
         instance_->keyCalls_.fetch_add(1, std::memory_order_relaxed);
         ++instance_->hookDepth_;
+        const Seconds t0 = instance_->now();
         const bool swallow = instance_->onKey(wp, *reinterpret_cast<const KBDLLHOOKSTRUCT*>(lp));
+        instance_->noteHookTime(t0);
         --instance_->hookDepth_;
         if (swallow) return 1;
     }
@@ -500,25 +537,27 @@ bool InputThread::onMouse(WPARAM msg, const MSLLHOOKSTRUCT& m) noexcept {
             }
             if (hit != atEdge_) {
                 atEdge_ = hit;
-                if (hit && cfg.enabled) post({InputEvent::Kind::systemEvent, 0, static_cast<int>(HapticEvent::screenEdge), 0, t});
+                const bool surfaceMoving = cfg.anyMouse || (moverKnown_ && lastMoverSurface_);
+                if (hit && cfg.enabled && surfaceMoving) post({InputEvent::Kind::systemEvent, 0, static_cast<int>(HapticEvent::screenEdge), 0, t});
             }
             return false;
         }
         case WM_LBUTTONDOWN: {
             bool surface = false;
             RawEntry probe{RawKind::button, false, 0, 0, false, false, RI_MOUSE_LEFT_BUTTON_DOWN, t};
-            bool matched = injected ? false : matchRaw(probe, t, surface);
+            bool matched = injected ? false : awaitRaw(probe, t, surface);
             if (!matched && !injected) {
-                // Hook before raw: this mouse is live and nothing else clicked lately -> ours; the raw entry is retired when it lands.
+                // Still no raw entry: this mouse is live and nothing else clicked lately -> ours; the raw entry is retired when it lands.
                 surface = cfg.anyMouse || (cfg.shapeWheel && t - lastOtherButton_ > kOtherDeviceQuiet);
                 expectRaw(probe);
             }
+            leftDownSurface_ = surface;
             if (ringOpen_ && !injected) {
                 post({InputEvent::Kind::ringClick, 0, 0, 0, t});
                 swallowLeftUpUntil_ = t + kSwallowReleaseWindow;
                 return true;
             }
-            if (cfg.swallowChords && cfg.enabled && chord_.swallowLeftClick(t) && !injected) {  // the firmware's fake click
+            if (cfg.swallowChords && cfg.enabled && surface && chord_.swallowLeftClick(t) && !injected) {  // the firmware's fake click
                 swallowLeftUpUntil_ = t + kSwallowReleaseWindow;
                 return true;
             }
@@ -549,7 +588,7 @@ bool InputThread::onMouse(WPARAM msg, const MSLLHOOKSTRUCT& m) noexcept {
                 swallowLeftUpUntil_ = 0;
                 return true;
             }
-            if (dragDistance_ > kDragThreshold && cfg.enabled) {
+            if (dragDistance_ > kDragThreshold && cfg.enabled && leftDownSurface_) {
                 post({InputEvent::Kind::systemEvent, 0, static_cast<int>(HapticEvent::dragEnd), 0, t});
                 post({InputEvent::Kind::dragEnded, 0, m.pt.x, m.pt.y, t});
             }
@@ -577,8 +616,8 @@ bool InputThread::onMouse(WPARAM msg, const MSLLHOOKSTRUCT& m) noexcept {
             const auto delta = static_cast<std::int16_t>(HIWORD(m.mouseData));
             RawEntry probe{msg == WM_MOUSEWHEEL ? RawKind::wheel : RawKind::hwheel, false, delta, 0, false, false, 0, t};
             bool surface = false;
-            if (!matchRaw(probe, t, surface)) {
-                // The hook ran before its WM_INPUT: the Mac's rule, while this mouse is live and no other
+            if (!awaitRaw(probe, t, surface)) {
+                // Still no WM_INPUT: the Mac's rule, while this mouse is live and no other
                 // device scrolled recently, the notch is ours. The late raw entry is retired when it lands.
                 surface = cfg.anyMouse || (cfg.shapeWheel && t - lastOtherWheel_ > kOtherDeviceQuiet);
                 expectRaw(probe);
@@ -623,7 +662,7 @@ bool InputThread::onKey(WPARAM msg, const KBDLLHOOKSTRUCT& k) noexcept {
     if (!isChordKey(k.vkCode)) return false;
     RawEntry probe{RawKind::key, false, 0, static_cast<std::uint16_t>(k.scanCode), down, (k.flags & LLKHF_EXTENDED) != 0, 0, t};
     bool surface = false;
-    const bool matched = matchRaw(probe, t, surface);
+    const bool matched = awaitRaw(probe, t, surface);
     if (!matched) expectRaw(probe);
     if (!cfg.swallowChords || !cfg.enabled) return false;
     // The chords arrive as Win+Shift+S / Win+Shift+F23: swallow their keys only while the mouse is sending one.

@@ -94,6 +94,11 @@ the measurements are [`windows/docs/measurements-2026-10.md`](../windows/docs/me
   window-style read before the handle existed, a tick count that the analyser could not see wrapping, the entry
   point's annotations and its 116 KB `App` on the stack (now on the heap), and two tidy-ups in raw input and a
   test.
+* **A clean first run, on another Windows.** The 0.2.5 installer went through Windows Sandbox (a fresh
+  Windows 11 26100 profile, no network, no mouse): install, first launch, a second launch that only shows the
+  settings window, the window drawn right without Mica, hooks and raw input up, the offline update check failing
+  in one line, `--quit` returning 0 with nothing left running, `--crash` leaving its dump, uninstall removing the
+  program folder. The whole round trip takes under a minute and needs no elevation.
 
 ## 2. What the first plan got wrong
 

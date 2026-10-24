@@ -86,6 +86,15 @@ the measurements are [`windows/docs/measurements-2026-10.md`](../windows/docs/me
   cannot be created stops the launch, options are whole tokens) and two were documented (the dump's privacy, the
   retention that trims on launch). The write-up is `windows/docs/reviews/0.2.5-review.md`.
 
+### After win-v0.2.5 (on `main`)
+
+* **Two more passes, both clean.** `build.ps1 -Analyze` runs the MSVC static analyser over our sources and
+  `build.ps1 -Sanitize -Test` runs the tests under AddressSanitizer. The analyser's nine findings were fixed: an
+  unchecked COM initialisation and WMI proxy call, event and timer handles the input thread never checked, a
+  window-style read before the handle existed, a tick count that the analyser could not see wrapping, the entry
+  point's annotations and its 116 KB `App` on the stack (now on the heap), and two tidy-ups in raw input and a
+  test.
+
 ## 2. What the first plan got wrong
 
 * **Language and UI.** The plan weighed Rust + WinUI 3 or egui. The port is C++20 with

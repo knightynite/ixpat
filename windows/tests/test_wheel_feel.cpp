@@ -196,7 +196,7 @@ TEST_CASE("wheel: with the dynamic ratchet off every detent is the plain rule an
     p.freeSpin = false;
     double t = 1.0;
     for (int i = 0; i < 10; ++i, t += 0.02) {
-        auto out = e.notch(i % 2 ? 1 : -1, t, p);
+        auto out = e.notch((i % 2) ? 1 : -1, t, p);
         REQUIRE(out.size() == 1);
         CHECK(isFirm(out[0], 0));
     }

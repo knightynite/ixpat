@@ -3,12 +3,16 @@
 #   .\build.ps1 -Preset x64-release   x64 release
 #   .\build.ps1 -Test                 build, then run the unit tests
 #   .\build.ps1 -Preset arm64-release ARM64 cross build (needs the VS ARM64 build tools component)
+#   .\build.ps1 -Analyze              the same build through the MSVC static analyser (our sources only)
+#   .\build.ps1 -Sanitize -Test       AddressSanitizer build, then the tests under it
 # Finds Visual Studio (Build Tools or any edition), enters its developer environment, and uses the
 # CMake and Ninja that ship with it, so nothing else has to be installed or on PATH.
 param(
     [ValidateSet('x64-debug', 'x64-release', 'arm64-release')] [string] $Preset = 'x64-debug',
     [switch] $Test,
-    [switch] $Clean
+    [switch] $Clean,
+    [switch] $Analyze,
+    [switch] $Sanitize
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -29,7 +33,10 @@ foreach ($p in @($vcvars, (Join-Path $cmakeBin 'cmake.exe'), (Join-Path $ninjaBi
 
 if ($Clean) { Remove-Item -Recurse -Force (Join-Path $root "build\$Preset") -ErrorAction SilentlyContinue }
 
-$steps = "cmake --preset $Preset && cmake --build --preset $Preset"
+# The two passes are cache options, passed every time: a plain build after one switches them off again.
+$analyzeOpt = if ($Analyze) { 'ON' } else { 'OFF' }
+$sanitizeOpt = if ($Sanitize) { 'ON' } else { 'OFF' }
+$steps = "cmake --preset $Preset -DIXPAT_ANALYZE=$analyzeOpt -DIXPAT_ASAN=$sanitizeOpt && cmake --build --preset $Preset"
 if ($Test) {
     if ($Preset -like 'arm64*') { throw 'Tests run on the host architecture only; use an x64 preset with -Test' }
     $steps += " && ctest --preset $Preset"

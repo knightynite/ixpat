@@ -202,7 +202,8 @@ LRESULT GfxWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
             auto* mm = reinterpret_cast<MINMAXINFO*>(lp);
             const UINT dpi = hwnd_ ? GetDpiForWindow(hwnd_) : 96;
             RECT rc{0, 0, MulDiv(minW_, static_cast<int>(dpi), 96), MulDiv(minH_, static_cast<int>(dpi), 96)};
-            AdjustWindowRectExForDpi(&rc, static_cast<DWORD>(GetWindowLongPtrW(hwnd_, GWL_STYLE)), FALSE, 0, dpi);
+            const DWORD style = hwnd_ ? static_cast<DWORD>(GetWindowLongPtrW(hwnd_, GWL_STYLE)) : 0;
+            AdjustWindowRectExForDpi(&rc, style, FALSE, 0, dpi);
             mm->ptMinTrackSize.x = rc.right - rc.left;
             mm->ptMinTrackSize.y = rc.bottom - rc.top;
             return 0;

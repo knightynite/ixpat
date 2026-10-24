@@ -62,6 +62,9 @@ cd ixpat
 windows\build.ps1 -Preset x64-release -Test
 ```
 
+`-Analyze` runs the same build through the MSVC static analyser and `-Sanitize -Test` runs the tests under
+AddressSanitizer; both passes are clean on `main`.
+
 ## What it does
 
 - **Live schematic**: buttons, wheel and action button light up from the mouse's

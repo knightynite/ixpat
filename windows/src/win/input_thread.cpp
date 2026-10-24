@@ -1,6 +1,8 @@
 #include "win/crash_dump.h"
+#include "win/log.h"
 #include "win/input_thread.h"
 
+#include <string>
 #include <algorithm>
 #include <cmath>
 
@@ -174,6 +176,11 @@ bool InputThread::start(HWND mainWindow, UINT message) {
     ready_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     timer_ = CreateWaitableTimerExW(nullptr, nullptr, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
     if (!timer_) timer_ = CreateWaitableTimerW(nullptr, FALSE, nullptr);
+    if (!stopEvent_ || !ready_ || !timer_) {  // out of handles: the app runs without the input thread
+        debugLog("input thread: could not create its events or timer (error " + std::to_string(GetLastError()) + ")");
+        stop();
+        return false;
+    }
     instance_ = this;
     // The ring is open in toggle mode: the gesture (a press's letter, the double press's click) commits it instead
     // of running its action (the Mac's `button.pressIntercept`). The decoder hides the chord; main closes the ring.
@@ -577,7 +584,8 @@ void InputThread::noteChainTime(Seconds start) noexcept {
 void InputThread::noteHookLag(DWORD eventTime) noexcept {
     // The hook structs carry the event's tick count: how long it queued before reaching us says whether this
     // thread (or something ahead of it) ever stalls long enough for Windows to drop the hook.
-    const DWORD lag = GetTickCount() - eventTime;
+    // The struct's time is the 32-bit tick count: the low half of the 64-bit one, so the difference wraps correctly.
+    const DWORD lag = static_cast<DWORD>(GetTickCount64()) - eventTime;
     if (lag < 60000) raiseMax(maxHookLagMs_, lag);
 }
 

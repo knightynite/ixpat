@@ -211,7 +211,11 @@ int App::run(HINSTANCE inst, bool ringDemo) {
         win::debugLog("single instance: waited " + std::to_string(GetTickCount64() - t0) + " ms for the previous instance to leave");
     }
 
-    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+    if (const HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE); FAILED(hr)) {
+        char line[96];
+        std::snprintf(line, sizeof line, "COM did not initialise (0x%08lX); the tray menu, UIA and WMI may be affected", static_cast<unsigned long>(hr));
+        win::debugLog(line);
+    }
     icon_ = LoadIconW(inst, MAKEINTRESOURCEW(IDI_IXPAT));
     if (!icon_) icon_ = LoadIconW(nullptr, IDI_APPLICATION);
 
@@ -1108,7 +1112,7 @@ int quitRunningInstance() {
     return (r == WAIT_OBJECT_0 || r == WAIT_ABANDONED) ? 0 : 1;
 }
 
-int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
+int WINAPI wWinMain(_In_ HINSTANCE inst, _In_opt_ HINSTANCE, _In_ PWSTR, _In_ int) {
     win::installCrashHandler();
     // Whole tokens only. `--quit` wins over anything else; `--crash[=kind]` is the handler's self-test.
     bool quit = false, demo = false;
@@ -1129,6 +1133,6 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
     }
     if (quit) return quitRunningInstance();
     if (crash) win::crashNow(crashKind);
-    App app;
-    return app.run(inst, demo);
+    const auto app = std::make_unique<App>();  // on the heap: the App is large, the main stack stays small
+    return app->run(inst, demo);
 }

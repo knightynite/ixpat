@@ -44,7 +44,7 @@ bool RawInput::resolve(HANDLE device) {
     UINT size = 0;
     GetRawInputDeviceInfoW(device, RIDI_DEVICENAME, nullptr, &size);
     if (size && size < 1024) {
-        wchar_t name[1024];
+        wchar_t name[1024]{};
         if (GetRawInputDeviceInfoW(device, RIDI_DEVICENAME, name, &size) != static_cast<UINT>(-1)) {
             surface = isSurfaceMouseDevicePath(name, wcsnlen(name, size));
         }
@@ -58,8 +58,9 @@ bool RawInput::resolve(HANDLE device) {
     if (deviceCount_ < static_cast<int>(std::size(devices_))) {
         devices_[deviceCount_++] = {device, surface};
     } else {  // full: the oldest entry goes
-        for (int i = 1; i < deviceCount_; ++i) devices_[i - 1] = devices_[i];
-        devices_[deviceCount_ - 1] = {device, surface};
+        constexpr int last = static_cast<int>(std::size(devices_)) - 1;
+        for (int i = 0; i < last; ++i) devices_[i] = devices_[i + 1];
+        devices_[last] = {device, surface};
     }
     return surface;
 }

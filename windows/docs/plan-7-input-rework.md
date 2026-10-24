@@ -60,3 +60,14 @@ Press once, wait, press twice, wait, hold. Expected: ring on press (no Snipping 
 on double press, the hold action on hold. Then type `s` and press Win on the keyboard: both must behave as
 stock. The report log shows `hook vk .. passed/swallowed` beside `keyboard vk ..`; a `(no hook callback)` tag
 means the hook was down for that report, and a `hooks re-installed` line in the debug log follows within 50 ms.
+
+## Why the hooks go quiet: the leading explanation
+
+Both losses seen with real input were the first press after the mouse had reconnected, our callbacks took tens of
+microseconds, and a re-install cured it at once. Low-level hooks form a chain, newest first, and each hook decides
+whether to call the next; a program that re-installs its hooks when a device comes or goes moves ahead of ours, and
+if it then returns without chaining for some events, Windows still handles them and Raw Input still reports them,
+but ours never hears them: indistinguishable from a dropped hook. Logitech Options+ runs here with hooks of its
+own. So besides the liveness check and the 5 s idle refresh, the hooks go back to the head of the chain one second
+after any device change. This is the best-supported reading of the evidence, not a proof; the stall watch and the
+re-install log lines stay in place to tell the two apart.

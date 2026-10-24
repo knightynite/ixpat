@@ -844,6 +844,9 @@ bool InputThread::onKey(WPARAM msg, const KBDLLHOOKSTRUCT& k) noexcept {
     const int idx = chordIndex(k.vkCode);
     const auto slot = static_cast<std::size_t>(idx);
     (down ? hookMake_ : hookBreak_)[slot] = HookSeen{t, static_cast<std::uint16_t>(k.scanCode), false};
+    // A make the hook ate whose break never came (the mouse went to sleep mid-chord): after a while the key is the
+    // user's again, whichever way its next event goes.
+    if (swallowedMake_[slot] && t - swallowedAt_[slot] > kForgetSwallowed) swallowedMake_[slot] = false;
     bool swallow = false;
     if (!down) {
         // A break follows its make. A letter the hook ate stays hidden to the end, and the decoder hears the
@@ -851,7 +854,6 @@ bool InputThread::onKey(WPARAM msg, const KBDLLHOOKSTRUCT& k) noexcept {
         // breaks pass, and their report feeds the decoder a moment later. A Win release passing while the mask is
         // still pending would open the Start menu: the mask goes first.
         if ((idx == kVkLWin || idx == kVkRWin) && maskPending_) flushMask();
-        if (swallowedMake_[slot] && t - swallowedAt_[slot] > kForgetSwallowed) swallowedMake_[slot] = false;  // its break was lost long ago
         swallow = swallowedMake_[slot];
         swallowedMake_[slot] = false;
         letterPassed_[slot] = false;

@@ -59,6 +59,16 @@ the measurements are [`windows/docs/measurements-2026-10.md`](../windows/docs/me
   at every width; light tertiary text at 4.5:1; a custom accent's text follows its brightness. Known gaps:
   keyboard navigation between the drawn controls, flyouts taller than the window.
 
+### win-v0.2.4
+
+* **The action button, replayed.** The chord decisions moved out of the input thread into a platform-free gate,
+  and twelve tests replay the firmware's sequences exactly as the logs recorded them (the press, the press with the
+  hook gone, the user's own keys, the double press, the hold with repeats, a letter the user already holds, a stray
+  letter during a hold, a hold whose breaks never come, a re-install, another keyboard's report, the ring open,
+  hiding switched off).
+* **Keyboard.** Tab walks every control with the Fluent focus ring; Space, Enter, the arrows, Home and End work
+  the controls; flyouts take the keyboard and fit the window.
+
 ## 2. What the first plan got wrong
 
 * **Language and UI.** The plan weighed Rust + WinUI 3 or egui. The port is C++20 with

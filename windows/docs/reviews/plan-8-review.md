@@ -26,13 +26,13 @@ gaps.
 | 18 | The Apps page's editor broke the shared two-column card into new cards | Lines within the card instead |
 | 19 | Light tertiary text at 3.3:1; white text on a bright custom accent | Light tertiary raised to 4.5:1; a custom accent's foreground follows its brightness |
 | 20 | The edit's background was hard-coded and not repainted on a theme change | A palette token; the child repaints with the theme |
+| 14 | A flyout taller than the window had unreachable rows | Capped to the window, scrolled by wheel and keyboard, with a rail |
+| 15 | No keyboard navigation between the drawn controls | Tab order, the Fluent focus ring, Space/Enter, arrows, Home/End, keyboard flyouts |
 
 ## Known gaps (deferred)
 
 | # | Finding | Why deferred |
 |---|---|---|
-| 14 | A flyout taller than the window has unreachable rows | The longest list (14 kinds, 512 DIP) fits the minimum window height; scrolling flyouts can follow |
-| 15 | No keyboard navigation between the drawn controls | A feature of its own: focus order, activation keys, focus rings |
 | 21 | The Direct2D and DirectWrite factories live for the process | Bounded, released by the process |
 | 22 | A slider keeps a partial wheel notch while the pointer is elsewhere | Harmless; the remainder is under one notch |
 | 23, 24 | Implicit conversions, unused members, a tooltip parameter, mojibake | The build is clean under `/W4 /WX`; the mojibake was in the review's input, not the sources (the UTF-8 literals render correctly) |

@@ -108,7 +108,7 @@ private:
     static LRESULT CALLBACK keyHook(int code, WPARAM wp, LPARAM lp) noexcept;
     static LRESULT CALLBACK wndProc(HWND, UINT, WPARAM, LPARAM);
     void loop();
-    bool installHooks();
+    bool installHooks(const char* why);  // logged with its reason
     void removeHooks();
     bool onMouse(WPARAM msg, const MSLLHOOKSTRUCT& m) noexcept;  // true = swallow
     bool onKey(WPARAM msg, const KBDLLHOOKSTRUCT& k) noexcept;
@@ -130,7 +130,8 @@ private:
     void noteHookTime(Seconds start) noexcept;
     void noteChainTime(Seconds start) noexcept;
     void noteHookLag(DWORD eventTime) noexcept;
-    void noteRawForLiveness(bool mouse, Seconds at) noexcept;
+    void noteRawForLiveness(bool mouse, Seconds at, int vk, bool keyDown) noexcept;
+    void probeHooks(Seconds t) noexcept;
     void checkHookLiveness() noexcept;
     InputConfig config() const noexcept;
 
@@ -209,6 +210,14 @@ private:
     Seconds rehookAt_ = 0;  // a device came or went, or main asked: put the hooks back shortly after (0 = nothing due)
     bool reinstallAsked_ = false;  // the due re-hook was asked by main (the watchdog, a stall): counted and reported
     int hookDepth_ = 0;
+    // Hook probes: while the user is active, an event of our own goes through the hooks every quarter second; a
+    // hook that does not see it is dead (removed by Windows, or starved by a newer hook that does not chain).
+    Seconds nextProbe_ = 0, probeKeyAt_ = 0, probeMouseAt_ = 0;
+    std::atomic<std::int64_t> lastPhysicalQpc_{0};
+    bool rehookNow_ = false;  // a chord key the keyboard hook did not see: put the hooks back before its letter lands
+    const char* rehookWhy_ = "";
+    Seconds lastInstallAt_ = 0;
+    const char* lastInstallWhy_ = "";
     std::array<RawEntry, 32> fifo_{};
     std::size_t fifoHead_ = 0, fifoCount_ = 0;
     std::array<RawEntry, 8> expected_{};

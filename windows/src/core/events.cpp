@@ -13,6 +13,7 @@ struct Row {
 };
 
 constexpr HapticRule R(bool on, int ordinal, int intensity) { return HapticRule{on, ordinal, intensity, std::nullopt}; }
+constexpr HapticRule R(bool on, int ordinal, int intensity, HapticEcho echo) { return HapticRule{on, ordinal, intensity, echo}; }
 
 // One row per enum value, in enum order. Copied from Settings.swift (title, detail, defaults).
 // Ordinals: 3 HOVER 9 ms, 4 COLLIDE 26, 5 ALIGN 9, 6 STEP 11, 7 GROW 200, 8 SUCCESS 70, 9 ERROR 147, 10 CLICK 11.
@@ -30,7 +31,7 @@ constexpr std::array<Row, kHapticEventCount> kRows{{
     {"dragEnd", "Drag & drop lands", "Mouse up after a drag of more than 20 px.", R(true, 5, 3)},
     {"windowSnap", "Window tiles", "The focused window's frame changed to a snap slot after a drag.", R(true, 8, 3)},
     {"appSwitch", "App switches", "Another app came to the foreground (Alt+Tab, taskbar, click).", R(true, 3, 2)},
-    {"actionButton", "Action button", "Whenever the action button is recognised.", R(true, 10, 4)},
+    {"actionButton", "Action button", "Whenever the action button is recognised: a crisp tap and a lighter second one.", R(true, 10, 3, HapticEcho{10, 2, 65})},
     {"menuHighlight", "Menu item highlights",
      "A tick as the highlighted item changes while sweeping a menu or a right-click menu.", R(true, 6, 2)},
     {"textSelect", "Text selection, per word",
@@ -43,7 +44,7 @@ constexpr std::array<Row, kHapticEventCount> kRows{{
     {"ringCommit", "Action Ring runs an action", "A chamber was chosen.", R(true, 10, 4)},
     {"freeSpinOn", "Wheel enters free-spin", "A flick of the wheel switches it to free-spin.", R(true, 4, 3)},
     {"freeSpinOff", "Wheel re-engages the ratchet",
-     "The wheel has come to rest after a free-spin and the notches are back.", R(true, 5, 2)},
+     "The wheel has come to rest after a free-spin and the notches are back. Off unless you want the hum.", R(false, 5, 2)},
     {"leftHold", "Left button held",
      "Plays once the button has stayed down for the hold time: a swell under a long press, a second stage to the click.",
      R(false, 7, 2)},

@@ -1,3 +1,4 @@
+#include "win/log.h"
 #include "win/send_input.h"
 
 #include <cmath>
@@ -18,7 +19,9 @@ void WheelEmitter::emit(int dyPixels, int dxPixels, double pxPerNotch) {
     if (v || h) sendWheelUnits(v, h);
 }
 
-void sendWheelUnits(int vertical, int horizontal) {
+namespace {
+
+void sendWheelUnitsNow(int vertical, int horizontal) {
     INPUT in[2]{};
     UINT n = 0;
     if (vertical) {
@@ -35,7 +38,130 @@ void sendWheelUnits(int vertical, int horizontal) {
         in[n].mi.dwExtraInfo = kOwnTag;
         ++n;
     }
-    if (n) SendInput(n, in, sizeof(INPUT));
+    if (n) {
+        const long long t0 = qpcTicks();
+        SendInput(n, in, sizeof(INPUT));
+        const double ms = msSince(t0);
+        if (ms >= 20) debugLogSlow("SendInput (wheel, injector thread)", ms);
+    }
+}
+
+// One thread does the injecting; the callers only add to what is pending and wake it. Keyboard batches go out
+// first and in order (a mask must precede the release it masks); wheel units coalesce while the thread is busy.
+struct Injector {
+    static constexpr int kBatch = 4;
+    struct Batch {
+        INPUT in[kBatch];
+        UINT n;
+    };
+    SRWLOCK lock = SRWLOCK_INIT;
+    CONDITION_VARIABLE wake = CONDITION_VARIABLE_INIT;
+    std::vector<Batch> keys;  // FIFO
+    int pendingV = 0, pendingH = 0;
+    bool running = false;
+
+    static DWORD WINAPI run(void* p) {
+        auto* self = static_cast<Injector*>(p);
+        SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
+        for (;;) {
+            Batch b{};
+            bool haveBatch = false;
+            int v = 0, h = 0;
+            AcquireSRWLockExclusive(&self->lock);
+            while (self->keys.empty() && !self->pendingV && !self->pendingH) SleepConditionVariableSRW(&self->wake, &self->lock, INFINITE, 0);
+            if (!self->keys.empty()) {
+                b = self->keys.front();
+                self->keys.erase(self->keys.begin());
+                haveBatch = true;
+            } else {
+                v = self->pendingV;
+                h = self->pendingH;
+                self->pendingV = self->pendingH = 0;
+            }
+            ReleaseSRWLockExclusive(&self->lock);
+            if (haveBatch) {
+                const long long t0 = qpcTicks();
+                SendInput(b.n, b.in, sizeof(INPUT));
+                const double ms = msSince(t0);
+                if (ms >= 20) debugLogSlow("SendInput (keys, injector thread)", ms);
+            } else {
+                sendWheelUnitsNow(v, h);
+            }
+        }
+    }
+
+    // Starts the thread on first use; false when none is to be had (the caller then sends in place).
+    bool ensureThread() {
+        if (!running) {
+            if (HANDLE t = CreateThread(nullptr, 64 * 1024, &run, this, 0, nullptr)) {
+                CloseHandle(t);
+                running = true;
+            }
+        }
+        return running;
+    }
+
+    void queueWheel(int v, int h) {
+        AcquireSRWLockExclusive(&lock);
+        const bool direct = !ensureThread();
+        if (!direct) {
+            pendingV += v;
+            pendingH += h;
+        }
+        ReleaseSRWLockExclusive(&lock);
+        if (direct) sendWheelUnitsNow(v, h);
+        else WakeConditionVariable(&wake);
+    }
+
+    void queueKeys(const Batch& b) {
+        AcquireSRWLockExclusive(&lock);
+        const bool direct = !ensureThread();
+        if (!direct) keys.push_back(b);
+        ReleaseSRWLockExclusive(&lock);
+        if (direct) SendInput(b.n, const_cast<INPUT*>(b.in), sizeof(INPUT));
+        else WakeConditionVariable(&wake);
+    }
+};
+
+Injector& injector() {
+    static Injector i;
+    return i;
+}
+
+}  // namespace
+
+void sendWheelUnits(int vertical, int horizontal) {
+    if (vertical || horizontal) injector().queueWheel(vertical, horizontal);
+}
+
+void queueHookProbe() {
+    Injector::Batch b{};
+    b.in[0].type = INPUT_KEYBOARD;
+    b.in[0].ki.wVk = 0xE8;
+    b.in[0].ki.dwFlags = KEYEVENTF_KEYUP;
+    b.in[0].ki.dwExtraInfo = kOwnTag;
+    b.in[1].type = INPUT_MOUSE;
+    b.in[1].mi.dwFlags = MOUSEEVENTF_MOVE;
+    b.in[1].mi.dwExtraInfo = kOwnTag;
+    b.n = 2;
+    injector().queueKeys(b);
+}
+
+void queueMaskThenWinUp(WORD vk, WORD scan) {
+    Injector::Batch b{};
+    for (int i = 0; i < 2; ++i) {
+        b.in[i].type = INPUT_KEYBOARD;
+        b.in[i].ki.wVk = 0xE8;
+        b.in[i].ki.dwFlags = i ? KEYEVENTF_KEYUP : 0;
+        b.in[i].ki.dwExtraInfo = kOwnTag;
+    }
+    b.in[2].type = INPUT_KEYBOARD;
+    b.in[2].ki.wVk = vk;
+    b.in[2].ki.wScan = scan;
+    b.in[2].ki.dwFlags = KEYEVENTF_KEYUP | KEYEVENTF_EXTENDEDKEY;
+    b.in[2].ki.dwExtraInfo = kOwnTag;
+    b.n = 3;
+    injector().queueKeys(b);
 }
 
 void sendKey(WORD vk, bool down) {
@@ -67,7 +193,11 @@ bool sendMaskKey() {
         in[i].ki.dwFlags = i ? KEYEVENTF_KEYUP : 0;
         in[i].ki.dwExtraInfo = kOwnTag;
     }
-    return SendInput(2, in, sizeof(INPUT)) == 2;
+    const long long t0 = qpcTicks();
+    const bool ok = SendInput(2, in, sizeof(INPUT)) == 2;
+    const double ms = msSince(t0);
+    if (ms >= 20) debugLogSlow("SendInput (mask key)", ms);
+    return ok;
 }
 
 void sendKeyChord(std::initializer_list<WORD> vks) {

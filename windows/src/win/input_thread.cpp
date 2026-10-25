@@ -2,6 +2,7 @@
 #include "win/log.h"
 #include "win/input_thread.h"
 
+#include <cstring>
 #include <string>
 #include <algorithm>
 #include <cmath>
@@ -14,6 +15,9 @@ constexpr Seconds kOtherDeviceQuiet = 2.0;      // another device acted recently
 constexpr Seconds kRawMatchWindow = 0.05;
 constexpr Seconds kHookTwinWindow = 0.03;    // a report and its hook callback lie this close (keyboard: hook first; mouse: report first)
 constexpr Seconds kHookAnswerWindow = 0.05;  // a physical report still without a hook callback after this: Windows dropped the hook
+constexpr Seconds kProbeEvery = 0.25;     // hook probes this often while the user is active
+constexpr Seconds kProbeAnswer = 0.15;    // a probe not seen by its hook within this: the hook is dead
+constexpr Seconds kProbeActivity = 3.0;   // probes only this soon after physical input (injected input resets the idle timer)
 constexpr Seconds kHookRefresh = 5.0;        // while idle, the hooks are put back this often: a dropped hook never waits for a key
 constexpr double kDragThreshold = 20;
 constexpr double kHoldMoveCancel = 4;
@@ -203,7 +207,7 @@ bool InputThread::start(HWND mainWindow, UINT message) {
             raw_.setAnyMouse(anyMouse_);
             rawOk_ = raw_.registerOn(w);
             raw_.resolveAll();
-            installHooks();
+            installHooks("start");
             lastHookRefresh_ = now();
         }
         wnd_.store(w);
@@ -236,7 +240,8 @@ void InputThread::stop() {
     instance_ = nullptr;
 }
 
-bool InputThread::installHooks() {
+bool InputThread::installHooks(const char* why) {
+    const long long t0 = qpcTicks();
     removeHooks();
     HINSTANCE self = GetModuleHandleW(nullptr);
     DWORD err = 0;
@@ -244,6 +249,7 @@ bool InputThread::installHooks() {
     if (!mouseHook_) err = GetLastError();
     keyHook_ = SetWindowsHookExW(WH_KEYBOARD_LL, &InputThread::keyHook, self, 0);
     if (!keyHook_ && !err) err = GetLastError();
+    if (const double ms = msSince(t0); ms >= 20) debugLogSlow("hook install", ms);
     if (!mouseHook_ || !keyHook_) removeHooks();  // all or nothing: a half-installed pair would shape some events but not others
     mouseOk_ = mouseHook_ != nullptr;
     keyOk_ = keyHook_ != nullptr;
@@ -256,6 +262,14 @@ bool InputThread::installHooks() {
     gate_.hooksReinstalled();
     lastHookRefresh_ = now();
     reconcileLetters();  // events may have been missed while the hooks were away
+    probeKeyAt_ = probeMouseAt_ = 0;  // a probe in flight was for the hooks just removed
+    lastInstallAt_ = now();
+    lastInstallWhy_ = why;
+    if (std::strcmp(why, "refresh") != 0 || !(mouseHook_ && keyHook_)) {  // the routine refresh every few seconds says nothing new
+        char line[160];
+        std::snprintf(line, sizeof line, "hooks installed (%s)%s", why, (mouseHook_ && keyHook_) ? "" : " FAILED");
+        debugLog(line);
+    }
     return mouseHook_ && keyHook_;
 }
 
@@ -299,6 +313,7 @@ void InputThread::loop() {
         const Seconds t = now();
         if (holdArmed_) timeoutMs = static_cast<DWORD>(std::max(0.0, std::min(1.0, holdDeadline_ - t) * 1000));
         if (rawMouseUnanswered_ > 0 || rawKeyUnanswered_ > 0) timeoutMs = std::min<DWORD>(timeoutMs, 50);  // a report awaits its hook callback
+        if (t - static_cast<double>(lastPhysicalQpc_.load(std::memory_order_relaxed)) / qpcFreq_ < kProbeActivity) timeoutMs = std::min<DWORD>(timeoutMs, 50);  // probes due
         if (rehookAt_ > 0) timeoutMs = std::min(timeoutMs, static_cast<DWORD>(std::max(0.0, std::min(1.0, rehookAt_ - t) * 1000)));
         if (t >= nextMonitorRefresh_) {
             refreshMonitors();
@@ -306,11 +321,19 @@ void InputThread::loop() {
         }
         const DWORD r = MsgWaitForMultipleObjectsEx(2, waits, timeoutMs, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
         if (r == WAIT_OBJECT_0) break;
+        const long long awake = qpcTicks();
+        int served = 0;
         if (r == WAIT_OBJECT_0 + 1) tick(now());  // coast frame
         while (PeekMessageW(&m, nullptr, 0, 0, PM_REMOVE)) {
             if (m.message == WM_QUIT) return;
             TranslateMessage(&m);
             DispatchMessageW(&m);
+            ++served;
+        }
+        if (const double ms = msSince(awake); ms >= 50) {
+            char what[64];
+            std::snprintf(what, sizeof what, "loop iteration (%d messages, tick %s)", served, r == WAIT_OBJECT_0 + 1 ? "yes" : "no");
+            debugLogSlow(what, ms);
         }
         if (WaitForSingleObject(stopEvent_, 0) == WAIT_OBJECT_0) break;
         if (disableRequested_.exchange(false)) applyDisable();
@@ -321,6 +344,13 @@ void InputThread::loop() {
         if (holdArmed_ && now() >= holdDeadline_) fireHoldAction(now());
         flushMask();
         checkHookLiveness();
+        if (rehookNow_ && hookDepth_ == 0) {
+            rehookNow_ = false;
+            installHooks(rehookWhy_);
+            reinstalls_.fetch_add(1, std::memory_order_relaxed);
+            post({InputEvent::Kind::hooksReinstalled, 0, 8, static_cast<int>(installError_.load(std::memory_order_relaxed)), now()});
+        }
+        probeHooks(now());
         // While nothing is in flight, put the hooks back every few seconds: Windows drops them silently and tells
         // nobody, and a dropped hook must not wait for the next key to be found out.
         const Seconds t2 = now();
@@ -329,7 +359,7 @@ void InputThread::loop() {
         const Seconds sinceKey = t2 - static_cast<double>(lastKeyHookQpc_.load(std::memory_order_relaxed)) / qpcFreq_;
         const bool due = (t2 - lastHookRefresh_ >= kHookRefresh) || (rehookAt_ > 0 && t2 >= rehookAt_);
         if (due && sinceKey > 0.2 && gate_.idle(t2) && !leftDown_ && !holdArmed_ && !gestureActive_) {
-            installHooks();  // only with the keyboard quiet: a refresh voids the observation a report in flight still needs
+            installHooks(reinstallAsked_ ? "asked by main" : rehookAt_ > 0 ? "device change" : "refresh");  // only with the keyboard quiet: a refresh voids the observation a report in flight still needs
             rehookAt_ = 0;
             if (reinstallAsked_) {
                 reinstallAsked_ = false;
@@ -355,6 +385,7 @@ void InputThread::endGestureNow() noexcept {
 }
 
 void InputThread::refreshMonitors() noexcept {
+    const long long t0 = qpcTicks();
     monitorCount_ = 0;
     EnumDisplayMonitors(
         nullptr, nullptr,
@@ -364,6 +395,7 @@ void InputThread::refreshMonitors() noexcept {
             return TRUE;
         },
         reinterpret_cast<LPARAM>(this));
+    if (const double ms = msSince(t0); ms >= 20) debugLogSlow("monitor refresh", ms);
 }
 
 // MARK: the chord gate (the decisions live in core/chord_gate, replayed in tests; this is the plumbing)
@@ -391,14 +423,57 @@ void InputThread::flushMask() noexcept {
 
 // MARK: hook liveness
 
-void InputThread::noteRawForLiveness(bool mouse, Seconds at) noexcept {
+void InputThread::noteRawForLiveness(bool mouse, Seconds at, int vk, bool keyDown) noexcept {
     // Every physical report has a hook callback within a few microseconds of it: for the mouse the report is posted
     // first and the callback follows, for the keyboard the callback runs first and the report is generated after it
     // returns. A report with no callback near it starts a clock; checkHookLiveness() reads it.
+    const auto& lastHook = mouse ? lastMouseHookQpc_ : lastKeyHookQpc_;
+    const bool unseen = static_cast<double>(lastHook.load(std::memory_order_relaxed)) / qpcFreq_ < at - kHookTwinWindow;
+    if (unseen && !mouse && isChordKey(static_cast<DWORD>(vk))) {
+        // A chord key the keyboard hook did not see: Windows has it already and the letter may follow within
+        // milliseconds. The hooks go back at once, not after the answer window, and a Win make seen only this way
+        // gets its mask, since its break would open the Start menu.
+        const int idx = ChordGate::chordIndex(vk);
+        if (keyDown && (idx == kVkLWin || idx == kVkRWin)) maskPending_ = true;
+        rehookNow_ = true;
+        rehookWhy_ = "chord key unanswered";
+        return;
+    }
     Seconds& unanswered = mouse ? rawMouseUnanswered_ : rawKeyUnanswered_;
     if (unanswered > 0) return;
-    const auto& lastHook = mouse ? lastMouseHookQpc_ : lastKeyHookQpc_;
-    if (static_cast<double>(lastHook.load(std::memory_order_relaxed)) / qpcFreq_ < at - kHookTwinWindow) unanswered = at;
+    if (unseen) unanswered = at;
+}
+
+void InputThread::probeHooks(Seconds t) noexcept {
+    auto seenSince = [&](const std::atomic<std::int64_t>& last, Seconds sentAt) {
+        return static_cast<double>(last.load(std::memory_order_relaxed)) / qpcFreq_ >= sentAt;
+    };
+    bool keyDead = false, mouseDead = false;
+    if (probeKeyAt_ > 0 && t - probeKeyAt_ > kProbeAnswer) {
+        keyDead = !seenSince(lastKeyHookQpc_, probeKeyAt_);
+        probeKeyAt_ = 0;
+    }
+    if (probeMouseAt_ > 0 && t - probeMouseAt_ > kProbeAnswer) {
+        mouseDead = !seenSince(lastMouseHookQpc_, probeMouseAt_);
+        probeMouseAt_ = 0;
+    }
+    if (keyDead || mouseDead) {
+        installHooks(keyDead && mouseDead ? "mouse and keyboard probes unanswered" : keyDead ? "keyboard probe unanswered" : "mouse probe unanswered");
+        reinstalls_.fetch_add(1, std::memory_order_relaxed);
+        post({InputEvent::Kind::hooksReinstalled, 0, 4 | (mouseDead ? 1 : 0) | (keyDead ? 2 : 0), static_cast<int>(installError_.load(std::memory_order_relaxed)), t});
+        nextProbe_ = t + kProbeEvery;
+        return;
+    }
+    if (t < nextProbe_ || probeKeyAt_ > 0 || probeMouseAt_ > 0) return;
+    const Seconds sincePhysical = t - static_cast<double>(lastPhysicalQpc_.load(std::memory_order_relaxed)) / qpcFreq_;
+    const Seconds sinceKey = t - static_cast<double>(lastKeyHookQpc_.load(std::memory_order_relaxed)) / qpcFreq_;
+    if (sincePhysical > kProbeActivity || sinceKey < 0.1 || !gate_.idle(t) || gestureActive_ || holdArmed_ || leftDown_ || ringOpen_) {
+        nextProbe_ = t + 0.05;  // not now: look again shortly
+        return;
+    }
+    queueHookProbe();
+    probeKeyAt_ = probeMouseAt_ = t;
+    nextProbe_ = t + kProbeEvery;
 }
 
 void InputThread::checkHookLiveness() noexcept {
@@ -417,7 +492,15 @@ void InputThread::checkHookLiveness() noexcept {
     const bool keyDead = dead(rawKeyUnanswered_, lastKeyHookQpc_);
     if (!mouseDead && !keyDead) return;
     // Windows removed a hook (it does so silently when a callback, ours or one further down the chain, stalls).
-    installHooks();
+    {
+        char line[200];
+        const double sinceM = (t - static_cast<double>(lastMouseHookQpc_.load(std::memory_order_relaxed)) / qpcFreq_) * 1000;
+        const double sinceK = (t - static_cast<double>(lastKeyHookQpc_.load(std::memory_order_relaxed)) / qpcFreq_) * 1000;
+        std::snprintf(line, sizeof line, "hook dead (%s%s%s): last mouse callback %.0f ms ago, last keyboard callback %.0f ms ago, last install %.0f ms ago (%s)",
+                      mouseDead ? "mouse" : "", mouseDead && keyDead ? " and " : "", keyDead ? "keyboard" : "", sinceM, sinceK, (t - lastInstallAt_) * 1000, lastInstallWhy_);
+        debugLog(line);
+    }
+    installHooks(mouseDead && keyDead ? "mouse and keyboard reports unanswered" : mouseDead ? "mouse reports unanswered" : "keyboard reports unanswered");
     reinstalls_.fetch_add(1, std::memory_order_relaxed);
     post({InputEvent::Kind::hooksReinstalled, 0, (mouseDead ? 1 : 0) | (keyDead ? 2 : 0),
           static_cast<int>(installError_.load(std::memory_order_relaxed)), t});
@@ -478,7 +561,8 @@ void InputThread::onRaw(const RawEvent& e) noexcept {
     else rawMouse_.fetch_add(1, std::memory_order_relaxed);
     if (!e.injected) {
         (e.kind == RawKind::key ? physKeyboard_ : physMouse_).fetch_add(1, std::memory_order_relaxed);
-        noteRawForLiveness(e.kind != RawKind::key, t);
+        lastPhysicalQpc_.store(e.qpc, std::memory_order_relaxed);
+        noteRawForLiveness(e.kind != RawKind::key, t, e.vk, e.keyDown);
     }
     // Remember recent physical entries for the hooks' content matching, unless a hook already decided this one.
     if (!e.injected && (e.kind == RawKind::wheel || e.kind == RawKind::hwheel || e.kind == RawKind::key || e.kind == RawKind::button)) {
@@ -587,6 +671,7 @@ void InputThread::noteHookLag(DWORD eventTime) noexcept {
     // The struct's time is the 32-bit tick count: the low half of the 64-bit one, so the difference wraps correctly.
     const DWORD lag = static_cast<DWORD>(GetTickCount64()) - eventTime;
     if (lag < 60000) raiseMax(maxHookLagMs_, lag);
+    if (lag >= 100 && lag < 60000) debugLogSlow("hook event queueing (lag)", static_cast<double>(lag));
 }
 
 // MARK: hooks (system side)
@@ -836,15 +921,23 @@ bool InputThread::onKey(WPARAM msg, const KBDLLHOOKSTRUCT& k) noexcept {
     if (!isChordKey(k.vkCode)) return false;
     forgetStaleChord(t);
     const int idx = ChordGate::chordIndex(static_cast<int>(k.vkCode));
+    bool maskHere = false;
     if (!down && (idx == kVkLWin || idx == kVkRWin)) {
         // The Win make's report may still sit behind a burst of mouse reports; it is what arms the chord and asks
         // for the mask, and the mask must go before this release does.
         drainRawInput(1024);
-        if (maskPending_) flushMask();
+        maskHere = maskPending_;
+        maskPending_ = false;
     }
     const ChordGate::Decision d = gate_.hookKey(static_cast<int>(k.vkCode), down, static_cast<std::uint16_t>(k.scanCode), t, {cfg.swallowChords, cfg.enabled});
     postChord(d.out, t);
     post({InputEvent::Kind::rawKey, static_cast<std::uint8_t>(d.swallow ? 3 : 2), idx, down ? 1 : 0, t});
+    if (maskHere && !d.swallow) {
+        // This thread must not wait on SendInput (see send_input.h): the physical release is swallowed here and the
+        // injector sends the mask and then a release of its own, in that order, tagged so this hook lets them by.
+        queueMaskThenWinUp(static_cast<WORD>(k.vkCode), static_cast<WORD>(k.scanCode));
+        return true;
+    }
     return d.swallow;
 }
 

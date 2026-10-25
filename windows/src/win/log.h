@@ -24,5 +24,10 @@ private:
 void debugLog(std::string_view s);
 /// reports.log: summaries of the mouse's own button, key and vendor reports, never pointer motion.
 void reportLog(std::string_view s);
+/// debug.log: "slow: <what> took <ms> ms", at most four lines a second (the input thread calls this).
+void debugLogSlow(const char* what, double ms);
+/// Milliseconds since `qpc`, a QueryPerformanceCounter value.
+double msSince(long long qpc);
+long long qpcTicks();
 
 }  // namespace ixpat::win

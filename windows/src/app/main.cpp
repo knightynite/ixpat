@@ -713,8 +713,10 @@ void App::onInputEvents() {
                 break;
             case win::InputEvent::Kind::hooksReinstalled: {
                 const auto st = input_.status();
-                std::string why = e.b == 0 ? "asked by the watchdog" : std::string(e.b & 1 ? "mouse" : "") + ((e.b & 3) == 3 ? " and " : "") +
-                                                                       (e.b & 2 ? "keyboard" : "") + " reports went unanswered";
+                std::string why = e.b == 0 ? "asked by the watchdog"
+                                  : e.b & 8 ? "a chord key went unanswered"
+                                            : std::string(e.b & 1 ? "mouse" : "") + ((e.b & 3) == 3 ? " and " : "") + (e.b & 2 ? "keyboard" : "") +
+                                                  (e.b & 4 ? " probe went unanswered" : " reports went unanswered");
                 win::debugLog("hooks re-installed (" + why + "; " + std::to_string(st.hookReinstalls) + " so far; slowest callback " +
                               std::to_string(st.maxHookMicros) + " us, slowest chain " + std::to_string(st.maxChainMicros) + " us, longest lag " +
                               std::to_string(st.maxHookLagMs) + " ms" + (e.c ? ", SetWindowsHookEx error " + std::to_string(e.c) : std::string()) + ")");

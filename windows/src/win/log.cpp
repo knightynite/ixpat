@@ -55,4 +55,33 @@ void reportLog(std::string_view s) {
     log.write(s);
 }
 
+long long qpcTicks() {
+    LARGE_INTEGER c;
+    QueryPerformanceCounter(&c);
+    return c.QuadPart;
+}
+
+double msSince(long long qpc) {
+    static const double perMs = [] {
+        LARGE_INTEGER f;
+        QueryPerformanceFrequency(&f);
+        return static_cast<double>(f.QuadPart) / 1000.0;
+    }();
+    return static_cast<double>(qpcTicks() - qpc) / perMs;
+}
+
+void debugLogSlow(const char* what, double ms) {
+    static long long windowStart = 0;
+    static int inWindow = 0;
+    const long long now = qpcTicks();
+    if (msSince(windowStart) > 1000) {
+        windowStart = now;
+        inWindow = 0;
+    }
+    if (++inWindow > 4) return;
+    char line[160];
+    std::snprintf(line, sizeof line, "slow: %s took %.1f ms", what, ms);
+    debugLog(line);
+}
+
 }  // namespace ixpat::win

@@ -224,10 +224,7 @@ void queueHookProbe() {
     it.in[0].ki.wVk = 0xE8;
     it.in[0].ki.dwFlags = KEYEVENTF_KEYUP;
     it.in[0].ki.dwExtraInfo = kProbeTag;
-    it.in[1].type = INPUT_MOUSE;
-    it.in[1].mi.dwFlags = MOUSEEVENTF_MOVE | MOUSEEVENTF_MOVE_NOCOALESCE;  // a plain zero move never reached the hook here
-    it.in[1].mi.dwExtraInfo = kProbeTag;
-    it.n = 2;
+    it.n = 1;  // the keyboard only: the mouse hook has not been seen to die, and a zero move is invisible to it anyway
     it.kind = KeyInjector::Kind::probe;
     keys().queue(it);
 }

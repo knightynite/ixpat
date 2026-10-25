@@ -16,7 +16,8 @@ constexpr Seconds kRawMatchWindow = 0.05;
 constexpr Seconds kHookTwinWindow = 0.03;    // a report and its hook callback lie this close (keyboard: hook first; mouse: report first)
 constexpr Seconds kHookAnswerWindow = 0.05;       // a keyboard report still without its callback after this: the hook is gone (the callback comes first)
 constexpr Seconds kMouseAnswerWindow = 0.12;      // the mouse's callback follows its report, behind whatever hooks sit ahead of ours
-constexpr bool kProbesEnabled = false;    // the live log showed a fresh hook missing the next chord: no voluntary re-installs
+constexpr bool kProbesEnabled = true;     // keyboard only: that hook dies between presses with nothing of ours stalling; the mouse hook does not
+constexpr int kProbeStormLimit = 5;       // more probe re-installs than this in a minute: the verdicts are wrong, off for the session
 constexpr bool kIdleRefresh = false;      // same reason: the 5 s refresh preceded missed chords too
 constexpr Seconds kProbeEvery = 0.25;     // hook probes this often while the user is active
 constexpr Seconds kProbeAnswer = 0.15;    // a probe not seen by its hook within this: the hook is dead
@@ -497,8 +498,18 @@ void InputThread::probeHooks(Seconds t) noexcept {
             return ++misses >= 2;
         };
         const bool keyDead = judge(probeKeySeenQpc_, probeKeyMisses_, probeKeyUnseen_, probeKeyOff_, "keyboard");
-        const bool mouseDead = judge(probeMouseSeenQpc_, probeMouseMisses_, probeMouseUnseen_, probeMouseOff_, "mouse");
+        const bool mouseDead = false;  // not probed
         if ((keyDead || mouseDead) && t - lastProbeReinstall_ >= 2.0) {
+            // The circuit breaker: verdicts that keep coming are wrong verdicts.
+            if (t - probeStormStart_ > 60) {
+                probeStormStart_ = t;
+                probeStormCount_ = 0;
+            }
+            if (++probeStormCount_ > kProbeStormLimit) {
+                probeKeyOff_ = true;
+                debugLog("keyboard probe: more re-installs than a hook could need in a minute; its verdicts are off for this session");
+                return;
+            }
             lastProbeReinstall_ = t;
             probeKeyMisses_ = probeMouseMisses_ = 0;
             installHooks(keyDead && mouseDead ? "mouse and keyboard probes unanswered" : keyDead ? "keyboard probe unanswered" : "mouse probe unanswered");

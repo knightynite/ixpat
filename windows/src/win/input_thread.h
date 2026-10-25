@@ -220,6 +220,8 @@ private:
     int probeKeyMisses_ = 0, probeMouseMisses_ = 0, probeKeyUnseen_ = 0, probeMouseUnseen_ = 0;
     bool probeKeyOff_ = false, probeMouseOff_ = false;  // a probe kind the hook never sees on this system is not a verdict
     Seconds lastProbeReinstall_ = 0;
+    Seconds probeStormStart_ = 0;
+    int probeStormCount_ = 0;
     std::uint32_t maskWanted_ = 0;  // the sequence number of the mask last asked for (maskSentSequence() catches up)
     // The hooks' last physical (untagged) callbacks: what a physical report is matched against. The all-callback
     // stamps below include our own tagged events, which vouch for nothing about physical ones.

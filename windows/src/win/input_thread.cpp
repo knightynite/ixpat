@@ -448,16 +448,32 @@ void InputThread::probeHooks(Seconds t) noexcept {
     auto seenSince = [&](const std::atomic<std::int64_t>& last, Seconds sentAt) {
         return static_cast<double>(last.load(std::memory_order_relaxed)) / qpcFreq_ >= sentAt;
     };
-    bool keyDead = false, mouseDead = false;
-    if (probeKeyAt_ > 0 && t - probeKeyAt_ > kProbeAnswer) {
-        keyDead = !seenSince(lastKeyHookQpc_, probeKeyAt_);
-        probeKeyAt_ = 0;
-    }
-    if (probeMouseAt_ > 0 && t - probeMouseAt_ > kProbeAnswer) {
-        mouseDead = !seenSince(lastMouseHookQpc_, probeMouseAt_);
-        probeMouseAt_ = 0;
-    }
-    if (keyDead || mouseDead) {
+    // A miss is a verdict only for a probe kind the hook has seen at least once on this system (a plain zero mouse
+    // move, for one, never reached the hook), only on two misses in a row, and only every two seconds: a probe that
+    // is wrong must not turn into a re-install storm.
+    auto judge = [&](Seconds& sentAt, const std::atomic<std::int64_t>& lastHook, const std::atomic<bool>& everSeen, int& misses, int& unseen, bool& off,
+                     const char* kind) {
+        if (sentAt <= 0 || t - sentAt <= kProbeAnswer) return false;
+        const bool seen = seenSince(lastHook, sentAt);
+        sentAt = 0;
+        if (off) return false;
+        if (!everSeen.load(std::memory_order_relaxed)) {
+            if (++unseen >= 12) {
+                off = true;
+                char line[120];
+                std::snprintf(line, sizeof line, "%s probe is never visible to its hook on this system: not used as a verdict", kind);
+                debugLog(line);
+            }
+            return false;
+        }
+        misses = seen ? 0 : misses + 1;
+        return misses >= 2;
+    };
+    const bool keyDead = judge(probeKeyAt_, lastKeyHookQpc_, probeKeySeen_, probeKeyMisses_, probeKeyUnseen_, probeKeyOff_, "keyboard");
+    const bool mouseDead = judge(probeMouseAt_, lastMouseHookQpc_, probeMouseSeen_, probeMouseMisses_, probeMouseUnseen_, probeMouseOff_, "mouse");
+    if ((keyDead || mouseDead) && t - lastProbeReinstall_ >= 2.0) {
+        lastProbeReinstall_ = t;
+        probeKeyMisses_ = probeMouseMisses_ = 0;
         installHooks(keyDead && mouseDead ? "mouse and keyboard probes unanswered" : keyDead ? "keyboard probe unanswered" : "mouse probe unanswered");
         reinstalls_.fetch_add(1, std::memory_order_relaxed);
         post({InputEvent::Kind::hooksReinstalled, 0, 4 | (mouseDead ? 1 : 0) | (keyDead ? 2 : 0), static_cast<int>(installError_.load(std::memory_order_relaxed)), t});
@@ -720,6 +736,7 @@ LRESULT CALLBACK InputThread::keyHook(int code, WPARAM wp, LPARAM lp) noexcept {
 
 bool InputThread::onMouse(WPARAM msg, const MSLLHOOKSTRUCT& m) noexcept {
     const Seconds t = now();
+    if (m.dwExtraInfo == kProbeTag) probeMouseSeen_.store(true, std::memory_order_relaxed);
     if (isOurs(m.dwExtraInfo)) return false;  // our own synthesised event
     noteHookLag(m.time);
     drainRawInput(kDrainBudget);  // the mouse's reports are usually in already: the hook sees the device without waiting
@@ -904,6 +921,7 @@ bool InputThread::onMouse(WPARAM msg, const MSLLHOOKSTRUCT& m) noexcept {
 
 bool InputThread::onKey(WPARAM msg, const KBDLLHOOKSTRUCT& k) noexcept {
     const Seconds t = now();
+    if (k.dwExtraInfo == kProbeTag) probeKeySeen_.store(true, std::memory_order_relaxed);
     if (isOurs(k.dwExtraInfo)) return false;
     noteHookLag(k.time);
     const bool injected = (k.flags & LLKHF_INJECTED) != 0;

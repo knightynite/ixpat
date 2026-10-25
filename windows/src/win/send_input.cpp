@@ -139,10 +139,10 @@ void queueHookProbe() {
     b.in[0].type = INPUT_KEYBOARD;
     b.in[0].ki.wVk = 0xE8;
     b.in[0].ki.dwFlags = KEYEVENTF_KEYUP;
-    b.in[0].ki.dwExtraInfo = kOwnTag;
+    b.in[0].ki.dwExtraInfo = kProbeTag;
     b.in[1].type = INPUT_MOUSE;
-    b.in[1].mi.dwFlags = MOUSEEVENTF_MOVE;
-    b.in[1].mi.dwExtraInfo = kOwnTag;
+    b.in[1].mi.dwFlags = MOUSEEVENTF_MOVE | MOUSEEVENTF_MOVE_NOCOALESCE;  // a plain zero move never reached the hook here
+    b.in[1].mi.dwExtraInfo = kProbeTag;
     b.n = 2;
     injector().queueKeys(b);
 }

@@ -7,8 +7,9 @@
 namespace ixpat::win {
 
 /// Marks everything we synthesise (dwExtraInfo), so the hooks let it through untouched.
-constexpr ULONG_PTR kOwnTag = 0x49585054;  // "IXPT"
-inline bool isOurs(ULONG_PTR extraInfo) { return extraInfo == kOwnTag; }
+constexpr ULONG_PTR kOwnTag = 0x49585054;    // "IXPT"
+constexpr ULONG_PTR kProbeTag = 0x49585050;  // "IXPP": the hook probes, so the hooks can tell they saw one
+inline bool isOurs(ULONG_PTR extraInfo) { return extraInfo == kOwnTag || extraInfo == kProbeTag; }
 
 /// Pixels -> WHEEL_DELTA units with sub-unit carry, so apps that only scroll by lines still get the
 /// right total and apps with smooth scrolling get the fine stream.

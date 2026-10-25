@@ -213,6 +213,10 @@ private:
     // Hook probes: while the user is active, an event of our own goes through the hooks every quarter second; a
     // hook that does not see it is dead (removed by Windows, or starved by a newer hook that does not chain).
     Seconds nextProbe_ = 0, probeKeyAt_ = 0, probeMouseAt_ = 0;
+    std::atomic<bool> probeKeySeen_{false}, probeMouseSeen_{false};  // the hooks saw a probe of that kind at least once
+    int probeKeyMisses_ = 0, probeMouseMisses_ = 0, probeKeyUnseen_ = 0, probeMouseUnseen_ = 0;
+    bool probeKeyOff_ = false, probeMouseOff_ = false;  // a probe kind the hook never sees on this system is not a verdict
+    Seconds lastProbeReinstall_ = 0;
     std::atomic<std::int64_t> lastPhysicalQpc_{0};
     bool rehookNow_ = false;  // a chord key the keyboard hook did not see: put the hooks back before its letter lands
     const char* rehookWhy_ = "";

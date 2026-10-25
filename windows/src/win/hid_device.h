@@ -17,6 +17,7 @@ namespace ixpat::win {
 struct DeviceInfo {
     bool connected = false;
     std::string firmware = "-";  // "5.29"
+    std::wstring product;        // the device's product string ("Surface Mouse 2nd Edition")
     std::wstring path;           // the 0x0E collection's interface path
     std::optional<int> battery;  // percent, from the Bluetooth LE device
     std::vector<Waveform> table{measuredWaveforms().begin(), measuredWaveforms().end()};

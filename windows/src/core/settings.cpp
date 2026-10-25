@@ -248,7 +248,7 @@ std::string toJson(const Settings& s) {
         {"bridgePort", s.bridgePort},
         {"bridgeToken", s.bridgeToken},
         {"autoCheckUpdates", s.autoCheckUpdates},
-        {"windows", {{"holdAction", std::string(rawName(s.windows.holdAction))}, {"startAtLogin", s.windows.startAtLogin}}},
+        {"windows", {{"holdAction", std::string(rawName(s.windows.holdAction))}, {"startAtLogin", s.windows.startAtLogin}, {"showDiagnostics", s.windows.showDiagnostics}}},
     };
     return j.dump(2) + "\n";
 }
@@ -332,6 +332,7 @@ std::variant<Settings, ParseError> parseSettings(std::string_view text) {
             holdActionFromRaw(getOr(*it, "holdAction", std::string(rawName(s.windows.holdAction))))
                 .value_or(HoldAction::contextMenu);
         s.windows.startAtLogin = getOr(*it, "startAtLogin", s.windows.startAtLogin);
+        s.windows.showDiagnostics = getOr(*it, "showDiagnostics", s.windows.showDiagnostics);
     }
     sanitize(s);
     return s;

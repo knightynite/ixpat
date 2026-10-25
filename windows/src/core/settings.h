@@ -25,6 +25,7 @@ std::optional<HoldAction> holdActionFromRaw(std::string_view raw);
 struct WindowsSettings {
     HoldAction holdAction = HoldAction::contextMenu;
     bool startAtLogin = false;
+    bool showDiagnostics = false;  // the Diagnostics page is for finding faults, not for every day
     bool operator==(const WindowsSettings&) const = default;
 };
 

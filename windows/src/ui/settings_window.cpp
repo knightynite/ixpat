@@ -379,7 +379,9 @@ void SettingsWindow::navPane(Frame& f, float H0) {
     for (double start : pulseStarts_) s.pulseAges.push_back(static_cast<float>((now - start) / 1000.0));
     const Rect dev{12, 16, kNavW - 24, 150};
     drawSchematic(f, {dev.x, dev.y, dev.w, 104}, s);
-    f.drawText(L"Surface Mouse", {dev.x, dev.y + 108, dev.w, 20}, TextStyle::bodyMedium, pal.text, 1, DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, false);
+    // The device's own name when it says which it is; the full name otherwise.
+    const std::wstring name = model_.device.product.find(L"Edition") != std::wstring::npos ? model_.device.product : L"Surface Mouse (2nd Edition)";
+    f.drawText(name, {dev.x, dev.y + 108, dev.w, 20}, TextStyle::bodyMedium, pal.text, 1, DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, false);
     std::wstring state;
     if (!model_.device.connected) state = L"Not connected";
     else if (model_.device.battery) state = fmti(L"Connected, battery %d%%", *model_.device.battery);
@@ -395,7 +397,9 @@ void SettingsWindow::navPane(Frame& f, float H0) {
     static const Item items[] = {{0xE877, L"Haptics"},         {0xE7C9, L"Action button"},      {0xE895, L"Action Ring"},
                                  {0xE71D, L"Apps"},            {0xE962, L"Pointer and scroll"}, {0xE9D9, L"Diagnostics"}};
     f.begin({8, dev.bottom() + 16, kNavW - 16, 100000});
+    if (tab_ == 5 && !settings_.windows.showDiagnostics) tab_ = 0;  // the page was switched off while open
     for (int i = 0; i < 6; ++i) {
+        if (i == 5 && !settings_.windows.showDiagnostics) continue;  // Diagnostics: About has the switch for it
         if (f.navItem(idx("nav", i), items[i].glyph, items[i].title, tab_ == i)) tab_ = i;
     }
     // The foot: the master switch, then About.
@@ -994,13 +998,9 @@ void SettingsWindow::aboutPane(Frame& f) {
     f.space(8);
     f.drawText(L"Haptics, an Action Ring, kinetic scrolling and force click for the Microsoft Surface Mouse (2nd Edition) on Windows.",
                f.take(0, 40), TextStyle::body, pal.text, 1, DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_PARAGRAPH_ALIGNMENT_NEAR, true);
-    f.space(6);
-    f.drawText(L"Created by", f.take(0, 14), TextStyle::footnote, pal.text3.rgb, pal.text3.alpha, DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, false);
-    f.space(4);
+    f.space(10);
     f.beginRow(28);
-    f.setX(f.areaX() + cw / 2 - 150);
-    if (f.button("about/author", L"AL Najafi", false, true, 120) && actions_.openUrl) actions_.openUrl("https://www.linkedin.com/in/alnnajafi/");
-    f.gap(8);
+    f.setX(f.areaX() + cw / 2 - 108);
     if (f.button("about/mac", L"Mac app", false, true, 90) && actions_.openUrl) actions_.openUrl("https://github.com/knightynite/ixpat#install");
     f.gap(8);
     if (f.button("about/measure", L"Measurements", false, true, 118) && actions_.openUrl) actions_.openUrl("https://github.com/knightynite/ixpat/blob/main/windows/docs/measurements-2026-10.md");
@@ -1017,6 +1017,7 @@ void SettingsWindow::aboutPane(Frame& f) {
     f.space(12);
     f.beginCard(12, true);
     f.toggle("about/auto", settings_.autoCheckUpdates, L"Check for updates daily");
+    f.toggle("about/diag", settings_.windows.showDiagnostics, L"Show the Diagnostics page");
     f.beginRow(30);
     const std::wstring status = model_.updateStatus.empty() ? std::wstring() : W(model_.updateStatus);
     f.drawText(status, f.take(cw - 24 - 130 - 8 - 150 - 8, 30), TextStyle::detail, model_.updateAvailable ? pal.accent : pal.text2.rgb,

@@ -146,9 +146,12 @@ bool HidDevice::tryOpen() {
         featureLen_ = caps.FeatureReportByteLength;
         char fw[16];
         std::snprintf(fw, sizeof fw, "%X.%02X", a.VersionNumber >> 8, a.VersionNumber & 0xFF);
+        wchar_t product[128]{};
+        if (!HidD_GetProductString(h, product, sizeof product)) product[0] = 0;
         AcquireSRWLockExclusive(&lock_);
         info_.connected = true;
         info_.firmware = fw;
+        info_.product = product;
         info_.path = path;
         info_.lastError.clear();
         ReleaseSRWLockExclusive(&lock_);

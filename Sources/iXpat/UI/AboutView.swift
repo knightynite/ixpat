@@ -37,10 +37,6 @@ struct AboutView: View {
             Text("Haptics, an Action Ring, kinetic scrolling and force click for the Microsoft Surface Mouse (2nd Edition) on macOS.")
                 .font(.system(size: 12)).foregroundStyle(pal.text)
                 .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
-            VStack(spacing: 2) {
-                Text("Created by").font(.system(size: 10)).foregroundStyle(pal.text3)
-                Link("AL Najafi", destination: AboutLinks.author).font(.system(size: 13, weight: .semibold))
-            }
             HStack(spacing: 16) {
                 Link("Website", destination: AboutLinks.site)
                 Link("Source code", destination: AboutLinks.source)

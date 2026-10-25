@@ -532,8 +532,15 @@ void InputThread::checkHookLiveness() noexcept {
         unanswered = 0;
         return true;
     };
-    const bool mouseDead = dead(rawMouseUnanswered_, lastPhysMouseHookQpc_, kMouseAnswerWindow);
+    bool mouseDead = dead(rawMouseUnanswered_, lastPhysMouseHookQpc_, kMouseAnswerWindow);
     const bool keyDead = dead(rawKeyUnanswered_, lastPhysKeyHookQpc_, kHookAnswerWindow);
+    if (mouseDead) {
+        // A move report whose motion left the pointer where the last callback saw it produced no event Windows
+        // would hook (a slow move under the acceleration curve, a move while the pointer is held): no verdict.
+        POINT p{};
+        const std::int64_t last = lastHookPt_.load(std::memory_order_relaxed);
+        if (GetCursorPos(&p) && p.x == static_cast<LONG>(last >> 32) && p.y == static_cast<LONG>(static_cast<std::int32_t>(last & 0xFFFFFFFF))) mouseDead = false;
+    }
     if (!mouseDead && !keyDead) return;
     // Windows removed a hook (it does so silently when a callback, ours or one further down the chain, stalls).
     {
@@ -777,6 +784,7 @@ bool InputThread::onMouse(WPARAM msg, const MSLLHOOKSTRUCT& m) noexcept {
     }
     if (isOurs(m.dwExtraInfo)) return false;  // our own synthesised event
     lastPhysMouseHookQpc_.store(qpcNow(), std::memory_order_relaxed);
+    lastHookPt_.store((static_cast<std::int64_t>(m.pt.x) << 32) | static_cast<std::uint32_t>(m.pt.y), std::memory_order_relaxed);
     noteHookLag(m.time);
     drainRawInput(kDrainBudget);  // the mouse's reports are usually in already: the hook sees the device without waiting
     if (disableRequested_.exchange(false)) applyDisable();

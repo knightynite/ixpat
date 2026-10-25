@@ -237,6 +237,7 @@ private:
     // Liveness: the oldest physical report of each kind still waiting for a hook callback near it (0 = none).
     Seconds rawMouseUnanswered_ = 0, rawKeyUnanswered_ = 0;
     char unansweredWhat_[48] = "";  // the report that started the mouse clock, for the log
+    std::atomic<std::int64_t> lastHookPt_{0};  // the pointer position the last mouse callback carried (x in the high half)
 
     std::atomic<std::uint32_t> mouseCalls_{0}, keyCalls_{0}, rawMouse_{0}, rawKeyboard_{0}, physMouse_{0}, physKeyboard_{0};
     std::atomic<bool> rawOk_{false}, mouseOk_{false}, keyOk_{false};

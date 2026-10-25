@@ -221,7 +221,7 @@
         .stage-art img {
             position: relative; z-index: 1; width: 100%;
             filter: drop-shadow(0 40px 60px rgba(0, 0, 0, 0.65)) drop-shadow(0 0 40px rgba(10, 132, 255, 0.18));
-            animation: hover 8s ease-in-out infinite;
+            animation: none;
         }
         .callout {
             position: absolute; z-index: 2; display: flex; flex-direction: column; gap: 2px;
@@ -294,12 +294,12 @@
         .card-mouse { min-height: 440px; }
         .card-mouse .art { position: absolute; right: 24px; bottom: -40px; width: 230px; pointer-events: none; -webkit-mask-image: linear-gradient(180deg, #000 70%, transparent 100%); mask-image: linear-gradient(180deg, #000 70%, transparent 100%); }
         .card-ring { min-height: 440px; }
-        .card-ring .art { position: absolute; right: -50px; bottom: -90px; width: 330px; pointer-events: none; filter: drop-shadow(0 20px 40px rgba(0, 0, 0, 0.6)); animation: spin 60s linear infinite; }
+        .card-ring .art { position: absolute; right: -50px; bottom: -90px; width: 330px; pointer-events: none; filter: drop-shadow(0 20px 40px rgba(0, 0, 0, 0.6)); animation: none; }
         @keyframes spin { to { transform: rotate(360deg); } }
         .card-mouse p, .card-ring p { max-width: 100%; }
         .card-mouse h3, .card-mouse p { position: relative; z-index: 1; padding-right: 0; }
         .card-ring h3, .card-ring p { position: relative; z-index: 1; }
-        .pulse { position: absolute; left: 50%; top: 50%; width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid rgba(10, 132, 255, 0.7); transform: translate(-50%, -50%); animation: ripple 2.8s ease-out infinite; }
+        .pulse { position: absolute; left: 50%; top: 50%; width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid rgba(10, 132, 255, 0.7); transform: translate(-50%, -50%); animation: none; }
         .pulse:nth-child(2) { animation-delay: 0.9s; }
         .pulse:nth-child(3) { animation-delay: 1.8s; }
         @keyframes ripple { from { width: 20px; height: 20px; opacity: 0.9; } to { width: 360px; height: 360px; opacity: 0; } }
@@ -381,6 +381,14 @@
             max-width: 100%;
         }
         .code code { color: var(--text); white-space: nowrap; overflow-x: auto; }
+        .platforms { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin: 26px 0 18px; text-align: left; }
+        .platform { padding: 26px 24px 22px; border-radius: 18px; background: rgba(0, 0, 0, 0.28); border: 1px solid var(--card-border); display: flex; flex-direction: column; gap: 12px; }
+        .platform h3 { margin: 0; font-size: 1.15rem; letter-spacing: -0.01em; }
+        .platform p { margin: 0; font-size: 0.92rem; color: var(--text-2); line-height: 1.5; flex: 1; }
+        .platform .btn { align-self: flex-start; }
+        .platform .meta { margin: 0; }
+        .platform .code { margin: 4px 0 0; align-self: stretch; }
+        @media (max-width: 720px) { .platforms { grid-template-columns: 1fr; } }
         .codes { display: flex; flex-direction: column; align-items: center; gap: 0; }
         .codes .code { margin-top: 10px; }
         .codes .code:first-child { margin-top: 22px; }
@@ -391,8 +399,7 @@
         footer a:hover { color: var(--text); }
 
         /* Reveal */
-        .reveal { opacity: 0; transform: translateY(22px); transition: opacity 0.7s ease, transform 0.7s ease; }
-        .reveal.in { opacity: 1; transform: none; }
+        .reveal { opacity: 1; transform: none; }
         @media (prefers-reduced-motion: reduce) {
             .reveal { opacity: 1; transform: none; transition: none; }
             .card-ring .art, .pulse { animation: none; }
@@ -469,13 +476,13 @@
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                     Download for macOS
                 </a>
-                <a class="btn btn-ghost" href="#windows">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
-                    Windows
+                <a class="btn btn-primary" href="https://github.com/knightynite/ixpat/releases/download/win-v0.2.7/iXpat-Setup-0.2.7-x64.exe">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Download for Windows
                 </a>
                 <a class="btn btn-ghost" href="https://github.com/knightynite/ixpat" target="_blank" rel="noopener">View on GitHub</a>
             </div>
-            <div class="meta"><b>v0.1.1</b> · macOS 14 or later · Apple Silicon and Intel · Free and open source · 2.9 MB &nbsp;·&nbsp; <b>Windows 0.2.7</b> · Windows 10/11 · x64 and ARM64</div>
+            <div class="meta">Free and open source · macOS 14 or later (v0.1.1, 2.9 MB) · Windows 10 and 11 (0.2.7, x64 and ARM64)</div>
         </div>
         <div class="wrap">
             <div class="stage-art reveal">
@@ -800,26 +807,27 @@
 
     <section id="download" style="padding-top: 0;">
         <div class="wrap">
-            <div class="download reveal">
+            <div class="download">
                 <svg class="mark" aria-hidden="true"><use href="#mark"/></svg>
                 <h2>Get iXpat</h2>
-                <p>Free, open source, for macOS 14 and later on Apple Silicon and Intel Macs.<br>Open the DMG, drag to Applications, launch from the menu bar.<br>On Windows 10/11 (x64 and ARM64): one unzipped <code>iXpat.exe</code> or a per-user installer, no driver, no elevation.</p>
-                <div class="actions">
-                    <a class="btn btn-primary" href="https://github.com/knightynite/ixpat/releases/latest">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                        Download for macOS
-                    </a>
-                    <a class="btn btn-ghost" href="https://github.com/knightynite/ixpat/releases/download/win-v0.2.7/iXpat-Setup-0.2.7-x64.exe">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
-                        Download for Windows
-                    </a>
-                    <a class="btn btn-ghost" href="https://github.com/knightynite/ixpat/releases">All releases</a>
+                <p>Free and open source on both platforms. The same haptics, Action Ring, scrolling and settings file.</p>
+                <div class="platforms">
+                    <div class="platform">
+                        <h3>macOS</h3>
+                        <p>macOS 14 or later, Apple Silicon and Intel. Open the DMG, drag to Applications, launch from the menu bar.</p>
+                        <a class="btn btn-primary" href="https://github.com/knightynite/ixpat/releases/latest"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Download for macOS</a>
+                        <div class="meta">v0.1.1 · 2.9 MB · <a href="https://github.com/knightynite/ixpat/releases/latest">release page</a></div>
+                        <div class="code"><span>$</span><code>brew install knightynite/ixpat/ixpat</code></div>
+                    </div>
+                    <div class="platform">
+                        <h3>Windows</h3>
+                        <p>Windows 10 and 11, x64 and ARM64. A per-user installer or one unzipped <code>iXpat.exe</code>; no driver, no elevation.</p>
+                        <a class="btn btn-primary" href="https://github.com/knightynite/ixpat/releases/download/win-v0.2.7/iXpat-Setup-0.2.7-x64.exe"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Download for Windows</a>
+                        <div class="meta">0.2.7 · installer 2.5 MB · <a href="https://github.com/knightynite/ixpat/releases/download/win-v0.2.7/iXpat-0.2.7-windows-x64.zip">x64 zip</a> · <a href="https://github.com/knightynite/ixpat/releases/download/win-v0.2.7/iXpat-0.2.7-windows-arm64.zip">ARM64 zip</a> · <a href="https://github.com/knightynite/ixpat/releases/tag/win-v0.2.7">release page</a></div>
+                        <div class="code"><span>&gt;</span><code>windows\build.ps1 -Preset x64-release</code></div>
+                    </div>
                 </div>
-                <div class="meta"><b>macOS v0.1.1</b> · 2.9 MB &nbsp;·&nbsp; <b>Windows 0.2.7</b> · installer, 2.5 MB · zips for x64 and ARM64 on the <a href="https://github.com/knightynite/ixpat/releases/tag/win-v0.2.7">release page</a></div>
-                <div class="codes">
-                    <div class="code"><span>$</span><code>brew install knightynite/ixpat/ixpat</code></div>
-                    <div class="code"><span>$</span><code>git clone https://github.com/knightynite/ixpat.git && cd ixpat && ./build.sh</code></div>
-                </div>
+                <div class="meta"><a href="https://github.com/knightynite/ixpat/releases">All releases</a> · <a href="https://github.com/knightynite/ixpat">Source on GitHub</a></div>
             </div>
         </div>
     </section>
@@ -836,15 +844,5 @@
         </div>
     </footer>
 
-    <script>
-        (function () {
-            var els = document.querySelectorAll('.reveal');
-            if (!('IntersectionObserver' in window)) { els.forEach(function (e) { e.classList.add('in'); }); return; }
-            var io = new IntersectionObserver(function (entries) {
-                entries.forEach(function (en) { if (en.isIntersecting) { en.target.classList.add('in'); io.unobserve(en.target); } });
-            }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
-            els.forEach(function (e) { io.observe(e); });
-        })();
-    </script>
 </body>
 </html>

@@ -134,8 +134,9 @@ struct KeyInjector {
                     if (sent != it.n) self->failures.fetch_add(1, std::memory_order_relaxed);
                     break;
                 case Kind::probe:
+                    // The hooks see the probe during the SendInput call: the reference time is the call's start.
                     self->probeOk.store(sent == it.n, std::memory_order_relaxed);
-                    self->probeSentQpc.store(qpcTicks(), std::memory_order_release);
+                    self->probeSentQpc.store(t0, std::memory_order_release);
                     break;
             }
         }

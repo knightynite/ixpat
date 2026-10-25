@@ -14,7 +14,10 @@ constexpr Seconds kSwallowReleaseWindow = 1.5;  // a swallowed press hides its r
 constexpr Seconds kOtherDeviceQuiet = 2.0;      // another device acted recently: do not claim unmatched events
 constexpr Seconds kRawMatchWindow = 0.05;
 constexpr Seconds kHookTwinWindow = 0.03;    // a report and its hook callback lie this close (keyboard: hook first; mouse: report first)
-constexpr Seconds kHookAnswerWindow = 0.05;  // a physical report still without a hook callback after this: Windows dropped the hook
+constexpr Seconds kHookAnswerWindow = 0.05;       // a keyboard report still without its callback after this: the hook is gone (the callback comes first)
+constexpr Seconds kMouseAnswerWindow = 0.25;      // the mouse's callback follows its report, behind whatever hooks sit ahead of ours
+constexpr bool kProbesEnabled = false;    // the live log showed a fresh hook missing the next chord: no voluntary re-installs
+constexpr bool kIdleRefresh = false;      // same reason: the 5 s refresh preceded missed chords too
 constexpr Seconds kProbeEvery = 0.25;     // hook probes this often while the user is active
 constexpr Seconds kProbeAnswer = 0.15;    // a probe not seen by its hook within this: the hook is dead
 constexpr Seconds kProbeActivity = 3.0;   // probes only this soon after physical input (injected input resets the idle timer)
@@ -357,7 +360,7 @@ void InputThread::loop() {
         forgetStaleChord(t2);  // a chord whose breaks never came goes quiet here too, not only on the next key
         reconcileLetters();
         const Seconds sinceKey = t2 - static_cast<double>(lastKeyHookQpc_.load(std::memory_order_relaxed)) / qpcFreq_;
-        const bool due = (t2 - lastHookRefresh_ >= kHookRefresh) || (rehookAt_ > 0 && t2 >= rehookAt_);
+        const bool due = (kIdleRefresh && t2 - lastHookRefresh_ >= kHookRefresh) || (rehookAt_ > 0 && t2 >= rehookAt_);
         if (due && sinceKey > 0.2 && gate_.idle(t2) && !leftDown_ && !holdArmed_ && !gestureActive_) {
             installHooks(reinstallAsked_ ? "asked by main" : rehookAt_ > 0 ? "device change" : "refresh");  // only with the keyboard quiet: a refresh voids the observation a report in flight still needs
             rehookAt_ = 0;
@@ -448,10 +451,14 @@ void InputThread::noteRawForLiveness(bool mouse, Seconds at, int vk, bool keyDow
     }
     Seconds& unanswered = mouse ? rawMouseUnanswered_ : rawKeyUnanswered_;
     if (unanswered > 0) return;
-    if (unseen) unanswered = at;
+    if (unseen) {
+        unanswered = at;
+        if (mouse) std::snprintf(unansweredWhat_, sizeof unansweredWhat_, "vk %d down %d", vk, keyDown ? 1 : 0);
+    }
 }
 
 void InputThread::probeHooks(Seconds t) noexcept {
+    if (!kProbesEnabled) return;
     if (probeQueuedAt_ > 0) {
         // The probe counts from the moment the key thread sent it, not from the moment it was queued: a slow send
         // ahead of it is not a dead hook. One that never went out within a second is forgotten.
@@ -515,26 +522,26 @@ void InputThread::probeHooks(Seconds t) noexcept {
 
 void InputThread::checkHookLiveness() noexcept {
     const Seconds t = now();
-    auto dead = [&](Seconds& unanswered, const std::atomic<std::int64_t>& lastHook) {
+    auto dead = [&](Seconds& unanswered, const std::atomic<std::int64_t>& lastHook, Seconds window) {
         if (unanswered <= 0) return false;
         if (static_cast<double>(lastHook.load(std::memory_order_relaxed)) / qpcFreq_ >= unanswered - kHookTwinWindow) {
             unanswered = 0;  // its callback came (the mouse hook's a moment after the report)
             return false;
         }
-        if (t - unanswered < kHookAnswerWindow) return false;
+        if (t - unanswered < window) return false;
         unanswered = 0;
         return true;
     };
-    const bool mouseDead = dead(rawMouseUnanswered_, lastPhysMouseHookQpc_);
-    const bool keyDead = dead(rawKeyUnanswered_, lastPhysKeyHookQpc_);
+    const bool mouseDead = dead(rawMouseUnanswered_, lastPhysMouseHookQpc_, kMouseAnswerWindow);
+    const bool keyDead = dead(rawKeyUnanswered_, lastPhysKeyHookQpc_, kHookAnswerWindow);
     if (!mouseDead && !keyDead) return;
     // Windows removed a hook (it does so silently when a callback, ours or one further down the chain, stalls).
     {
         char line[200];
         const double sinceM = (t - static_cast<double>(lastMouseHookQpc_.load(std::memory_order_relaxed)) / qpcFreq_) * 1000;
         const double sinceK = (t - static_cast<double>(lastKeyHookQpc_.load(std::memory_order_relaxed)) / qpcFreq_) * 1000;
-        std::snprintf(line, sizeof line, "hook dead (%s%s%s): last mouse callback %.0f ms ago, last keyboard callback %.0f ms ago, last install %.0f ms ago (%s)",
-                      mouseDead ? "mouse" : "", mouseDead && keyDead ? " and " : "", keyDead ? "keyboard" : "", sinceM, sinceK, (t - lastInstallAt_) * 1000, lastInstallWhy_);
+        std::snprintf(line, sizeof line, "hook dead (%s%s%s): last mouse callback %.0f ms ago, last keyboard callback %.0f ms ago, last install %.0f ms ago (%s); first unanswered: %s",
+                      mouseDead ? "mouse" : "", mouseDead && keyDead ? " and " : "", keyDead ? "keyboard" : "", sinceM, sinceK, (t - lastInstallAt_) * 1000, lastInstallWhy_, unansweredWhat_);
         debugLog(line);
     }
     installHooks(mouseDead && keyDead ? "mouse and keyboard reports unanswered" : mouseDead ? "mouse reports unanswered" : "keyboard reports unanswered");
@@ -599,7 +606,14 @@ void InputThread::onRaw(const RawEvent& e) noexcept {
     if (!e.injected) {
         (e.kind == RawKind::key ? physKeyboard_ : physMouse_).fetch_add(1, std::memory_order_relaxed);
         lastPhysicalQpc_.store(e.qpc, std::memory_order_relaxed);
-        noteRawForLiveness(e.kind != RawKind::key, t, e.vk, e.keyDown, e.surfaceMouse);
+        // Only a report that Windows turns into an input event has a hook callback to answer it: a move of zero, a
+        // button report with no change, a wheel of zero, a consumer or vendor report, an overrun key do not.
+        const bool makesEvent = (e.kind == RawKind::move && (e.dx || e.dy)) || (e.kind == RawKind::button && e.buttonFlags) ||
+                                ((e.kind == RawKind::wheel || e.kind == RawKind::hwheel) && e.wheel) || (e.kind == RawKind::key && e.vk != 0 && e.vk != 0xFF);
+        if (makesEvent) {
+            const int shape = e.kind == RawKind::key ? e.vk : e.kind == RawKind::move ? 1000 + std::abs(e.dx) + std::abs(e.dy) : e.kind == RawKind::button ? 2000 + e.buttonFlags : 3000 + e.wheel;
+            noteRawForLiveness(e.kind != RawKind::key, t, shape, e.kind == RawKind::key ? e.keyDown : e.surfaceMouse, e.surfaceMouse);
+        }
     }
     // Remember recent physical entries for the hooks' content matching, unless a hook already decided this one.
     if (!e.injected && (e.kind == RawKind::wheel || e.kind == RawKind::hwheel || e.kind == RawKind::key || e.kind == RawKind::button)) {

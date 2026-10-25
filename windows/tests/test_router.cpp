@@ -140,7 +140,7 @@ TEST_CASE("router: a press plays actionButton and runs the mapped action; the ri
 TEST_CASE("router: a hold with gesturesOnHold defers its action and starts gesture mode") {
     Rig g;  // default hold = screenshot
     g.r->chord(ChordOutput::holdBegin, 1.0);
-    CHECK(g.count(HapticEvent::actionButton) == 1);
+    CHECK(g.count(HapticEvent::actionHold) == 1);  // the hold has a feel of its own
     CHECK(g.gesturesBegin == 1);
     CHECK(g.ran.empty());
     g.r->chord(ChordOutput::holdEnd, 2.0);  // no movement: the hold's own action runs

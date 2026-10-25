@@ -10,7 +10,7 @@ namespace ixpat {
 /// the raw names are the keys in settings.json, so they never change.
 enum class HapticEvent : std::uint8_t {
     leftDown, leftUp, rightDown, rightUp, middleDown,
-    scrollStep, screenEdge, dragEnd, windowSnap, appSwitch, actionButton,
+    scrollStep, screenEdge, dragEnd, windowSnap, appSwitch, actionButton, actionDoublePress, actionHold, actionHoldEnd,
     menuHighlight, textSelect, textLine, ringDetent, ringOpen, ringCommit, freeSpinOn, freeSpinOff,
     leftHold, rightHold, freeSpinTexture, gestureStep, gestureLimit, gestureSwipe,
     controlHover, hoverAffordance, dropTarget, sliderTick, selectionChange, scrollEnd, pluginPulse,

@@ -110,7 +110,9 @@ void Router::chord(ChordOutput out, Seconds now) {
 
 void Router::onGesture(ButtonGesture g, Seconds) {
     if (!s_.enabled) return;
-    k_.play(HapticEvent::actionButton, std::nullopt, 0);
+    // Each answer of the button has a feel of its own.
+    k_.play(g == ButtonGesture::doublePress ? HapticEvent::actionDoublePress : g == ButtonGesture::hold ? HapticEvent::actionHold : HapticEvent::actionButton,
+            std::nullopt, 0);
     const ButtonAction& a = s_.action(g);
     // A hold starts gesture mode (unless it drives the ring, which needs the pointer); its own action
     // waits for the release and runs only when the mouse stayed put.
@@ -151,6 +153,7 @@ void Router::run(const ButtonAction& a, bool hold) {
 }
 
 void Router::holdEnded(Seconds) {
+    if (s_.enabled) k_.play(HapticEvent::actionHoldEnd, std::nullopt, 0);
     if (k_.ringHoldEnded) k_.ringHoldEnded();
     const bool gestured = gestureFired_ > 0;
     if (gestureActive_ && k_.gesturesEnd) k_.gesturesEnd();

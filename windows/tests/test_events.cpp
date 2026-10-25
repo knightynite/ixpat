@@ -23,10 +23,10 @@ TEST_CASE("events: raw names round-trip and match Swift") {
 }
 
 TEST_CASE("events: there are 33 events, in Swift's declaration order") {
-    CHECK(ixpat::kHapticEventCount == 33);
+    CHECK(ixpat::kHapticEventCount == 36);
     CHECK(static_cast<int>(HapticEvent::leftDown) == 0);
     CHECK(static_cast<int>(HapticEvent::scrollStep) == 5);
-    CHECK(static_cast<int>(HapticEvent::forceClick) == 32);
+    CHECK(static_cast<int>(HapticEvent::forceClick) == 35);  // three action-button answers were added after actionButton
 }
 
 TEST_CASE("events: titles match Settings.swift") {
@@ -43,8 +43,12 @@ TEST_CASE("events: defaults match Settings.swift") {
     CHECK(ixpat::defaultRule(HapticEvent::screenEdge) == HapticRule{true, 4, 3, std::nullopt});
     // Two deliberate departures from the Mac's defaults, asked for on the real mouse: the action button is a crisp
     // tap with a lighter second one instead of a single strong buzz, and the ratchet's re-engage hum is off.
-    CHECK(ixpat::defaultRule(HapticEvent::actionButton) == HapticRule{true, 10, 3, ixpat::HapticEcho{10, 2, 65}});
+    CHECK(ixpat::defaultRule(HapticEvent::actionButton) == HapticRule{true, 10, 3, ixpat::HapticEcho{10, 3, 120}});
     CHECK(ixpat::defaultRule(HapticEvent::freeSpinOff) == HapticRule{false, 5, 2, std::nullopt});
+    // Windows only: the double press and the hold answer with feels of their own.
+    CHECK(ixpat::defaultRule(HapticEvent::actionDoublePress) == HapticRule{true, 4, 2, ixpat::HapticEcho{10, 4, 90}});
+    CHECK(ixpat::defaultRule(HapticEvent::actionHold) == HapticRule{true, 7, 3, std::nullopt});
+    CHECK(ixpat::defaultRule(HapticEvent::actionHoldEnd) == HapticRule{true, 3, 2, std::nullopt});
     CHECK(ixpat::defaultRule(HapticEvent::textSelect) == HapticRule{true, 3, 1, std::nullopt});
     CHECK(ixpat::defaultRule(HapticEvent::leftHold) == HapticRule{false, 7, 2, std::nullopt});
     CHECK(ixpat::defaultRule(HapticEvent::hoverAffordance) == HapticRule{false, 3, 1, std::nullopt});

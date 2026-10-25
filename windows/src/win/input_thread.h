@@ -49,7 +49,9 @@ struct InputEvent {
         dragEnded,     // b = x, c = y of the release (snap check follows on main)
         pointerOwner,  // b = 1 the Surface Mouse moved the pointer last, 0 another device did
         overflow,      // the ring buffer overflowed: main re-synchronises gesture / hold state
-        hooksReinstalled,  // b = why (0 asked by main, bit 0 mouse reports unanswered, bit 1 keyboard), c = SetWindowsHookEx error (0 = none)
+        hooksReinstalled,  // b = why: 0 asked by main; bit 0 mouse, bit 1 keyboard; bit 2 a probe went unanswered (else reports did);
+                           // 8 a chord key went unanswered. c = SetWindowsHookEx error (0 = none)
+        slowPath,      // a = what (1 hook event queueing, 2 loop iteration, 3 hook install, 4 monitor refresh), b = milliseconds
     };
     Kind kind;
     std::uint8_t a = 0;
@@ -130,7 +132,7 @@ private:
     void noteHookTime(Seconds start) noexcept;
     void noteChainTime(Seconds start) noexcept;
     void noteHookLag(DWORD eventTime) noexcept;
-    void noteRawForLiveness(bool mouse, Seconds at, int vk, bool keyDown) noexcept;
+    void noteRawForLiveness(bool mouse, Seconds at, int vk, bool keyDown, bool fromMouse) noexcept;
     void probeHooks(Seconds t) noexcept;
     void checkHookLiveness() noexcept;
     InputConfig config() const noexcept;
@@ -212,11 +214,16 @@ private:
     int hookDepth_ = 0;
     // Hook probes: while the user is active, an event of our own goes through the hooks every quarter second; a
     // hook that does not see it is dead (removed by Windows, or starved by a newer hook that does not chain).
-    Seconds nextProbe_ = 0, probeKeyAt_ = 0, probeMouseAt_ = 0;
-    std::atomic<bool> probeKeySeen_{false}, probeMouseSeen_{false};  // the hooks saw a probe of that kind at least once
+    Seconds nextProbe_ = 0, probeQueuedAt_ = 0;  // one probe at a time; 0 = none outstanding
+    long long probeJudgedSentQpc_ = 0;           // sends up to here were judged (or belong to hooks since removed)
+    std::atomic<std::int64_t> probeKeySeenQpc_{0}, probeMouseSeenQpc_{0};  // the hooks' last sight of a probe (0 = never)
     int probeKeyMisses_ = 0, probeMouseMisses_ = 0, probeKeyUnseen_ = 0, probeMouseUnseen_ = 0;
     bool probeKeyOff_ = false, probeMouseOff_ = false;  // a probe kind the hook never sees on this system is not a verdict
     Seconds lastProbeReinstall_ = 0;
+    std::uint32_t maskWanted_ = 0;  // the sequence number of the mask last asked for (maskSentSequence() catches up)
+    // The hooks' last physical (untagged) callbacks: what a physical report is matched against. The all-callback
+    // stamps below include our own tagged events, which vouch for nothing about physical ones.
+    std::atomic<std::int64_t> lastPhysMouseHookQpc_{0}, lastPhysKeyHookQpc_{0};
     std::atomic<std::int64_t> lastPhysicalQpc_{0};
     bool rehookNow_ = false;  // a chord key the keyboard hook did not see: put the hooks back before its letter lands
     const char* rehookWhy_ = "";

@@ -71,8 +71,8 @@ double msSince(long long qpc) {
 }
 
 void debugLogSlow(const char* what, double ms) {
-    static long long windowStart = 0;
-    static int inWindow = 0;
+    thread_local long long windowStart = 0;  // per thread: the input and injector threads both call this
+    thread_local int inWindow = 0;
     const long long now = qpcTicks();
     if (msSince(windowStart) > 1000) {
         windowStart = now;

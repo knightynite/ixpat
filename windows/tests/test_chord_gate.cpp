@@ -66,6 +66,25 @@ TEST_CASE("gate: the press as the firmware sends it fires once, hides only its l
     CHECK_FALSE(r.g.decoder().swallowLeftClick(1.1));  // a press hides no click
 }
 
+TEST_CASE("gate: a Win release the hook saw but Raw Input never reports (we swallowed it and sent our own) leaves nothing owed") {
+    Rig r;
+    CHECK(r.modifier(kVkLShift, kVkShift, kScanShift, true, 1.000));
+    CHECK(r.modifier(kVkLWin, kVkLWin, kScanWin, true, 1.002));
+    CHECK(r.letter(kVkS, kScanS, true, 1.004).out == O::press);
+    CHECK(r.modifier(kVkLShift, kVkShift, kScanShift, false, 1.020));
+    const auto up = r.g.hookKey(kVkLWin, false, kScanWin, 1.022, r.cfg);  // the gate says pass; the plumbing swallowed it
+    r.take(up);
+    CHECK_FALSE(up.swallow);
+    r.take(r.g.rawKey(kVkLWin, false, kScanWin, true, 1.022, r.cfg));  // ...and hands the gate the report Windows will never make
+    CHECK(r.letter(kVkS, kScanS, false, 1.024).swallow);
+    CHECK(r.outs == std::vector<O>{O::press});
+    CHECK(r.g.idle(1.5));
+    // and the next press is a press again
+    CHECK(r.modifier(kVkLShift, kVkShift, kScanShift, true, 2.000));
+    CHECK(r.modifier(kVkLWin, kVkLWin, kScanWin, true, 2.002));
+    CHECK(r.letter(kVkS, kScanS, true, 2.004).out == O::press);
+}
+
 TEST_CASE("gate: with the keyboard hook gone, the chord's reports arrive unvouched and nothing fires") {
     Rig r;
     // 06:22:43 in the log: Raw Input saw Shift, Win, then their breaks and an S break; the hook saw nothing.

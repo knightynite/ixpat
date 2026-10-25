@@ -109,16 +109,19 @@ Exactly the split the Mac app has (IOHID reports vs. the CGEvent tap):
   hook thread was busy. With the injection on the hook thread those waits were the stalls that made Windows
   drop our hooks (it allows a hook 300 ms) and the chopped scrolling that came with them: raw notches reached
   the page while the hook was gone, shaped frames when it was back. Wheel units queued while the injector is
-  busy coalesce (the distance survives, no stale frames pile up); keyboard batches keep their order, so the
-  mask key always precedes the Win release it masks (the physical release is swallowed and a tagged one sent
-  behind the mask).
+  busy coalesce (the distance survives, no stale frames pile up); a key thread of its own keeps keyboard batches in
+  order and retries a refused send. The Start-menu mask is queued the moment the chord's Win make is
+  recognised (anywhere between make and break will do) and the physical release passes untouched; only when
+  the mask has not left yet is the release swallowed, a tagged one queued behind the mask, and the gate handed
+  the report Windows will never make for it. With no injector thread at all nothing is shaped: fail open.
 - **Hook hygiene.** Hook procedures are `noexcept`, allocate nothing, take one uncontended lock at most,
   and post work to other threads. Windows removes a hook whose callback exceeds `LowLevelHooksTimeout`
   (300 ms default); the input thread runs at `THREAD_PRIORITY_TIME_CRITICAL` and does nothing else.
   Hooks also die with no stall at all: a program that re-installs its own hooks moves ahead of ours in the
   chain, and if it does not chain, ours is starved. Two defences see that within a quarter second: while the
   user is active, a **probe** of our own (a release of the mask key and an empty mouse move, tagged) goes
-  through the hooks every 250 ms and a hook that does not see it is re-installed; and a chord key whose
+  through the hooks every 250 ms, is eaten by them, and a hook that does not see it (counted from the moment
+  the key thread sent it, two misses in a row, a probe kind the hook has been seen to see) is re-installed; and a chord key whose
   raw report arrives with no callback re-installs the hooks at once, before the chord's letter lands, arming
   the mask if the Win make was the key Windows saw without us.
   A watchdog re-installs the hooks if the heartbeat counter stops advancing while input is arriving

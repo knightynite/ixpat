@@ -8,7 +8,7 @@ namespace ixpat::win {
 
 /// Marks everything we synthesise (dwExtraInfo), so the hooks let it through untouched.
 constexpr ULONG_PTR kOwnTag = 0x49585054;    // "IXPT"
-constexpr ULONG_PTR kProbeTag = 0x49585050;  // "IXPP": the hook probes, so the hooks can tell they saw one
+constexpr ULONG_PTR kProbeTag = 0x49585050;  // "IXPP": the hook probes; the hooks note them and eat them
 inline bool isOurs(ULONG_PTR extraInfo) { return extraInfo == kOwnTag || extraInfo == kProbeTag; }
 
 /// Pixels -> WHEEL_DELTA units with sub-unit carry, so apps that only scroll by lines still get the
@@ -22,24 +22,42 @@ private:
     double carryY_ = 0, carryX_ = 0;
 };
 
-/// Raw WHEEL_DELTA-scaled units, tagged, sent by the injector thread. SendInput can block for hundreds of
-/// milliseconds while Windows runs every other low-level hook for the injected event, and the thread that owns
-/// our hooks must never wait on that (Windows drops a hook that does not answer within 300 ms). Units queued
-/// while the injector is busy coalesce, so the distance survives and no stale frames pile up behind a slow call.
+// Everything the input thread injects goes out from two injector threads of its own, never from the thread that
+// owns the hooks: `SendInput` runs every other low-level hook in the system for the injected event before it
+// returns, and on this PC that took up to 266 ms per call while another program's hook thread was busy. The hook
+// thread must never wait on that (Windows drops a hook that does not answer within 300 ms). The wheel thread
+// coalesces units queued while it is busy (the distance survives, no stale frames pile up); the key thread keeps
+// its batches in order (a mask precedes the release it masks) and retries a release Windows refused. Nothing here
+// blocks the caller beyond an uncontended lock. The threads live for the process; nothing is destroyed at exit.
+
+/// Starts both threads. Call once, early, from the thread that will queue (the input thread).
+void startInjectors();
+/// False when a thread could not be created: the callers then leave the physical events alone (fail open).
+bool injectorReady();
+
+/// Raw WHEEL_DELTA-scaled units, tagged, from the wheel thread.
 void sendWheelUnits(int vertical, int horizontal);
-void sendKeyChord(std::initializer_list<WORD> vks);  // down in order, up in reverse, tagged
-void sendKey(WORD vk, bool down);
-/// A key that means nothing (vk 0xE8, unassigned, no scancode), pressed and released. Sent while the mouse's
-/// Win is down, so that Windows, which saw that Win make, does not open the Start menu on its break. False when
-/// SendInput did not take both events.
-bool sendMaskKey();
-/// The mask key (down, up) and then a Win release for `scan` (extended, tagged), queued for the injector thread in
-/// that order. The hook swallows the physical Win release and hands it over here, so the thread that owns the
-/// hooks never waits on SendInput while the mask goes first.
-void queueMaskThenWinUp(WORD vk, WORD scan);
-/// One release of the mask key and one empty mouse move, tagged, from the injector thread: both hooks see them if
-/// they are alive, nothing else notices.
+
+/// The Start-menu mask: a key that means nothing (vk 0xE8, unassigned, no scancode), down and up, while the mouse's
+/// Win is held, so that Windows, which saw that Win make, does not open the Start menu on its break. Returns the
+/// request's sequence number; `maskSentSequence()` reaches it once the keys are out.
+std::uint32_t queueMask();
+std::uint32_t maskSentSequence();
+/// Masks and releases that SendInput refused even after retries.
+std::uint32_t maskFailures();
+/// A tagged release of Win `vk` / `scan`, queued behind whatever is pending (a mask, normally): the fallback when the
+/// physical release could not wait for its mask and was swallowed. Retried on failure.
+void queueWinRelease(WORD vk, WORD scan);
+
+/// The hook probe: one release of the mask key and one empty mouse move, both carrying kProbeTag, from the key thread.
+/// Dropped unsent if it waited more than a second. `probeSentQpc()` is when the last one went out (0 before any),
+/// `probeSendOk()` whether Windows took it.
 void queueHookProbe();
+long long probeSentQpc();
+bool probeSendOk();
+
+void sendKeyChord(std::initializer_list<WORD> vks);  // down in order, up in reverse, tagged (main thread)
+void sendKey(WORD vk, bool down);
 bool sendMouseButton(DWORD downFlag, DWORD upFlag, bool down);  // MOUSEEVENTF_*DOWN / *UP, at the current position; false if SendInput was blocked
 void sendMediaKey(WORD vk);  // VK_VOLUME_*, VK_MEDIA_*
 

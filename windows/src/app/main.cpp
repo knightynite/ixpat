@@ -711,6 +711,11 @@ void App::onInputEvents() {
             case win::InputEvent::Kind::ringOpenRequest:
                 ring_.toggle(settings_.effRingItems(), false, settings_.accentHex);
                 break;
+            case win::InputEvent::Kind::slowPath: {
+                const char* what = e.a == 1 ? "hook event queueing (lag)" : e.a == 2 ? "input loop iteration" : e.a == 3 ? "hook install" : "monitor refresh";
+                win::debugLogSlow(what, static_cast<double>(e.b));
+                break;
+            }
             case win::InputEvent::Kind::hooksReinstalled: {
                 const auto st = input_.status();
                 std::string why = e.b == 0 ? "asked by the watchdog"

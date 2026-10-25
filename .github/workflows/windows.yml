@@ -121,7 +121,9 @@ jobs:
           timestamp-digest: SHA256
       - name: Checksums
         shell: pwsh
-        run: Get-FileHash out\* -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $($_.Path | Split-Path -Leaf)" } | Set-Content out\SHA256SUMS.txt
+        run: |
+          $lines = Get-FileHash out\* -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $($_.Path | Split-Path -Leaf)" }
+          [IO.File]::WriteAllText((Join-Path $PWD 'out\SHA256SUMS.txt'), (($lines -join "`n") + "`n"))
       - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64  # v3.0.3
         with:
           prerelease: true

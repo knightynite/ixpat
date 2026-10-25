@@ -26,6 +26,11 @@ is [`windows/docs/measurements-2026-10.md`](../windows/docs/measurements-2026-10
 
 ## Changes by release
 
+### Unreleased
+
+* `SHA256SUMS.txt` has Unix line endings, so `sha256sum -c` accepts it as downloaded.
+* The installer stores file times in UTC; an installed `iXpat.exe` carries the build's real time on any PC.
+
 ### win-v0.2.10
 
 * The installer an update downloaded is removed on the next launch, once it has run, instead of staying beside the

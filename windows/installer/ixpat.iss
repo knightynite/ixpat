@@ -14,6 +14,7 @@
 #define MyAppExeName "iXpat.exe"
 
 [Setup]
+TimeStampsInUTC=yes
 AppId={{B6C1E5F0-6D2E-4C8B-9B1F-5A2D9E7C4A11}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}

@@ -26,6 +26,14 @@ is [`windows/docs/measurements-2026-10.md`](../windows/docs/measurements-2026-10
 
 ## Changes by release
 
+### win-v0.2.10
+
+* The installer an update downloaded is removed on the next launch, once it has run, instead of staying beside the
+  logs until the next update.
+* A scheduled update offer no longer opens on top of another dialog. While the crash notice, an issue report, a
+  message or a file picker is up, the check waits for the next six-hourly tick; a check that completes while one is
+  up asks again at that tick instead.
+
 ### win-v0.2.9
 
 * Signed releases: the executables and the installer carry an Authenticode signature from a publicly trusted

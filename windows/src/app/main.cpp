@@ -158,8 +158,21 @@ private:
     unsigned flushTicks_ = 0;
     int modalDepth_ = 0;
     bool reloadPending_ = false;
+    struct ModalScope;
     void quit();
     void refreshWaveformsJson();
+};
+
+/// One modal dialog or picker on the main thread. While any is up, a settings reload waits (the caller may hold
+/// references into settings_) and no scheduled update offer opens on top of it.
+struct App::ModalScope {
+    App& app;
+    explicit ModalScope(App& a) : app(a) { ++app.modalDepth_; }
+    ~ModalScope() {
+        if (--app.modalDepth_ == 0 && app.reloadPending_) PostMessageW(app.hwnd_, WM_APP_SETTINGS, 0, 0);  // once the caller is done with its references
+    }
+    ModalScope(const ModalScope&) = delete;
+    ModalScope& operator=(const ModalScope&) = delete;
 };
 
 Seconds App::now() const {
@@ -489,10 +502,11 @@ std::optional<std::string> App::pickFile(const wchar_t* filter) {
     ofn.lpstrFile = path;
     ofn.nMaxFile = MAX_PATH;
     ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
-    ++modalDepth_;
-    const BOOL ok = GetOpenFileNameW(&ofn);
-    --modalDepth_;
-    if (reloadPending_ && modalDepth_ == 0) PostMessageW(hwnd_, WM_APP_SETTINGS, 0, 0);  // after the caller is done with its references
+    BOOL ok = FALSE;
+    {
+        ModalScope modal(*this);
+        ok = GetOpenFileNameW(&ofn);
+    }
     if (!ok) return std::nullopt;
     int n = WideCharToMultiByte(CP_UTF8, 0, path, -1, nullptr, 0, nullptr, nullptr);
     std::string s(static_cast<std::size_t>(std::max(0, n - 1)), '\0');
@@ -824,6 +838,7 @@ void App::applyLoginItem() {
 /// Background checks hit the network at most once a day (Updater.check(manual: false)).
 void App::scheduledUpdateCheck() {
     if (!settings_.autoCheckUpdates) return;
+    if (modalDepth_ > 0) return;  // a dialog is up and the offer would open on top of it; the next tick asks again
     if (win::unixNow() - updateState_.lastCheck < 24 * 3600) return;
     updater_.check(false);
 }
@@ -834,7 +849,10 @@ void App::onUpdateResult(bool manual, win::UpdateResult& r) {
         win::debugLog("update check failed: " + r.error);
         model_.updateStatus = "Update check failed: " + r.error;
         syncModel();
-        if (manual) MessageBoxW(hwnd_, (L"The update check failed.\n\n" + widen(r.error)).c_str(), L"iXpat", MB_OK | MB_ICONWARNING);
+        if (manual) {
+            ModalScope modal(*this);
+            MessageBoxW(hwnd_, (L"The update check failed.\n\n" + widen(r.error)).c_str(), L"iXpat", MB_OK | MB_ICONWARNING);
+        }
         return;
     }
     updateState_.lastCheck = win::unixNow();
@@ -845,7 +863,10 @@ void App::onUpdateResult(bool manual, win::UpdateResult& r) {
         model_.updateAvailable.reset();
         model_.updateSelfInstall = false;
         syncModel();
-        if (manual) MessageBoxW(hwnd_, L"No Windows release has been published yet.\nYou are running a development build.", L"iXpat", MB_OK | MB_ICONINFORMATION);
+        if (manual) {
+            ModalScope modal(*this);
+            MessageBoxW(hwnd_, L"No Windows release has been published yet.\nYou are running a development build.", L"iXpat", MB_OK | MB_ICONINFORMATION);
+        }
         return;
     }
     const std::string& latest = r.release->version;
@@ -855,7 +876,10 @@ void App::onUpdateResult(bool manual, win::UpdateResult& r) {
         model_.updateAvailable.reset();
         model_.updateSelfInstall = false;
         syncModel();
-        if (manual) MessageBoxW(hwnd_, L"iXpat " IXPAT_VERSION_WSTRING L" is the latest Windows release.", L"iXpat is up to date", MB_OK | MB_ICONINFORMATION);
+        if (manual) {
+            ModalScope modal(*this);
+            MessageBoxW(hwnd_, L"iXpat " IXPAT_VERSION_WSTRING L" is the latest Windows release.", L"iXpat is up to date", MB_OK | MB_ICONINFORMATION);
+        }
         return;
     }
     model_.updateStatus = "iXpat " + latest + " is available.";
@@ -863,6 +887,11 @@ void App::onUpdateResult(bool manual, win::UpdateResult& r) {
     model_.updateSelfInstall = canSelfInstall(*r.release);
     syncModel();
     if (!manual && updateState_.skipped == latest) return;
+    if (!manual && modalDepth_ > 0) {  // a dialog opened while the check ran: no offer on top of it, the next tick asks again
+        updateState_.lastCheck = 0;
+        win::saveUpdateState(updateState_);
+        return;
+    }
     offerUpdate(*r.release, manual);
 }
 
@@ -888,9 +917,12 @@ void App::offerUpdate(const ReleaseInfo& r, bool manual) {
     (void)manual;
     cfg.nDefaultButton = 100;
     int pressed = 101;
-    if (FAILED(TaskDialogIndirect(&cfg, &pressed, nullptr, nullptr))) {
-        const std::wstring q = title + L"\n\n" + body + (self ? L"\n\nInstall it now?" : L"\n\nOpen the release page?");
-        pressed = MessageBoxW(cfg.hwndParent, q.c_str(), L"iXpat", MB_YESNO | MB_ICONINFORMATION) == IDYES ? 100 : 101;
+    {
+        ModalScope modal(*this);
+        if (FAILED(TaskDialogIndirect(&cfg, &pressed, nullptr, nullptr))) {
+            const std::wstring q = title + L"\n\n" + body + (self ? L"\n\nInstall it now?" : L"\n\nOpen the release page?");
+            pressed = MessageBoxW(cfg.hwndParent, q.c_str(), L"iXpat", MB_YESNO | MB_ICONINFORMATION) == IDYES ? 100 : 101;
+        }
     }
     if (pressed == 100) {
         if (self) installUpdate(r);
@@ -945,8 +977,12 @@ void App::onInstallResult(win::InstallResult& r) {
     model_.updateStatus = "Update failed: " + r.error;
     syncModel();
     const std::wstring text = L"iXpat " + widen(r.version) + L" could not be installed.\n\n" + widen(r.error) + L"\n\nOpen the release page instead?";
-    if (MessageBoxW(window_ ? window_->hwnd() : hwnd_, text.c_str(), L"iXpat", MB_YESNO | MB_ICONWARNING) == IDYES && model_.updateAvailable &&
-        isWindowsReleaseTag(model_.updateAvailable->tag)) {
+    int answer = IDNO;
+    {
+        ModalScope modal(*this);
+        answer = MessageBoxW(window_ ? window_->hwnd() : hwnd_, text.c_str(), L"iXpat", MB_YESNO | MB_ICONWARNING);
+    }
+    if (answer == IDYES && model_.updateAvailable && isWindowsReleaseTag(model_.updateAvailable->tag)) {
         ShellExecuteW(nullptr, L"open", widen(canonicalReleaseUrl(model_.updateAvailable->tag)).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
     }
 }
@@ -990,14 +1026,18 @@ void App::reportIssue(bool afterCrash) {
     cfg.cButtons = static_cast<UINT>(buttons.size());
     cfg.nDefaultButton = buttons.front().nButtonID;
     int pressed = 303;
-    if (FAILED(TaskDialogIndirect(&cfg, &pressed, nullptr, nullptr))) {
-        pressed = MessageBoxW(cfg.hwndParent, (content + L"\n\nWrite the bundle with the logs and open the issue page?").c_str(), L"iXpat", MB_YESNO | MB_ICONINFORMATION) == IDYES ? 301 : 303;
+    {
+        ModalScope modal(*this);
+        if (FAILED(TaskDialogIndirect(&cfg, &pressed, nullptr, nullptr))) {
+            pressed = MessageBoxW(cfg.hwndParent, (content + L"\n\nWrite the bundle with the logs and open the issue page?").c_str(), L"iXpat", MB_YESNO | MB_ICONINFORMATION) == IDYES ? 301 : 303;
+        }
     }
     if (pressed == 300 || pressed == 301) {
         facts.includeDump = pressed == 300;
         std::string error;
         const auto bundle = win::writeReportBundle(facts, error);
         if (!bundle) {
+            ModalScope modal(*this);
             MessageBoxW(cfg.hwndParent, (L"The report bundle could not be written.\n\n" + widen(error)).c_str(), L"iXpat", MB_OK | MB_ICONWARNING);
             return;
         }
@@ -1106,6 +1146,7 @@ void App::showAbout() {
     text += L"Bridge: " + (bridge_.running() ? L"127.0.0.1:" + std::to_wstring(bridge_.port()) : std::wstring(L"off")) + L"\n";
     if (!device_.lastError.empty()) text += L"Last error: " + std::wstring(device_.lastError.begin(), device_.lastError.end()) + L"\n";
     text += L"\nSettings and logs: " + win::appDataDir().wstring() + L"\n\nMIT License. Not affiliated with Microsoft.";
+    ModalScope modal(*this);
     MessageBoxW(nullptr, text.c_str(), L"About iXpat", MB_OK | MB_ICONINFORMATION | MB_TOPMOST);
 }
 
@@ -1190,6 +1231,7 @@ LRESULT App::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 cursorTick();
             } else if (id == kTimerUpdateFirst) {
                 KillTimer(hwnd_, kTimerUpdateFirst);
+                updater_.discardDownloads();  // the installer that brought this version has finished by now
                 crashNotice();
                 scheduledUpdateCheck();
             } else if (id == kTimerUpdate) {

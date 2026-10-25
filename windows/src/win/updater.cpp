@@ -250,6 +250,19 @@ bool Updater::check(bool manual) {
     return true;
 }
 
+namespace {
+/// Removes the files of `dir`, not the directory. A file still in use, such as an installer that is running, stays.
+void clearDirectory(const std::filesystem::path& dir) {
+    std::error_code ec;
+    for (const auto& e : std::filesystem::directory_iterator(dir, ec)) std::filesystem::remove(e.path(), ec);
+}
+}  // namespace
+
+void Updater::discardDownloads() {
+    if (busy_.load()) return;  // a download may be writing there
+    clearDirectory(appDataDir() / L"updates");
+}
+
 bool Updater::install(const ReleaseInfo& r) {
     if (!r.installer || !isWindowsReleaseTag(r.tag)) return false;
     if (!begin()) return false;
@@ -263,7 +276,7 @@ bool Updater::install(const ReleaseInfo& r) {
         const std::filesystem::path dir = appDataDir() / L"updates";
         std::error_code ec;
         std::filesystem::create_directories(dir, ec);
-        for (const auto& e : std::filesystem::directory_iterator(dir, ec)) std::filesystem::remove(e.path(), ec);  // earlier downloads
+        clearDirectory(dir);  // earlier downloads
         res->file = dir / wname;
         if (httpsDownload(L"github.com", path.c_str(), userAgent_.c_str(), res->file, kMaxInstaller, res->error, &session_)) {
             const SignatureCheck c = checkAuthenticode(res->file);

@@ -4,7 +4,7 @@
 // Bump the three numbers only: the strings and the resource's fixed version block derive from them.
 #define IXPAT_VERSION_MAJOR 0
 #define IXPAT_VERSION_MINOR 2
-#define IXPAT_VERSION_PATCH 9
+#define IXPAT_VERSION_PATCH 10
 
 #define IXPAT_STRINGIZE_(x) #x
 #define IXPAT_STRINGIZE(x) IXPAT_STRINGIZE_(x)

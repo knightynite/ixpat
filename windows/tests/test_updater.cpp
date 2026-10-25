@@ -1,8 +1,12 @@
 #include <doctest/doctest.h>
 
+#include <filesystem>
+#include <fstream>
 #include <string>
 
 #include "core/updater_parse.h"
+#include "win/paths.h"
+#include "win/updater.h"
 
 using ixpat::newestWindowsRelease;
 
@@ -81,4 +85,19 @@ TEST_CASE("updater: the installer asset is recognised by its exact name and its 
     auto odd = newestWindowsRelease(R"([{"tag_name":"win-v0.2.9","draft":false,"html_url":"u","assets":[1,{"name":5},{"name":"iXpat-Setup-0.2.9-x64.exe"}]}])");
     REQUIRE(odd.has_value());
     CHECK(odd->installer);
+}
+
+TEST_CASE("updater: discarding downloads empties the updates folder and touches nothing beside it") {
+    const std::filesystem::path data = ixpat::win::appDataDir();
+    const std::filesystem::path dir = data / L"updates";
+    std::filesystem::create_directories(dir);
+    std::ofstream(dir / L"iXpat-Setup-0.2.8-x64.exe", std::ios::binary) << "MZ earlier";
+    std::ofstream(data / L"keep.txt", std::ios::binary) << "x";
+    ixpat::win::Updater u;
+    u.discardDownloads();
+    CHECK(std::filesystem::exists(dir));
+    CHECK(std::filesystem::is_empty(dir));
+    CHECK(std::filesystem::exists(data / L"keep.txt"));
+    std::error_code ec;
+    std::filesystem::remove(data / L"keep.txt", ec);
 }

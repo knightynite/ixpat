@@ -70,6 +70,8 @@ public:
     bool check(bool manual);
     /// Downloads and verifies r's installer unless a check or install is running. Results arrive as installMessage.
     bool install(const ReleaseInfo& r);
+    /// Removes the installers earlier updates left in <data dir>\updates. Nothing happens while a download runs.
+    void discardDownloads();
     bool busy() const { return busy_.load(); }
     void stop();
 

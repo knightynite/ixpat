@@ -69,7 +69,9 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Release consistency
         shell: pwsh
-        run: ./windows/release-check.ps1 -Tag ${{ github.ref_name }}
+        env:
+          TAG: ${{ github.ref_name }}
+        run: ./windows/release-check.ps1 -Tag $env:TAG
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
         with:
           path: dist
@@ -99,8 +101,10 @@ jobs:
           timestamp-digest: SHA256
       - name: Package zips and installer
         shell: pwsh
+        env:
+          TAG: ${{ github.ref_name }}
         run: |
-          $ver = "${{ github.ref_name }}".Substring(5)
+          $ver = $env:TAG.Substring(5)
           New-Item -ItemType Directory -Force out | Out-Null
           foreach ($arch in 'x64', 'arm64') {
             $src = "dist/ixpat-windows-$arch"

@@ -26,6 +26,13 @@ is [`windows/docs/measurements-2026-10.md`](../windows/docs/measurements-2026-10
 
 ## Changes by release
 
+### win-v0.2.12
+
+* A new icon: a graphite shell on a pale plate, drawn by `windows\tools\make_icon.py`. The white Mac shell
+  vanished at 16 px on a light taskbar; this one reads at every size on both taskbar colours.
+* The notification-area icon is loaded at the shell's small size instead of a 32 px frame scaled down.
+* The release job's scripts take the tag from the environment rather than from their own text.
+
 ### win-v0.2.11
 
 * The download links in the README and on the site point at the release that holds the files; the 0.2.10

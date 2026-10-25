@@ -103,6 +103,7 @@ private:
     HINSTANCE inst_ = nullptr;
     HWND hwnd_ = nullptr;
     HICON icon_ = nullptr;
+    HICON iconSmall_ = nullptr;  // the notification area wants SM_CXSMICON; a scaled large frame goes muddy
     double qpcFreq_ = 1;
 
     std::unique_ptr<win::SettingsStore> store_;
@@ -242,6 +243,9 @@ int App::run(HINSTANCE inst, bool ringDemo) {
     }
     icon_ = LoadIconW(inst, MAKEINTRESOURCEW(IDI_IXPAT));
     if (!icon_) icon_ = LoadIconW(nullptr, IDI_APPLICATION);
+    iconSmall_ = static_cast<HICON>(LoadImageW(inst, MAKEINTRESOURCEW(IDI_IXPAT), IMAGE_ICON, GetSystemMetrics(SM_CXSMICON),
+                                               GetSystemMetrics(SM_CYSMICON), LR_DEFAULTCOLOR | LR_SHARED));
+    if (!iconSmall_) iconSmall_ = icon_;
 
     WNDCLASSW wc{};
     wc.lpfnWndProc = &App::wndProc;
@@ -384,7 +388,7 @@ void App::start() {
     };
     startBridgeIfWanted();
 
-    tray_.add(hwnd_, WM_APP_TRAY, icon_, L"iXpat");
+    tray_.add(hwnd_, WM_APP_TRAY, iconSmall_, L"iXpat");
     updateTray();
     pushConfig();
     SetTimer(hwnd_, kTimerFlush, 100, nullptr);

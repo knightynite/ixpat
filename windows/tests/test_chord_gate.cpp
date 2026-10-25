@@ -247,3 +247,39 @@ TEST_CASE("gate: hiding switched off: the chord still fires and nothing is eaten
     CHECK(r.outs == std::vector<O>{O::press});
     CHECK(r.g.idle(1.5));
 }
+
+TEST_CASE("gate: a second press while the first chord is still in flight masks its own Win release too") {
+    Rig r;
+    // A press, then another one 150 ms later, as the firmware sends them: the second Win make arrives with the chord
+    // still in flight (the decoder waits for a double press), and its release opened Start before the fix.
+    CHECK(r.modifier(kVkLShift, kVkShift, kScanShift, true, 1.000));
+    CHECK(r.modifier(kVkLWin, kVkLWin, kScanWin, true, 1.002));
+    CHECK(r.masks == 1);
+    r.letter(kVkS, kScanS, true, 1.004);
+    r.letter(kVkS, kScanS, false, 1.020);
+    CHECK(r.modifier(kVkLShift, kVkShift, kScanShift, false, 1.030));
+    CHECK(r.modifier(kVkLWin, kVkLWin, kScanWin, false, 1.040));
+    CHECK(r.modifier(kVkLShift, kVkShift, kScanShift, true, 1.150));
+    CHECK(r.masks == 1);  // Shift is not the key that opens Start
+    CHECK(r.modifier(kVkLWin, kVkLWin, kScanWin, true, 1.152));
+    CHECK(r.masks == 2);  // the second Win make is masked as well
+    r.letter(kVkS, kScanS, true, 1.154);
+    CHECK(r.modifier(kVkLWin, kVkLWin, kScanWin, false, 1.190));
+    CHECK(r.masks == 2);
+}
+
+TEST_CASE("gate: the double press as sent: Win held past the typematic delay repeats, the repeat is eaten, the release passes") {
+    Rig r;
+    // 08:42:06 in the log: Win make, the fake click 500 ms later, Windows' repeat of Win at 520 ms, the break at 520 ms.
+    // The Task View chord sent at the click released Win in Windows' eyes: a passed repeat would be a fresh press.
+    CHECK(r.modifier(kVkLWin, kVkLWin, kScanWin, true, 1.000));
+    CHECK(r.masks == 1);
+    CHECK(r.g.leftDown(1.500, r.cfg, false).out == O::doublePress);
+    const auto repeat = r.g.hookKey(kVkLWin, true, kScanWin, 1.520, r.cfg);
+    CHECK(repeat.swallow);
+    CHECK(repeat.out == O::none);
+    CHECK(r.modifier(kVkLWin, kVkLWin, kScanWin, false, 1.521));  // the real release still passes
+    CHECK(r.masks == 1);
+    // a Win make with nothing of the mouse's in flight is the user's own and passes
+    CHECK_FALSE(r.g.hookKey(kVkLWin, true, kScanWin, 3.0, r.cfg).swallow);
+}

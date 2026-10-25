@@ -1,7 +1,7 @@
 # iXpat for Windows: design
 
 Date: 2026-10-22. Status: approved direction (C++20, Win32 + Direct2D, single binary). This is the spec the
-implementation plan in `plan.md` is built from.
+implementation is built from.
 
 ## 1. Goal and success criteria
 
@@ -35,7 +35,7 @@ protocol; left untouched), Force Click as macOS implements it (Windows has no pr
 | Col06 | 0x0E/0x01 Simple Haptic Controller | none (HID class only) | output 0x43 `[ordinal, intensity 0-4]`, feature 0x42 waveform table |
 
 The macOS plan's statements that the 2nd Edition has no firmware package and that 0xFF0B is unknown are
-both wrong and get corrected in `docs/windows-plan.md`.
+both wrong and are corrected in `docs/windows.md`.
 
 ## 3. Architecture
 
@@ -75,7 +75,7 @@ windows/
   tools/probe/   ixpat-probe.exe: enumerate, open, read table, play, log Raw Input + hook ordering
   third_party/   nlohmann/json.hpp (3.12.0), doctest.h (2.5.3); header-only, vendored, pinned
   installer/     Inno Setup script (per-user, no elevation), zip packaging script
-  docs/          this design, the plan, measurement notes
+  docs/          this design, measurement notes
 .github/workflows/windows.yml             build x64 + ARM64, run tests, package on tag win-v*
 ```
 
@@ -212,11 +212,11 @@ native, and are the Fluent ones: toggle, slider, selector bar, combo box with it
 button, check box, list row, navigation row; the text field is a themed native `EDIT` child (layered, so it stays
 opaque over Mica) for the few free-text inputs. Type is Segoe UI Variable, Display from 20 px up and Text below,
 nothing under 12 px. The window is a navigation pane (the live mouse at its head: buttons light from Raw Input, the
-wheel turns, the action button glows, pulse rings on every haptic; then Haptics, Action button, Action Ring, Apps,
-Pointer and scroll, Diagnostics; the master switch and About at the foot) beside a content layer with the page
+wheel turns, the action button glows, pulse rings on every haptic; then Haptics, Pointer and scroll, Action button,
+Action Ring, Apps, Diagnostics when Diagnostic Mode is on; the master switch and About at the foot) beside a content layer with the page
 title and the page as a stack of settings cards. The Action Ring is a layered, topmost, click-through
 (`WS_EX_TRANSPARENT | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW`) window drawn with the same renderer, polled at 90 Hz
-like the Mac, in the same accent. Plan 8 (`plan-8-fluent-shell.md`) has the details.
+like the Mac, in the same accent.
 
 ### 3.7 Services
 
@@ -225,10 +225,18 @@ like the Mac, in the same accent. Plan 8 (`plan-8-fluent-shell.md`) has the deta
   reservation.
 - **Updater**: WinHTTP `GET api.github.com/repos/knightynite/ixpat/releases` once a day; Windows releases
   are tagged `win-vX.Y.Z` and marked pre-release so the Mac updater's `releases/latest` never sees them;
-  the Windows updater picks the highest `win-v` tag with an asset matching `-windows-<arch>.zip`. A
-  download is only auto-opened when it carries a valid Authenticode signature from a pinned publisher;
-  until releases are signed the updater opens the release page instead (fails closed, like the Mac's
-  Team ID check).
+  the Windows updater picks the highest `win-v` tag. On an x64 copy the installer put in place, and when
+  the release carries the installer asset, "Install update" downloads `iXpat-Setup-<ver>-x64.exe` from
+  GitHub's fixed release URL (built from the validated tag, never read from the response), verifies it
+  with `WinVerifyTrust` (embedded signature, revocation checked, timestamp honoured) and requires the
+  signer's CN and O to equal the pinned publisher name; only then does the app quit and run the installer
+  silently with `/relaunch=1`, which starts the new version. Anything else, a zip copy, ARM64, a release
+  without the installer, a signature that fails or belongs to someone else, opens the release page
+  instead (fails closed, like the Mac's Team ID check).
+- **Issue reports**: "Report an issue" (About) and the notice after a crash write a zip beside the logs
+  (summary, the log tails, settings.json with the bridge token blanked, the newest crash dump only when
+  that choice was made), show it in Explorer and open the GitHub new-issue page with the version, the
+  Windows build and the mouse filled in. Nothing is uploaded by the app.
 - **Single instance** via a named mutex; a second launch asks the first to show settings. A launch that finds
   the mutex held but no window (a relaunch right after `--quit`, while the previous instance is still leaving)
   waits for the mutex, up to 5 s, and then runs. A mutex that cannot be created at all stops the launch with a
@@ -267,16 +275,14 @@ like the Mac, in the same accent. Plan 8 (`plan-8-fluent-shell.md`) has the deta
   how often the hook saw an event before its `WM_INPUT` (the attribution fallback rate).
 - CI (GitHub Actions `windows-latest`) builds x64 and ARM64 with `/W4 /WX`, runs the unit tests on x64,
   and packages zips on `win-v*` tags.
-- Each milestone's diff gets an independent read-only review, fed the diff
-  inline, before it is considered done; findings are fixed or recorded with a reason.
 
 ## 6. Release and docs
 
 - Assets per release: `iXpat-<ver>-windows-x64.zip`, `iXpat-<ver>-windows-arm64.zip`,
   `iXpat-Setup-<ver>-x64.exe` (Inno Setup, per-user install into `%LOCALAPPDATA%\Programs\iXpat`, optional
-  start-at-login, no elevation). Unsigned until a signing certificate exists; the README says what
-  SmartScreen will show and why.
+  start-at-login, no elevation). The executables and the installer are signed in CI with a publicly
+  trusted certificate (Azure Artifact Signing, through a federated credential bound to the release
+  environment); the same publisher name is what the updater pins.
 - README: platform badges, Windows install/build sections, the Windows limitation, the corrected device
   facts. `docs/index.html`: a Windows section with its own download, FAQ entries, updated title and
-  schema. `docs/windows-plan.md`: rewritten as the status of the port with the CFU finding and the
-  measurement results, replacing the plan.
+  schema. `docs/windows.md`: the status of the port, the changes by release and the CFU notes.

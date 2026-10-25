@@ -37,6 +37,8 @@ struct SettingsModel {
     std::string updateStatus;           // About pane: "Checking...", "Up to date", "0.3.0 is available", an error
     std::optional<ReleaseInfo> updateAvailable;
     bool updateChecking = false;
+    bool updateSelfInstall = false;  // the available update can be downloaded, verified and installed from here
+    bool updateInstalling = false;
 };
 
 /// What the window asks the app to do.
@@ -56,6 +58,8 @@ struct SettingsActions {
     std::function<std::optional<std::string>()> chooseExe;                           // file dialog
     std::function<std::optional<std::string>()> chooseApp;                           // file dialog for an app
     std::function<void()> checkUpdates;                                              // manual check
+    std::function<void()> installUpdate;                                             // download, verify, run the installer
+    std::function<void()> reportIssue;                                               // the issue report: consent, bundle, GitHub
     std::function<void(const std::string&)> openUrl;
 };
 

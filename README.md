@@ -48,12 +48,12 @@ Needs Xcode 16+ and macOS 14+.
 ### Windows
 
 Windows builds are separate releases tagged `win-vX.Y.Z` (marked pre-release so the
-Mac updater ignores them). From the [Windows release page](https://github.com/knightynite/ixpat/releases/tag/win-v0.2.8):
+Mac updater ignores them). From the [Windows release page](https://github.com/knightynite/ixpat/releases/tag/win-v0.2.9):
 
-* [`iXpat-Setup-0.2.8-x64.exe`](https://github.com/knightynite/ixpat/releases/download/win-v0.2.8/iXpat-Setup-0.2.8-x64.exe): per-user installer, no elevation, optional start at login.
-* [`iXpat-0.2.8-windows-x64.zip`](https://github.com/knightynite/ixpat/releases/download/win-v0.2.8/iXpat-0.2.8-windows-x64.zip) / [`-arm64.zip`](https://github.com/knightynite/ixpat/releases/download/win-v0.2.8/iXpat-0.2.8-windows-arm64.zip): a single `iXpat.exe`, run it from anywhere.
+* [`iXpat-Setup-0.2.9-x64.exe`](https://github.com/knightynite/ixpat/releases/download/win-v0.2.9/iXpat-Setup-0.2.9-x64.exe): per-user installer, no elevation, optional start at login.
+* [`iXpat-0.2.9-windows-x64.zip`](https://github.com/knightynite/ixpat/releases/download/win-v0.2.9/iXpat-0.2.9-windows-x64.zip) / [`-arm64.zip`](https://github.com/knightynite/ixpat/releases/download/win-v0.2.9/iXpat-0.2.9-windows-arm64.zip): a single `iXpat.exe`, run it from anywhere.
 
-The binaries are not code-signed: SmartScreen shows *More info > Run anyway* once.
+The executables and the installer are signed (publisher: AL Najafi).
 Build from source with Visual Studio 2022 Build Tools (C++ workload):
 
 ```powershell
@@ -160,7 +160,7 @@ The product page lives in `docs/` and is served at https://knightynite.github.io
 
 ## Windows
 
-`windows/` holds the Windows port: C++20, Win32 + Direct2D, one unsigned `iXpat.exe`
+`windows/` holds the Windows port: C++20, Win32 + Direct2D, one signed `iXpat.exe`
 with no driver, no service and no elevation. It is a tray app with the same settings
 file layout as the Mac (`%LOCALAPPDATA%\iXpat\settings.json`), the same rules,
 presets, per-app profiles, Action Ring, kinetic wheel, chords and plugin bridge.
@@ -173,12 +173,12 @@ presets, per-app profiles, Action Ring, kinetic wheel, chords and plugin bridge.
 | Force click / hold | hold timer on the tap thread | the same, with a `holdAction` (context menu, middle click, ring) |
 | Pointer settings | hidutil | SPI_SETMOUSE / SPI_SETMOUSESPEED while this mouse drives the pointer |
 | UI | SwiftUI | Direct2D immediate-mode toolkit, light/dark, per-monitor DPI |
-| Updates | signed DMG | opens the release page (unsigned builds never self-install) |
+| Updates | signed DMG | signed installer, verified against the publisher's name before it runs (installed x64 copies); zip copies open the release page |
 
-Docs: [windows/docs/design.md](windows/docs/design.md) (spec), the plans beside it,
+Docs: [windows/docs/design.md](windows/docs/design.md) (spec),
 [windows/docs/measurements-2026-10.md](windows/docs/measurements-2026-10.md) (what the mouse
-exposes on Windows, measured), and [docs/windows-plan.md](docs/windows-plan.md) (status and
-what differs from the original plan). CI builds x64 and ARM64 and runs the test suite
+exposes on Windows, measured), and [docs/windows.md](docs/windows.md) (status and the changes
+by release). CI builds x64 and ARM64 and runs the test suite
 (`.github/workflows/windows.yml`); `win-v*` tags publish the zips and the installer.
 
 ## License

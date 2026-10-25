@@ -19,9 +19,13 @@ Run it
   menu.
 * Installer: iXpat-Setup-<version>-x64.exe installs per user under
   %LOCALAPPDATA%\Programs\iXpat with an optional "start at login" task.
-* The builds are not code-signed. SmartScreen may show "Windows protected
-  your PC": choose More info > Run anyway. Updates are never installed
-  silently; the app only opens the release page when a newer version exists.
+* The executables and the installer are signed (publisher: AL Najafi).
+* Updates: the app asks GitHub once a day. An installed copy can download
+  the new installer, check its signature against the publisher's name and
+  install it when you say so; a zip copy opens the release page instead.
+* Report an issue (About): writes a zip next to the logs with the log tails,
+  your settings without the bridge token and, only if you choose it, the
+  latest crash report; nothing is sent unless you attach it to the issue.
 
 Where things live
 -----------------

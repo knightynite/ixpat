@@ -53,3 +53,32 @@ TEST_CASE("updater: only a well-formed win-v tag is a Windows release, and its p
     CHECK(r->url == "https://github.com/knightynite/ixpat/releases/tag/win-v0.2.0");
     CHECK_FALSE(ixpat::newestWindowsRelease(R"([{"tag_name":"win-vX","draft":false,"html_url":"u"}])").has_value());
 }
+
+TEST_CASE("updater: the installer asset is recognised by its exact name and its URL is built, not copied") {
+    using ixpat::canonicalInstallerUrl;
+    using ixpat::installerAssetName;
+    CHECK(installerAssetName("0.2.9") == "iXpat-Setup-0.2.9-x64.exe");
+    CHECK(canonicalInstallerUrl("win-v0.2.9", "0.2.9") == "https://github.com/knightynite/ixpat/releases/download/win-v0.2.9/iXpat-Setup-0.2.9-x64.exe");
+    auto r = newestWindowsRelease(R"([{"tag_name":"win-v0.2.9","draft":false,"html_url":"u","assets":[
+        {"name":"iXpat-0.2.9-windows-x64.zip","browser_download_url":"https://evil.example/a"},
+        {"name":"iXpat-Setup-0.2.9-x64.exe","browser_download_url":"https://evil.example/b"},
+        {"name":"SHA256SUMS"}]}])");
+    REQUIRE(r.has_value());
+    CHECK(r->installer);
+    CHECK(r->installerUrl == "https://github.com/knightynite/ixpat/releases/download/win-v0.2.9/iXpat-Setup-0.2.9-x64.exe");
+    // zips only, a differently named exe, or no assets at all: nothing to self-install
+    auto zipOnly = newestWindowsRelease(R"([{"tag_name":"win-v0.2.9","draft":false,"html_url":"u","assets":[{"name":"iXpat-0.2.9-windows-x64.zip"}]}])");
+    REQUIRE(zipOnly.has_value());
+    CHECK_FALSE(zipOnly->installer);
+    CHECK(zipOnly->installerUrl.empty());
+    auto wrongName = newestWindowsRelease(R"([{"tag_name":"win-v0.2.9","draft":false,"html_url":"u","assets":[{"name":"iXpat-Setup-0.2.8-x64.exe"}]}])");
+    REQUIRE(wrongName.has_value());
+    CHECK_FALSE(wrongName->installer);
+    auto none = newestWindowsRelease(R"([{"tag_name":"win-v0.2.9","draft":false,"html_url":"u"}])");
+    REQUIRE(none.has_value());
+    CHECK_FALSE(none->installer);
+    // malformed asset entries are skipped, not fatal
+    auto odd = newestWindowsRelease(R"([{"tag_name":"win-v0.2.9","draft":false,"html_url":"u","assets":[1,{"name":5},{"name":"iXpat-Setup-0.2.9-x64.exe"}]}])");
+    REQUIRE(odd.has_value());
+    CHECK(odd->installer);
+}

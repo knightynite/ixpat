@@ -31,7 +31,7 @@ target_include_directories(ixpat_core SYSTEM PUBLIC third_party)
 # Win32 glue: one responsibility per file, thin, no engine logic.
 file(GLOB WIN_SOURCES CONFIGURE_DEPENDS src/win/*.cpp)
 add_library(ixpat_win STATIC ${WIN_SOURCES})
-target_link_libraries(ixpat_win PUBLIC ixpat_core user32 shell32 ole32 oleaut32 wbemuuid uiautomationcore winhttp comctl32 hid cfgmgr32 ws2_32 dwmapi winmm dbghelp)
+target_link_libraries(ixpat_win PUBLIC ixpat_core user32 shell32 ole32 oleaut32 wbemuuid uiautomationcore winhttp comctl32 hid cfgmgr32 ws2_32 dwmapi winmm dbghelp wintrust crypt32)
 
 # Direct2D UI: foundation, theme, ring window, settings window.
 file(GLOB UI_SOURCES CONFIGURE_DEPENDS src/ui/*.cpp)

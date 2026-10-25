@@ -68,7 +68,14 @@ ChordGate::Decision ChordGate::hookKey(int vk, bool down, std::uint16_t scan, Se
         }
         return d;
     }
-    if (!isLetter(idx)) return d;  // Shift and Win makes pass: Raw Input names their device a millisecond later
+    if (!isLetter(idx)) {
+        // Shift and Win makes pass: Raw Input names their device a millisecond later. One exception: the mouse's Win,
+        // held past the typematic delay, comes round again as a repeat make. A chord action may have sent Win's
+        // release meanwhile (Win+Tab for Task View), so Windows would take the repeat for a fresh press and open
+        // Start on the real release. The repeat is eaten; Shift repeats are harmless and pass.
+        if (down && (idx == kVkLWin || idx == kVkRWin) && fedMake_[slot]) d.swallow = true;
+        return d;
+    }
     // S or F23 while the mouse's Win chord is in flight completes it. Hidden from Windows by default, and the decoder
     // hears it from here either way. A letter Windows already holds (the user's own S, typed before the chord) is the
     // user's: it keeps passing, repeats and release alike, and the chord goes without it. A classified press or hold
@@ -106,7 +113,6 @@ ChordGate::Decision ChordGate::rawKey(int vk, bool down, std::uint16_t scan, boo
     tick(now);
     if (!d.hookSaw) return d;  // the hook is gone and Windows has already acted: silence
     if (down) {
-        const bool wasInFlight = chord_.inFlight(now);
         if (fedMake_[slot]) {
             d.out = chord_.key(vk, true, now);  // a typematic repeat: the decoder ignores it but stays fresh
             return d;
@@ -114,8 +120,10 @@ ChordGate::Decision ChordGate::rawKey(int vk, bool down, std::uint16_t scan, boo
         fedMake_[slot] = true;
         d.out = chord_.key(vk, true, now);
         // Windows holds this Win down too (it had to pass for Raw Input to name its device). A key that means
-        // nothing, between its make and its break, keeps the Start menu shut on the release.
-        if (!wasInFlight && chord_.inFlight(now) && cfg.swallowChords && cfg.enabled) d.sendMask = true;
+        // nothing, between its make and its break, keeps the Start menu shut on the release. Every Win make of a
+        // chord gets one: the second press of a double press, or a press right after another, arrives with the
+        // chord already in flight, and its release would open Start just the same.
+        if ((vk == kVkLWin || vk == kVkRWin) && chord_.inFlight(now) && cfg.swallowChords && cfg.enabled) d.sendMask = true;
     } else {
         if (!fedMake_[slot]) return d;
         fedMake_[slot] = false;

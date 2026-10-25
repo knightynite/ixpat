@@ -343,10 +343,10 @@ void SettingsWindow::build(ID2D1RenderTarget* rt, const UiInput& in) {
     f.beginSections();
     switch (tab_) {
         case 0: hapticsPane(f); break;
-        case 1: buttonPane(f); break;
-        case 2: ringPane(f); break;
-        case 3: appsPane(f); break;
-        case 4: pointerPane(f); break;
+        case 1: pointerPane(f); break;
+        case 2: buttonPane(f); break;
+        case 3: ringPane(f); break;
+        case 4: appsPane(f); break;
         case kAboutTab: aboutPane(f); break;
         default: diagnosticsPane(f); break;
     }
@@ -394,8 +394,8 @@ void SettingsWindow::navPane(Frame& f, float H0) {
         wchar_t glyph;
         const wchar_t* title;
     };
-    static const Item items[] = {{0xE877, L"Haptics"},         {0xE7C9, L"Action button"},      {0xE895, L"Action Ring"},
-                                 {0xE71D, L"Apps"},            {0xE962, L"Pointer and scroll"}, {0xE9D9, L"Diagnostics"}};
+    static const Item items[] = {{0xE877, L"Haptics"}, {0xE962, L"Pointer and scroll"}, {0xE7C9, L"Action button"},
+                                 {0xE895, L"Action Ring"}, {0xE71D, L"Apps"},            {0xE9D9, L"Diagnostics"}};
     f.begin({8, dev.bottom() + 16, kNavW - 16, 100000});
     if (tab_ == 5 && !settings_.windows.showDiagnostics) tab_ = 0;  // the page was switched off while open
     for (int i = 0; i < 6; ++i) {
@@ -943,6 +943,11 @@ void SettingsWindow::pointerPane(Frame& f) {
         f.drawText(value, f.take(60, 28), TextStyle::mono, pal.text2.rgb, pal.text2.alpha * (enabled ? 1 : 0.5f), DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, false);
         f.endRow();
     };
+    f.toggle("sys/login", settings_.windows.startAtLogin, L"Start iXpat when you sign in to Windows", L"Adds iXpat to your account's startup programs (HKCU Run). Task Manager's Startup tab can veto it.");
+    f.toggle("sys/updates", settings_.autoCheckUpdates, L"Check for updates daily", L"Asks GitHub for a newer Windows release once a day. An update is installed only when you choose to, after its signature has been checked.");
+    f.sectionBreak();
+    f.label(L"Pointer", TextStyle::title);
+    f.space(6);
     f.toggle("ptr/manage", settings_.managePointer, L"Manage pointer settings for this mouse",
              L"Applies while the Surface Mouse is the device moving the pointer; another mouse or the touchpad gets the system values back. Re-applied whenever the mouse reconnects.");
     sliderRow(L"Tracking speed", "ptr/speed", settings_.pointerSpeed, 0, 3, 0.125, L"Slow", L"Fast", fmt(L"%.2f", settings_.pointerSpeed), settings_.managePointer);
@@ -966,11 +971,6 @@ void SettingsWindow::pointerPane(Frame& f) {
     f.toggle("ptr/freespin", settings_.freeSpin, L"Free-spin on a flick", L"Spin fast and the wheel switches to free-spin: no ticks, boosted distance, one Collide pulse on the switch.");
     sliderRow(L"Flick threshold", "ptr/flick", settings_.freeSpinThreshold, 8, 40, 1, L"", L"", fmti(L"%d/s", static_cast<int>(settings_.freeSpinThreshold)), settings_.freeSpin);
     sliderRow(L"Free-spin boost", "ptr/boost", settings_.freeSpinMultiplier, 1.5, 6, 0.5, L"", L"", fmt(L"%.1f×", settings_.freeSpinMultiplier), settings_.freeSpin);
-    f.sectionBreak();
-    f.label(L"System", TextStyle::title);
-    f.space(6);
-    f.toggle("sys/login", settings_.windows.startAtLogin, L"Start iXpat at login", L"Adds iXpat to your account's startup programs (HKCU Run). Task Manager's Startup tab can veto it.");
-    f.toggle("sys/updates", settings_.autoCheckUpdates, L"Check for updates daily", L"Asks GitHub for a newer Windows release once a day. Nothing is downloaded or installed by itself.");
     f.sectionBreak();
     f.beginRow(30);
     f.label(L"Double-click speed, button swap and the system-wide pointer speed live in Windows Settings.", TextStyle::detail, f.contentWidth() - 220);
@@ -1000,31 +1000,27 @@ void SettingsWindow::aboutPane(Frame& f) {
                f.take(0, 40), TextStyle::body, pal.text, 1, DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_PARAGRAPH_ALIGNMENT_NEAR, true);
     f.space(10);
     f.beginRow(28);
-    f.setX(f.areaX() + cw / 2 - 108);
-    if (f.button("about/mac", L"Mac app", false, true, 90) && actions_.openUrl) actions_.openUrl("https://github.com/knightynite/ixpat#install");
-    f.gap(8);
-    if (f.button("about/measure", L"Measurements", false, true, 118) && actions_.openUrl) actions_.openUrl("https://github.com/knightynite/ixpat/blob/main/windows/docs/measurements-2026-10.md");
-    f.endRow();
-    f.space(6);
-    f.beginRow(28);
-    f.setX(f.areaX() + cw / 2 - 180);
-    if (f.button("about/site", L"Website", false, true, 110) && actions_.openUrl) actions_.openUrl("https://knightynite.github.io/ixpat/");
-    f.gap(8);
-    if (f.button("about/source", L"Source code", false, true, 120) && actions_.openUrl) actions_.openUrl("https://github.com/knightynite/ixpat");
-    f.gap(8);
-    if (f.button("about/issues", L"Report an issue", false, true, 130) && actions_.openUrl) actions_.openUrl("https://github.com/knightynite/ixpat/issues");
+    f.setX(f.areaX() + cw / 2 - 75);
+    if (f.button("about/issues", L"Report an issue", false, true, 150) && actions_.reportIssue) actions_.reportIssue();
     f.endRow();
     f.space(12);
     f.beginCard(12, true);
     f.toggle("about/auto", settings_.autoCheckUpdates, L"Check for updates daily");
-    f.toggle("about/diag", settings_.windows.showDiagnostics, L"Show the Diagnostics page");
+    f.toggle("about/diag", settings_.windows.showDiagnostics, L"Diagnostic Mode", L"Adds the Diagnostics page: hook and device state, timings, the report log. For finding faults, not for every day.");
     f.beginRow(30);
     const std::wstring status = model_.updateStatus.empty() ? std::wstring() : W(model_.updateStatus);
     f.drawText(status, f.take(cw - 24 - 130 - 8 - 150 - 8, 30), TextStyle::detail, model_.updateAvailable ? pal.accent : pal.text2.rgb,
                model_.updateAvailable ? 1 : pal.text2.alpha, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, false);
     f.gap(8);
     if (model_.updateAvailable) {
-        if (f.button("about/open", L"Open release page", true, true, 150) && actions_.openUrl) actions_.openUrl(model_.updateAvailable->url);
+        if (model_.updateSelfInstall) {
+            if (f.button("about/install", model_.updateInstalling ? L"Installing..." : L"Install update", true, !model_.updateInstalling, 150) &&
+                actions_.installUpdate) {
+                actions_.installUpdate();
+            }
+        } else if (f.button("about/open", L"Open release page", true, true, 150) && actions_.openUrl) {
+            actions_.openUrl(model_.updateAvailable->url);
+        }
         f.gap(8);
     }
     if (f.button("about/check", model_.updateChecking ? L"Checking..." : L"Check now", false, !model_.updateChecking, 130) && actions_.checkUpdates)
@@ -1032,7 +1028,7 @@ void SettingsWindow::aboutPane(Frame& f) {
     f.endRow();
     f.endCard();
     f.space(10);
-    f.drawText(L"Free and open source under the MIT License. Not affiliated with or endorsed by Microsoft. Surface is a trademark of Microsoft Corporation. Windows builds are unsigned: updates open the release page instead of installing themselves.",
+    f.drawText(L"Free and open source under the MIT License. Not affiliated with or endorsed by Microsoft. Surface is a trademark of Microsoft Corporation. An update is installed only after its signature has been checked against the publisher's name.",
                f.take(0, 34), TextStyle::footnote, pal.text3.rgb, pal.text3.alpha, DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_PARAGRAPH_ALIGNMENT_NEAR, true);
 }
 

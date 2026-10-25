@@ -1,9 +1,9 @@
 ; iXpat for Windows: per-user installer (Inno Setup 6). Built by CI on win-v* tags:
-;   ISCC.exe /DMyAppVersion=0.2.8 /DSourceDir=<dir with iXpat.exe> /O<out dir> windows\installer\ixpat.iss
+;   ISCC.exe /DMyAppVersion=0.2.9 /DSourceDir=<dir with iXpat.exe> /O<out dir> windows\installer\ixpat.iss
 ; No elevation, no services, no drivers: files under %LOCALAPPDATA%\Programs\iXpat, settings under %LOCALAPPDATA%\iXpat.
 
 #ifndef MyAppVersion
-  #define MyAppVersion "0.2.8"
+  #define MyAppVersion "0.2.9"
 #endif
 #ifndef SourceDir
   #define SourceDir "..\build\x64-release"
@@ -62,6 +62,14 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
+; The app's own updater runs Setup silently with /relaunch=1 once it has quit: start the new version for it.
+Filename: "{app}\{#MyAppExeName}"; Flags: nowait; Check: WantsRelaunch
+
+[Code]
+function WantsRelaunch: Boolean;
+begin
+  Result := ExpandConstant('{param:relaunch|0}') = '1';
+end;
 
 [UninstallRun]
 ; A graceful quit (settings flushed, pointer settings restored); Restart Manager handles anything still holding files.

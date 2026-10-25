@@ -4,6 +4,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <thread>
@@ -19,10 +20,19 @@ struct UpdateResult {
     std::optional<ReleaseInfo> release;  // when ok: the newest Windows release, if any
 };
 
+/// Outcome of one download-and-verify, posted to main as (WPARAM 0, LPARAM InstallResult*): the receiver owns it.
+struct InstallResult {
+    bool ok = false;
+    std::string error;           // when !ok: why nothing will be run
+    std::string version;         // the release it was for
+    std::filesystem::path file;  // when ok: the installer, downloaded and verified against the pinned publisher
+};
+
 /// Persisted in <data dir>\update-state.json (the Mac keeps these in UserDefaults).
 struct UpdateState {
-    std::int64_t lastCheck = 0;  // unix seconds of the last successful check
-    std::string skipped;         // a version the user chose to skip
+    std::int64_t lastCheck = 0;         // unix seconds of the last successful check
+    std::string skipped;                // a version the user chose to skip
+    std::int64_t lastCrashNoticed = 0;  // unix seconds: crash dumps written before this have been offered for a report
 };
 UpdateState loadUpdateState();
 void saveUpdateState(const UpdateState& s);
@@ -43,20 +53,30 @@ struct SessionSlot {
 bool httpsGet(const wchar_t* host, const wchar_t* path, const wchar_t* userAgent, std::string& body, std::string& error,
               SessionSlot* slot = nullptr);
 
-/// The GitHub release check on a worker thread (Updater.swift): never downloads or runs anything; the release page
-/// is opened in the browser because Windows builds are unsigned.
+/// GET https://<host><path> streamed into `file` (an HTTPS redirect to another host, GitHub's download storage, is
+/// followed; never to plain HTTP). More than `maxBytes` or anything but HTTP 200 fails and leaves no file behind.
+bool httpsDownload(const wchar_t* host, const wchar_t* path, const wchar_t* userAgent, const std::filesystem::path& file,
+                   std::size_t maxBytes, std::string& error, SessionSlot* slot = nullptr);
+
+/// The GitHub release check and the update download, each on a worker thread (Updater.swift). A check only reads
+/// the release list. An install downloads the release's installer from GitHub's fixed URL, verifies its Authenticode
+/// signature against the pinned publisher (win/authenticode.h) and hands the file back; the app runs it as it quits.
+/// Nothing unsigned, and nothing signed by anyone else, is ever run.
 class Updater {
 public:
     ~Updater();
-    void init(HWND hwnd, UINT message, std::wstring userAgent);
-    /// Starts a check unless one is running. Results arrive on hwnd as `message`.
+    void init(HWND hwnd, UINT checkMessage, UINT installMessage, std::wstring userAgent);
+    /// Starts a check unless a check or install is running. Results arrive on hwnd as checkMessage.
     bool check(bool manual);
+    /// Downloads and verifies r's installer unless a check or install is running. Results arrive as installMessage.
+    bool install(const ReleaseInfo& r);
     bool busy() const { return busy_.load(); }
     void stop();
 
 private:
+    bool begin();  // claims the worker: false when one is running
     HWND hwnd_ = nullptr;
-    UINT message_ = 0;
+    UINT checkMessage_ = 0, installMessage_ = 0;
     std::wstring userAgent_;
     std::thread thread_;
     std::atomic<bool> busy_{false};

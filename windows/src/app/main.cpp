@@ -6,6 +6,7 @@
 #include <commctrl.h>
 
 #include <cstdlib>
+#include <filesystem>
 #include <map>
 #include <memory>
 #include <string>
@@ -17,6 +18,7 @@
 #include "core/snap.h"
 #include "win/actions.h"
 #include "win/bridge_server.h"
+#include "win/bug_report.h"
 #include "win/crash_dump.h"
 #include "win/hid_device.h"
 #include "win/input_thread.h"
@@ -47,6 +49,7 @@ constexpr UINT WM_APP_SHOW = WM_APP + 6;
 constexpr UINT WM_APP_UIA = WM_APP + 7;
 constexpr UINT WM_APP_UPDATE = WM_APP + 8;
 constexpr UINT WM_APP_STALL = WM_APP + 9;
+constexpr UINT WM_APP_INSTALL = WM_APP + 10;
 
 constexpr UINT_PTR kTimerFlush = 4, kTimerWatchdog = 5, kTimerSnapCheck = 7, kTimerPointerApply = 8, kTimerRingCommit = 9,
                    kTimerDemoClose = 10, kTimerDetachExpiry = 11, kTimerPointerOwner = 12,
@@ -65,6 +68,9 @@ std::wstring widen(const std::string& s) {
 
 const wchar_t* kWindowClass = L"iXpat.Main";
 const wchar_t* kMutexName = L"Local\\iXpat.SurfaceMouse.SingleInstance";
+
+/// A downloaded and verified installer to run once the app has quit (nothing of ours left open for it to close).
+std::filesystem::path gInstallerAfterExit;
 
 struct BridgePlay {
     std::string name;
@@ -116,6 +122,11 @@ private:
     void scheduledUpdateCheck();
     void onUpdateResult(bool manual, win::UpdateResult& r);
     void offerUpdate(const ReleaseInfo& r, bool manual);
+    bool canSelfInstall(const ReleaseInfo& r) const;
+    void installUpdate(const ReleaseInfo& r);
+    void onInstallResult(win::InstallResult& r);
+    void reportIssue(bool afterCrash);
+    void crashNotice();
     void applyLoginItem();
     HCURSOR arrowCursor_ = nullptr, waitCursor_ = nullptr, appStartingCursor_ = nullptr, lastCursor_ = nullptr;
     Seconds lastCursorTick_ = 0;
@@ -321,7 +332,7 @@ void App::start() {
     waitCursor_ = LoadCursorW(nullptr, IDC_WAIT);
     appStartingCursor_ = LoadCursorW(nullptr, IDC_APPSTARTING);
     SetTimer(hwnd_, kTimerCursor, 50, nullptr);
-    updater_.init(hwnd_, WM_APP_UPDATE, L"iXpat-Windows/" IXPAT_VERSION_WSTRING);
+    updater_.init(hwnd_, WM_APP_UPDATE, WM_APP_INSTALL, L"iXpat-Windows/" IXPAT_VERSION_WSTRING);
     updateState_ = win::loadUpdateState();
     SetTimer(hwnd_, kTimerUpdateFirst, 10 * 1000, nullptr);   // Updater.start: 10 s after launch, then every 6 h
     SetTimer(hwnd_, kTimerUpdate, 6 * 3600 * 1000, nullptr);
@@ -409,6 +420,10 @@ void App::start() {
             syncModel();
         }
     };
+    acts.installUpdate = [this] {
+        if (model_.updateAvailable) installUpdate(*model_.updateAvailable);
+    };
+    acts.reportIssue = [this] { reportIssue(false); };
     acts.openUrl = [](const std::string& url) {
         static const char* const kAllowed[] = {"https://github.com/knightynite/ixpat", "https://knightynite.github.io/ixpat/",
                                                "https://www.linkedin.com/in/alnnajafi/"};
@@ -536,6 +551,7 @@ void App::quit() {
     MSG m;
     while (PeekMessageW(&m, hwnd_, WM_APP_BRIDGE, WM_APP_BRIDGE, PM_REMOVE)) delete reinterpret_cast<BridgePlay*>(m.lParam);
     while (PeekMessageW(&m, hwnd_, WM_APP_UPDATE, WM_APP_UPDATE, PM_REMOVE)) delete reinterpret_cast<win::UpdateResult*>(m.lParam);
+    while (PeekMessageW(&m, hwnd_, WM_APP_INSTALL, WM_APP_INSTALL, PM_REMOVE)) delete reinterpret_cast<win::InstallResult*>(m.lParam);
     win::debugLog("quit");
     DestroyWindow(hwnd_);
 }
@@ -827,6 +843,7 @@ void App::onUpdateResult(bool manual, win::UpdateResult& r) {
         win::debugLog("update check: no Windows release found, running " IXPAT_VERSION_STRING);
         model_.updateStatus = "No Windows release has been published yet.";
         model_.updateAvailable.reset();
+        model_.updateSelfInstall = false;
         syncModel();
         if (manual) MessageBoxW(hwnd_, L"No Windows release has been published yet.\nYou are running a development build.", L"iXpat", MB_OK | MB_ICONINFORMATION);
         return;
@@ -836,21 +853,27 @@ void App::onUpdateResult(bool manual, win::UpdateResult& r) {
     if (!isNewerVersion(latest, IXPAT_VERSION_STRING)) {
         model_.updateStatus = "Up to date: " IXPAT_VERSION_STRING " is the latest Windows release.";
         model_.updateAvailable.reset();
+        model_.updateSelfInstall = false;
         syncModel();
         if (manual) MessageBoxW(hwnd_, L"iXpat " IXPAT_VERSION_WSTRING L" is the latest Windows release.", L"iXpat is up to date", MB_OK | MB_ICONINFORMATION);
         return;
     }
     model_.updateStatus = "iXpat " + latest + " is available.";
     model_.updateAvailable = *r.release;
+    model_.updateSelfInstall = canSelfInstall(*r.release);
     syncModel();
     if (!manual && updateState_.skipped == latest) return;
     offerUpdate(*r.release, manual);
 }
 
-/// The Mac's alert: Download (here: open the release page, the build is unsigned) / Later / Skip this version.
+/// The Mac's alert: Download / Later / Skip this version. "Install update" when the installer can take over (an x64
+/// install, a signed installer on the release), "Open release page" otherwise.
 void App::offerUpdate(const ReleaseInfo& r, bool manual) {
+    const bool self = canSelfInstall(r);
     const std::wstring title = L"iXpat " + widen(r.version) + L" is available";
-    const std::wstring body = L"You have version " IXPAT_VERSION_WSTRING L". The release page has the zip and the installer.";
+    const std::wstring body = self ? L"You have version " IXPAT_VERSION_WSTRING
+                                     L". The update is downloaded, its signature is checked against the publisher, and iXpat restarts on the new version."
+                                   : L"You have version " IXPAT_VERSION_WSTRING L". The release page has the zip and the installer.";
     TASKDIALOGCONFIG cfg{};
     cfg.cbSize = sizeof cfg;
     cfg.hwndParent = window_ ? window_->hwnd() : hwnd_;
@@ -859,20 +882,141 @@ void App::offerUpdate(const ReleaseInfo& r, bool manual) {
     cfg.pszMainInstruction = title.c_str();
     cfg.pszContent = body.c_str();
     cfg.pszMainIcon = TD_INFORMATION_ICON;
-    const TASKDIALOG_BUTTON buttons[] = {{100, L"Open release page"}, {101, L"Later"}, {102, L"Skip this version"}};
+    const TASKDIALOG_BUTTON buttons[] = {{100, self ? L"Install update" : L"Open release page"}, {101, L"Later"}, {102, L"Skip this version"}};
     cfg.pButtons = buttons;
     cfg.cButtons = 3;
     (void)manual;
     cfg.nDefaultButton = 100;
     int pressed = 101;
     if (FAILED(TaskDialogIndirect(&cfg, &pressed, nullptr, nullptr))) {
-        pressed = MessageBoxW(cfg.hwndParent, (title + L"\n\n" + body + L"\n\nOpen the release page?").c_str(), L"iXpat", MB_YESNO | MB_ICONINFORMATION) == IDYES ? 100 : 101;
+        const std::wstring q = title + L"\n\n" + body + (self ? L"\n\nInstall it now?" : L"\n\nOpen the release page?");
+        pressed = MessageBoxW(cfg.hwndParent, q.c_str(), L"iXpat", MB_YESNO | MB_ICONINFORMATION) == IDYES ? 100 : 101;
     }
-    if (pressed == 100 && isWindowsReleaseTag(r.tag)) ShellExecuteW(nullptr, L"open", widen(canonicalReleaseUrl(r.tag)).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-    else if (pressed == 102) {
+    if (pressed == 100) {
+        if (self) installUpdate(r);
+        else if (isWindowsReleaseTag(r.tag)) ShellExecuteW(nullptr, L"open", widen(canonicalReleaseUrl(r.tag)).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+    } else if (pressed == 102) {
         updateState_.skipped = r.version;
         win::saveUpdateState(updateState_);
     }
+}
+
+/// Self-install needs the x64 build, the installer asset on the release, and an exe the installer put in place. Zip
+/// users get the release page: a file that lives anywhere is not the installer's to replace.
+bool App::canSelfInstall(const ReleaseInfo& r) const {
+#if defined(_M_X64)
+    if (!r.installer || !isWindowsReleaseTag(r.tag)) return false;
+    wchar_t exe[MAX_PATH]{};
+    if (!GetModuleFileNameW(nullptr, exe, MAX_PATH)) return false;
+    const std::filesystem::path installed = win::appDataDir().parent_path() / L"Programs" / L"iXpat" / L"iXpat.exe";
+    std::error_code ec;
+    return std::filesystem::equivalent(std::filesystem::path(exe), installed, ec);
+#else
+    (void)r;
+    return false;
+#endif
+}
+
+void App::installUpdate(const ReleaseInfo& r) {
+    if (!canSelfInstall(r)) {
+        if (isWindowsReleaseTag(r.tag)) ShellExecuteW(nullptr, L"open", widen(canonicalReleaseUrl(r.tag)).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        return;
+    }
+    if (!updater_.install(r)) return;
+    win::debugLog("update: downloading " + r.version);
+    model_.updateInstalling = true;
+    model_.updateStatus = "Downloading iXpat " + r.version + "...";
+    syncModel();
+}
+
+/// A verified installer runs after the app has left (see wWinMain), silently, and relaunches the new version. A
+/// failure runs nothing: it says why and offers the release page.
+void App::onInstallResult(win::InstallResult& r) {
+    model_.updateInstalling = false;
+    if (r.ok) {
+        win::debugLog("update: " + r.version + " downloaded and verified; quitting for the installer");
+        model_.updateStatus = "Installing iXpat " + r.version + "...";
+        syncModel();
+        gInstallerAfterExit = r.file;
+        quit();
+        return;
+    }
+    win::debugLog("update: " + r.version + " not installed: " + r.error);
+    model_.updateStatus = "Update failed: " + r.error;
+    syncModel();
+    const std::wstring text = L"iXpat " + widen(r.version) + L" could not be installed.\n\n" + widen(r.error) + L"\n\nOpen the release page instead?";
+    if (MessageBoxW(window_ ? window_->hwnd() : hwnd_, text.c_str(), L"iXpat", MB_YESNO | MB_ICONWARNING) == IDYES && model_.updateAvailable &&
+        isWindowsReleaseTag(model_.updateAvailable->tag)) {
+        ShellExecuteW(nullptr, L"open", widen(canonicalReleaseUrl(model_.updateAvailable->tag)).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+    }
+}
+
+/// Report an issue. Nothing leaves this PC by itself: the bundle is written beside the logs, Explorer shows it, and
+/// the GitHub issue page opens with the facts filled in; attaching the bundle is the user's own step, after reading
+/// here what is in it. The crash report goes in only when that button was chosen.
+void App::reportIssue(bool afterCrash) {
+    const auto dumps = win::crashDumps();
+    win::ReportFacts facts;
+#if defined(_M_ARM64)
+    facts.version = IXPAT_VERSION_STRING " (arm64)";
+#else
+    facts.version = IXPAT_VERSION_STRING " (x64)";
+#endif
+    facts.device = device_.connected ? "connected, firmware " + device_.firmware + (device_.battery ? ", battery " + std::to_string(*device_.battery) + "%" : std::string())
+                                     : "not connected";
+    std::wstring content = afterCrash ? L"A crash report was saved. " : L"";
+    content += L"A report bundle (a zip) is written next to the logs and the GitHub issue page opens with the version and the mouse filled in. "
+               L"Nothing is sent by itself: you attach the bundle to the issue if you want to.\n\nThe bundle holds:\n"
+               L"\u2022 debug.log and reports.log: device, hook and gesture events and summaries of the mouse's own reports; never pointer movement, keys or text\n"
+               L"\u2022 settings.json with the plugin bridge token removed\n";
+    if (!dumps.empty()) {
+        content += L"\u2022 with the first choice, the latest crash report (" + dumps.front().filename().wstring() +
+                   L"): a copy of the app's memory at the moment it failed, which can include your settings and the state of recent input\n";
+    }
+    TASKDIALOGCONFIG cfg{};
+    cfg.cbSize = sizeof cfg;
+    cfg.hwndParent = window_ ? window_->hwnd() : hwnd_;
+    cfg.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_POSITION_RELATIVE_TO_WINDOW | TDF_SIZE_TO_CONTENT;
+    cfg.pszWindowTitle = L"iXpat";
+    cfg.pszMainInstruction = afterCrash ? L"iXpat closed unexpectedly last time" : L"Report an issue";
+    cfg.pszContent = content.c_str();
+    cfg.pszMainIcon = afterCrash ? TD_WARNING_ICON : TD_INFORMATION_ICON;
+    std::vector<TASKDIALOG_BUTTON> buttons;
+    if (!dumps.empty()) buttons.push_back({300, L"Include the crash report and the logs"});
+    buttons.push_back({301, dumps.empty() ? L"Include the logs" : L"Include the logs only"});
+    buttons.push_back({302, L"Open the issue page only"});
+    buttons.push_back({303, afterCrash ? L"Not now" : L"Cancel"});
+    cfg.pButtons = buttons.data();
+    cfg.cButtons = static_cast<UINT>(buttons.size());
+    cfg.nDefaultButton = buttons.front().nButtonID;
+    int pressed = 303;
+    if (FAILED(TaskDialogIndirect(&cfg, &pressed, nullptr, nullptr))) {
+        pressed = MessageBoxW(cfg.hwndParent, (content + L"\n\nWrite the bundle with the logs and open the issue page?").c_str(), L"iXpat", MB_YESNO | MB_ICONINFORMATION) == IDYES ? 301 : 303;
+    }
+    if (pressed == 300 || pressed == 301) {
+        facts.includeDump = pressed == 300;
+        std::string error;
+        const auto bundle = win::writeReportBundle(facts, error);
+        if (!bundle) {
+            MessageBoxW(cfg.hwndParent, (L"The report bundle could not be written.\n\n" + widen(error)).c_str(), L"iXpat", MB_OK | MB_ICONWARNING);
+            return;
+        }
+        win::debugLog("issue report: bundle written" + std::string(facts.includeDump ? " with the crash report" : ""));
+        ShellExecuteW(nullptr, L"open", L"explorer.exe", (L"/select,\"" + bundle->wstring() + L"\"").c_str(), nullptr, SW_SHOWNORMAL);
+        ShellExecuteW(nullptr, L"open", widen(win::issueUrl(facts, &*bundle)).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+    } else if (pressed == 302) {
+        ShellExecuteW(nullptr, L"open", widen(win::issueUrl(facts, nullptr)).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+    }
+}
+
+/// A crash dump newer than the last one offered: ask once, whatever the answer.
+void App::crashNotice() {
+    const std::int64_t t = win::newestCrashDumpTime();
+    if (t == 0 || t <= updateState_.lastCrashNoticed) return;
+    updateState_.lastCrashNoticed = win::unixNow();
+    win::saveUpdateState(updateState_);
+    win::debugLog("a crash report from the previous run is on disk; offering to report it");
+    reportIssue(true);
 }
 
 void App::updateTray() {
@@ -987,6 +1131,11 @@ LRESULT App::handle(UINT msg, WPARAM wp, LPARAM lp) {
             if (r) onUpdateResult(wp != 0, *r);
             return 0;
         }
+        case WM_APP_INSTALL: {
+            std::unique_ptr<win::InstallResult> r(reinterpret_cast<win::InstallResult*>(lp));
+            if (r) onInstallResult(*r);
+            return 0;
+        }
         case WM_APP_HID:
             onDeviceChanged();
             return 0;
@@ -1041,6 +1190,7 @@ LRESULT App::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 cursorTick();
             } else if (id == kTimerUpdateFirst) {
                 KillTimer(hwnd_, kTimerUpdateFirst);
+                crashNotice();
                 scheduledUpdateCheck();
             } else if (id == kTimerUpdate) {
                 scheduledUpdateCheck();
@@ -1140,6 +1290,12 @@ int WINAPI wWinMain(_In_ HINSTANCE inst, _In_opt_ HINSTANCE, _In_ PWSTR, _In_ in
     }
     if (quit) return quitRunningInstance();
     if (crash) win::crashNow(crashKind);
-    const auto app = std::make_unique<App>();  // on the heap: the App is large, the main stack stays small
-    return app->run(inst, demo);
+    auto app = std::make_unique<App>();  // on the heap: the App is large, the main stack stays small
+    const int rc = app->run(inst, demo);
+    app.reset();
+    if (!gInstallerAfterExit.empty()) {
+        // Silent install over this one, then the new version starts (the installer's /relaunch switch).
+        ShellExecuteW(nullptr, L"open", gInstallerAfterExit.c_str(), L"/SILENT /NORESTART /SP- /SUPPRESSMSGBOXES /relaunch=1", nullptr, SW_SHOWNORMAL);
+    }
+    return rc;
 }

@@ -61,6 +61,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/win-v')
     needs: [x64, arm64]
     runs-on: windows-latest
+    environment: release  # the federated credential for signing is bound to this environment
     permissions:
       contents: write
       id-token: write  # the signing service is reached with a federated credential, no stored secret

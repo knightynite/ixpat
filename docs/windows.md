@@ -26,8 +26,12 @@ is [`windows/docs/measurements-2026-10.md`](../windows/docs/measurements-2026-10
 
 ## Changes by release
 
-### Unreleased
+### win-v0.2.11
 
+* The download links in the README and on the site point at the release that holds the files; the 0.2.10
+  links still named the 0.2.9 release page and were dead.
+* `windows\release-check.ps1` runs before a release is published: the tag, `version.h`, the installer script
+  and those download links must agree on one version, or the release job stops.
 * `SHA256SUMS.txt` has Unix line endings, so `sha256sum -c` accepts it as downloaded.
 * The installer stores file times in UTC; an installed `iXpat.exe` carries the build's real time on any PC.
 

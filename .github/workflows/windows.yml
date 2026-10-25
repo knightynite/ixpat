@@ -67,6 +67,9 @@ jobs:
       id-token: write  # the signing service is reached with a federated credential, no stored secret
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - name: Release consistency
+        shell: pwsh
+        run: ./windows/release-check.ps1 -Tag ${{ github.ref_name }}
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
         with:
           path: dist

@@ -13,11 +13,6 @@ bool ChordGate::isChordKey(int vk) {
     return vk == kVkLWin || vk == kVkRWin || vk == kVkShift || vk == kVkLShift || vk == kVkRShift || vk == kVkS || vk == kVkF23;
 }
 
-void ChordGate::hooksReinstalled() {
-    for (auto& s : hookMake_) s.used = true;
-    for (auto& s : hookBreak_) s.used = true;
-}
-
 void ChordGate::reconcileLetters(bool sHeld, bool f23Held) {
     // A letter Windows holds came from a make the hook never saw, so it is the user's, release and all; a letter
     // Windows does not hold is nobody's, whatever a lost break left behind.
@@ -111,7 +106,15 @@ ChordGate::Decision ChordGate::rawKey(int vk, bool down, std::uint16_t scan, boo
     if (d.hookSaw) seen.used = true;
     if (!fromMouse) return d;
     tick(now);
-    if (!d.hookSaw) return d;  // the hook is gone and Windows has already acted: silence
+    // Raw Input positively identifies the mouse's modifiers even if the hook missed them.
+    // Keep them: a replacement hook can still intercept the letter of this very press.
+    // A letter that first appears here has already reached Windows. It must not trigger
+    // the action again, or let a later repeat be mistaken for a fresh mouse press.
+    if (isLetter(idx) && down && !fedMake_[slot]) {
+        letterPassed_[slot] = true;
+        chord_.consumePress(now);
+        return d;
+    }
     if (down) {
         if (fedMake_[slot]) {
             d.out = chord_.key(vk, true, now);  // a typematic repeat: the decoder ignores it but stays fresh
@@ -125,6 +128,10 @@ ChordGate::Decision ChordGate::rawKey(int vk, bool down, std::uint16_t scan, boo
         // chord already in flight, and its release would open Start just the same.
         if ((vk == kVkLWin || vk == kVkRWin) && chord_.inFlight(now) && cfg.swallowChords && cfg.enabled) d.sendMask = true;
     } else {
+        if (isLetter(idx)) {
+            letterPassed_[slot] = false;
+            swallowedMake_[slot] = false;
+        }
         if (!fedMake_[slot]) return d;
         fedMake_[slot] = false;
         d.out = chord_.key(vk, false, now);

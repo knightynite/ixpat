@@ -13,9 +13,9 @@ namespace ixpat {
 ///
 /// Who hears what: Windows runs the keyboard hook before it generates a key's Raw Input report, and generates
 /// none for a key the hook ate. So the hook decides alone (hookKey), the report names the device a millisecond
-/// later (rawKey), and only a report the hook vouched for feeds the decoder. The mouse's Shift and Win pass
+/// later (rawKey). Device-confirmed modifiers feed the decoder even during hook recovery. The mouse's Shift and Win pass
 /// (a mask key keeps the Win release from opening Start), its letters are swallowed once its Win chord is in
-/// flight. A report no callback vouched for means the hook is gone and Windows already acted: nothing fires.
+/// flight. A letter first seen through Raw Input has already reached Windows and never fires an action here.
 class ChordGate {
 public:
     struct Config {
@@ -38,8 +38,6 @@ public:
     /// The mouse hook: a physical left press attributed to the mouse. `ringOpen`: the click is the ring's instead.
     Decision leftDown(Seconds now, const Config& cfg, bool ringOpen);
 
-    /// The hooks were put back: callbacks before now vouch for nothing.
-    void hooksReinstalled();
     /// Windows' own view of the letters (GetAsyncKeyState) settles their ownership after missed events.
     void reconcileLetters(bool sHeld, bool f23Held);
     /// Time passed: a chord whose breaks never came is forgotten; a hold that expires still ends (holdEnd).

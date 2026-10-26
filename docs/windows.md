@@ -26,6 +26,16 @@ is [`windows/docs/measurements-2026-10.md`](../windows/docs/measurements-2026-10
 
 ## Changes by release
 
+### win-v0.2.14
+
+* Fixes action-button recovery when a keyboard hook misses the mouse's modifiers: a replacement hook can
+  still intercept the letter and open the Action Ring. A shortcut already delivered to Windows is not run twice.
+* Hook replacements overlap and drain queued callbacks before retiring the old hooks. Chord state survives
+  replacement, and quiet periods refresh the hooks without injecting keys or resetting Windows' idle timer.
+* Health checks recover even if the first probe was missed. Persistent failures back off instead of disabling
+  recovery for the session. Chord keys also drain a larger, time-bounded backlog of device reports.
+* Adds recovery replay tests and an opt-in Windows desktop stress test for hook handover and idle recovery.
+
 ### win-v0.2.13
 
 * Stops retaining keyboard-event traces in diagnostic files, the Diagnostics pane and its clipboard report.
@@ -160,9 +170,9 @@ PC once.
 
 ## Open items
 
-1. Windows drops the keyboard hook of this process now and then between presses, most often on the first press
-   after a pause of a few seconds; that press reaches Windows as it is (the Snipping Tool) and the next one works.
-   The re-install on evidence and the keyboard probe narrow it; the cause is still being looked for.
+1. Hook recovery was revised in 0.2.14 for missed presses after idle and during use. A shortcut whose letter
+   reaches Windows before recovery cannot be taken back; continued hardware testing covers sleep, reconnects
+   and interaction with other programs that install keyboard hooks.
 2. A UIAccess-signed build if elevated windows turn out to matter to enough people.
 3. The vendor channel (0xFF07) capture from Mouse and Keyboard Center, which would give per-device pointer
    settings on both platforms.

@@ -49,7 +49,7 @@ std::uint32_t maskFailures();
 /// physical release could not wait for its mask and was swallowed. Retried on failure.
 void queueWinRelease(WORD vk, WORD scan);
 
-/// The hook probe: one release of the mask key and one empty mouse move, both carrying kProbeTag, from the key thread.
+/// The hook probe: one release of the unused mask key carrying kProbeTag, from the key thread.
 /// Dropped unsent if it waited more than a second. `probeSentQpc()` is when the last one went out (0 before any),
 /// `probeSendOk()` whether Windows took it.
 void queueHookProbe();

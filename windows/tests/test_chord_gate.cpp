@@ -89,13 +89,15 @@ TEST_CASE("gate: with the keyboard hook gone, the chord's reports arrive unvouch
     Rig r;
     // 06:22:43 in the log: Raw Input saw Shift, Win, then their breaks and an S break; the hook saw nothing.
     CHECK_FALSE(r.g.rawKey(kVkShift, true, kScanShift, true, 1.000, r.cfg).hookSaw);
-    CHECK_FALSE(r.g.rawKey(kVkLWin, true, kScanWin, true, 1.001, r.cfg).hookSaw);
-    CHECK_FALSE(r.g.decoder().inFlight(1.002));  // Windows acted (Snipping Tool); we stay silent
+    const auto win = r.g.rawKey(kVkLWin, true, kScanWin, true, 1.001, r.cfg);
+    CHECK_FALSE(win.hookSaw);
+    r.take(win);
+    CHECK(r.g.decoder().inFlight(1.002));  // modifiers are known, but only an intercepted letter can fire
     r.g.rawKey(kVkShift, false, kScanShift, true, 1.022, r.cfg);
     r.g.rawKey(kVkLWin, false, kScanWin, true, 1.023, r.cfg);
     r.g.rawKey(kVkS, false, kScanS, true, 1.024, r.cfg);
     CHECK(r.outs.empty());
-    CHECK(r.masks == 0);
+    CHECK(r.masks == 1);
     CHECK_FALSE(r.g.decoder().swallowLeftClick(1.1));
 }
 
@@ -187,11 +189,8 @@ TEST_CASE("gate: a hold whose breaks never come ends on its own, and the next ch
     CHECK(r.letter(kVkS, kScanS, true, 5.004).out == O::press);
 }
 
-TEST_CASE("gate: a re-install voids earlier observations; Windows' key state settles a letter's ownership") {
+TEST_CASE("gate: Windows' key state settles a letter's ownership after missed events") {
     Rig r;
-    r.g.hookKey(kVkLShift, true, kScanShift, 1.0, r.cfg);
-    r.g.hooksReinstalled();
-    CHECK_FALSE(r.g.rawKey(kVkShift, true, kScanShift, true, 1.001, r.cfg).hookSaw);
     // a swallowed S whose break the hook missed, while Windows got its own make meanwhile: Windows holds it now
     r.modifier(kVkLShift, kVkShift, kScanShift, true, 2.0);
     r.modifier(kVkLWin, kVkLWin, kScanWin, true, 2.002);
@@ -207,7 +206,7 @@ TEST_CASE("gate: another keyboard's report consumes its own observation and cann
     r.g.hookKey(kVkLWin, true, kScanWin, 1.0, r.cfg);
     r.g.rawKey(kVkLWin, true, kScanWin, false, 1.0004, r.cfg);  // the keyboard's own report
     CHECK_FALSE(r.g.rawKey(kVkLWin, true, kScanWin, true, 1.010, r.cfg).hookSaw);  // a mouse report with no callback of its own
-    CHECK_FALSE(r.g.decoder().inFlight(1.02));
+    CHECK(r.g.decoder().inFlight(1.02));  // device attribution still establishes the mouse's modifier
 }
 
 TEST_CASE("gate: with the ring open the press commits it at the letter and the click chord at its click") {
@@ -282,4 +281,58 @@ TEST_CASE("gate: the double press as sent: Win held past the typematic delay rep
     CHECK(r.masks == 1);
     // a Win make with nothing of the mouse's in flight is the user's own and passes
     CHECK_FALSE(r.g.hookKey(kVkLWin, true, kScanWin, 3.0, r.cfg).swallow);
+}
+
+TEST_CASE("gate: recovery between mouse modifiers and the letter still hides the press") {
+    Rig r;
+    // The old keyboard hook missed the modifiers. Raw Input still identifies their device;
+    // a replacement hook receives S before Windows can launch the shortcut.
+    r.take(r.g.rawKey(kVkShift, true, kScanShift, true, 1.000, r.cfg));
+    r.take(r.g.rawKey(kVkLWin, true, kScanWin, true, 1.001, r.cfg));
+    const auto s = r.letter(kVkS, kScanS, true, 1.003);
+    CHECK(s.swallow);
+    CHECK(s.out == O::press);
+    CHECK(r.masks == 1);
+    r.take(r.g.rawKey(kVkShift, false, kScanShift, true, 1.020, r.cfg));
+    r.take(r.g.rawKey(kVkLWin, false, kScanWin, true, 1.021, r.cfg));
+    CHECK(r.letter(kVkS, kScanS, false, 1.022).swallow);
+    CHECK(r.outs == std::vector<O>{O::press});
+    CHECK(r.g.idle(1.5));
+}
+
+TEST_CASE("gate: a letter that already reached Windows never fires a second action through raw input") {
+    Rig r;
+    // A queued Win report was not drained before S. Its hook passed S to Windows.
+    r.modifier(kVkLShift, kVkShift, kScanShift, true, 1.000);
+    r.g.hookKey(kVkLWin, true, kScanWin, 1.002, r.cfg);
+    CHECK_FALSE(r.letter(kVkS, kScanS, true, 1.003).swallow);
+    r.take(r.g.rawKey(kVkLWin, true, kScanWin, true, 1.004, r.cfg));
+    r.take(r.g.rawKey(kVkS, true, kScanS, true, 1.005, r.cfg));
+    CHECK(r.outs.empty());
+    CHECK_FALSE(r.letter(kVkS, kScanS, true, 1.006).swallow);
+    CHECK(r.outs.empty());
+}
+
+TEST_CASE("gate: a recovered hold keeps its release even when the hook misses the modifiers' breaks") {
+    Rig r;
+    r.take(r.g.rawKey(kVkShift, true, kScanShift, true, 1.000, r.cfg));
+    r.take(r.g.rawKey(kVkLWin, true, kScanWin, true, 1.001, r.cfg));
+    CHECK(r.letter(kVkF23, kScanF23, true, 1.002).out == O::holdBegin);
+    r.take(r.g.rawKey(kVkShift, false, kScanShift, true, 1.020, r.cfg));
+    r.take(r.g.rawKey(kVkLWin, false, kScanWin, true, 1.021, r.cfg));
+    CHECK(r.letter(kVkF23, kScanF23, false, 1.022).out == O::holdEnd);
+    CHECK(r.g.idle(1.5));
+}
+
+TEST_CASE("gate: a missed letter release reported by the mouse ends the hold and clears ownership") {
+    Rig r;
+    r.modifier(kVkLShift, kVkShift, kScanShift, true, 1.000);
+    r.modifier(kVkLWin, kVkLWin, kScanWin, true, 1.001);
+    CHECK(r.letter(kVkF23, kScanF23, true, 1.002).swallow);
+    r.take(r.g.rawKey(kVkShift, false, kScanShift, true, 1.020, r.cfg));
+    r.take(r.g.rawKey(kVkLWin, false, kScanWin, true, 1.021, r.cfg));
+    r.take(r.g.rawKey(kVkF23, false, kScanF23, true, 1.022, r.cfg));
+    CHECK(r.outs == std::vector<O>{O::holdBegin, O::holdEnd});
+    CHECK_FALSE(r.g.swallowedMake(kVkF23));
+    CHECK(r.g.idle(1.5));
 }

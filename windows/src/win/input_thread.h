@@ -11,6 +11,7 @@
 #include "core/clock.h"
 #include "core/events.h"
 #include "core/gesture.h"
+#include "core/hook_health.h"
 #include "core/kinetic.h"
 #include "core/settings.h"
 #include "win/raw_input.h"
@@ -80,8 +81,8 @@ struct InputStatus {
 /// none for a key the hook ate); for the mouse the report is posted just before the hook runs. So the
 /// hooks decide alone, at once, and Raw Input names the device a moment later. The mouse's Shift and Win
 /// pass (the Win release is kept from opening Start by a mask key), its letters are swallowed once its
-/// Win chord is in flight, and a report the hooks never saw is the signal that Windows dropped a hook:
-/// nothing fires, the hooks go back.
+/// Win chord is in flight. Recovery keeps device-confirmed modifiers so a replacement hook
+/// can still intercept the letter; a letter already delivered to Windows never starts an action here.
 class InputThread {
 public:
     InputThread();
@@ -101,14 +102,15 @@ public:
     InputStatus status() const;
     Seconds lastPointerMove() const;
     bool leftButtonDown() const { return leftDown_.load(); }
-    void reinstallHooks();  // asks the thread to unhook and hook again
+    void reinstallHooks();  // asks the thread to replace the hooks
 
 private:
-    static LRESULT CALLBACK mouseHook(int code, WPARAM wp, LPARAM lp) noexcept;
-    static LRESULT CALLBACK keyHook(int code, WPARAM wp, LPARAM lp) noexcept;
+    template<int Slot> static LRESULT CALLBACK mouseHook(int code, WPARAM wp, LPARAM lp) noexcept;
+    template<int Slot> static LRESULT CALLBACK keyHook(int code, WPARAM wp, LPARAM lp) noexcept;
     static LRESULT CALLBACK wndProc(HWND, UINT, WPARAM, LPARAM);
     void loop();
     bool installHooks(const char* why);  // logged with its reason
+    void retireHooks() noexcept;
     void removeHooks();
     bool onMouse(WPARAM msg, const MSLLHOOKSTRUCT& m) noexcept;  // true = swallow
     bool onKey(WPARAM msg, const KBDLLHOOKSTRUCT& k) noexcept;
@@ -156,6 +158,12 @@ private:
     UINT message_ = 0;
     std::atomic<HWND> wnd_{nullptr};
     HHOOK mouseHook_ = nullptr, keyHook_ = nullptr;
+    HHOOK retiredMouseHook_ = nullptr, retiredKeyHook_ = nullptr;
+    Seconds retireHooksAt_ = 0;
+    int hookSlot_ = 0;
+    const KBDLLHOOKSTRUCT* forwardingKey_ = nullptr;
+    const MSLLHOOKSTRUCT* forwardingMouse_ = nullptr;
+    WPARAM forwardingKeyMessage_ = 0, forwardingMouseMessage_ = 0;
     HANDLE stopEvent_ = nullptr, timer_ = nullptr, ready_ = nullptr;
     std::thread thread_;
     double qpcFreq_ = 1;
@@ -214,12 +222,8 @@ private:
     // hook that does not see it is dead (removed by Windows, or starved by a newer hook that does not chain).
     Seconds nextProbe_ = 0, probeQueuedAt_ = 0;  // one probe at a time; 0 = none outstanding
     long long probeJudgedSentQpc_ = 0;           // sends up to here were judged (or belong to hooks since removed)
-    std::atomic<std::int64_t> probeKeySeenQpc_{0}, probeMouseSeenQpc_{0};  // the hooks' last sight of a probe (0 = never)
-    int probeKeyMisses_ = 0, probeMouseMisses_ = 0, probeKeyUnseen_ = 0, probeMouseUnseen_ = 0;
-    bool probeKeyOff_ = false, probeMouseOff_ = false;  // a probe kind the hook never sees on this system is not a verdict
-    Seconds lastProbeReinstall_ = 0;
-    Seconds probeStormStart_ = 0;
-    int probeStormCount_ = 0;
+    std::atomic<std::int64_t> probeKeySeenQpc_{0};
+    HookHealth keyHealth_;
     std::uint32_t maskWanted_ = 0;  // the sequence number of the mask last asked for (maskSentSequence() catches up)
     // The hooks' last physical (untagged) callbacks: what a physical report is matched against. The all-callback
     // stamps below include our own tagged events, which vouch for nothing about physical ones.

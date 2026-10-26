@@ -132,7 +132,7 @@ private:
     void noteHookTime(Seconds start) noexcept;
     void noteChainTime(Seconds start) noexcept;
     void noteHookLag(DWORD eventTime) noexcept;
-    void noteRawForLiveness(bool mouse, Seconds at, int vk, bool keyDown, bool fromMouse) noexcept;
+    void noteRawForLiveness(bool mouse, Seconds at, int vk, bool keyDown) noexcept;
     void probeHooks(Seconds t) noexcept;
     void checkHookLiveness() noexcept;
     InputConfig config() const noexcept;

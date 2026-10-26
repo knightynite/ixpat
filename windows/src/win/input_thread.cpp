@@ -450,7 +450,7 @@ void InputThread::flushMask() noexcept {
 
 // MARK: hook liveness
 
-void InputThread::noteRawForLiveness(bool mouse, Seconds at, int vk, bool keyDown, bool fromMouse) noexcept {
+void InputThread::noteRawForLiveness(bool mouse, Seconds at, int vk, bool keyDown) noexcept {
     // Every physical report has a hook callback within a few microseconds of it: for the mouse the report is posted
     // first and the callback follows, for the keyboard the callback runs first and the report is generated after it
     // returns. A report with no physical callback near it starts a clock; checkHookLiveness() reads it. Our own
@@ -459,16 +459,8 @@ void InputThread::noteRawForLiveness(bool mouse, Seconds at, int vk, bool keyDow
     const bool unseen = static_cast<double>(lastHook.load(std::memory_order_relaxed)) / qpcFreq_ < at - kHookTwinWindow;
     if (unseen && !mouse && isChordKey(static_cast<DWORD>(vk))) {
         // A chord key the keyboard hook did not see: Windows has it already and the letter may follow within
-        // milliseconds. The hooks go back at once, not after the answer window. A Win make of the mouse's own chord
-        // seen only this way gets its mask (its break would open the Start menu); the user's keyboard keeps its Win.
-        const int idx = ChordGate::chordIndex(vk);
-        if (keyDown && fromMouse && (idx == kVkLWin || idx == kVkRWin)) {
-            const InputConfig cfg = config();
-            if (cfg.enabled && cfg.swallowChords) {
-                maskPending_ = true;
-                flushMask();
-            }
-        }
+        // milliseconds. Replace the hooks before the next message. The gate retains
+        // the mouse's modifiers and sends their mask, with or without a hook observation.
         rehookNow_ = true;
         rehookWhy_ = "chord key unanswered";
         return;
@@ -619,7 +611,7 @@ void InputThread::onRaw(const RawEvent& e) noexcept {
                                 ((e.kind == RawKind::wheel || e.kind == RawKind::hwheel) && e.wheel) || (e.kind == RawKind::key && e.vk != 0 && e.vk != 0xFF);
         if (makesEvent) {
             const int shape = e.kind == RawKind::key ? e.vk : e.kind == RawKind::move ? 1000 + std::abs(e.dx) + std::abs(e.dy) : e.kind == RawKind::button ? 2000 + e.buttonFlags : 3000 + e.wheel;
-            noteRawForLiveness(e.kind != RawKind::key, t, shape, e.kind == RawKind::key ? e.keyDown : e.surfaceMouse, e.surfaceMouse);
+            noteRawForLiveness(e.kind != RawKind::key, t, shape, e.kind == RawKind::key ? e.keyDown : e.surfaceMouse);
         }
     }
     // Remember recent physical entries for the hooks' content matching, unless a hook already decided this one.

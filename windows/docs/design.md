@@ -224,7 +224,7 @@ like the Mac, in the same accent.
   body cap, 2 s read timeout, token from settings shown in Diagnostics. A raw socket needs no http.sys URL
   reservation.
 - **Updater**: WinHTTP `GET api.github.com/repos/knightynite/ixpat/releases` once a day; Windows releases
-  are tagged `win-vX.Y.Z` and marked pre-release so the Mac updater's `releases/latest` never sees them;
+  are tagged `win-vX.Y.Z` and never marked "latest", so the Mac updater's `releases/latest` never sees them;
   the Windows updater picks the highest `win-v` tag. On an x64 copy the installer put in place, and when
   the release carries the installer asset, "Install update" downloads `iXpat-Setup-<ver>-x64.exe` from
   GitHub's fixed release URL (built from the validated tag, never read from the response), verifies it

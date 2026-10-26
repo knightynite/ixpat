@@ -28,6 +28,8 @@ is [`windows/docs/measurements-2026-10.md`](../windows/docs/measurements-2026-10
 
 ### win-v0.2.12
 
+* Windows releases are full releases that never claim the repository's "latest", which stays with the Mac app
+  (its updater reads `releases/latest`). The development pre-releases before 0.2.12 are gone.
 * A new icon: a graphite shell on a pale plate, drawn by `windows\tools\make_icon.py`. The white Mac shell
   vanished at 16 px on a light taskbar; this one reads at every size on both taskbar colours.
 * The notification-area icon is loaded at the shell's small size instead of a 32 px frame scaled down.

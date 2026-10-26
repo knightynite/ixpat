@@ -47,7 +47,7 @@ Needs Xcode 16+ and macOS 14+.
 
 ### Windows
 
-Windows builds are separate releases tagged `win-vX.Y.Z` (marked pre-release so the
+Windows builds are separate releases tagged `win-vX.Y.Z` (never marked "latest", so the
 Mac updater ignores them). From the [Windows release page](https://github.com/knightynite/ixpat/releases/tag/win-v0.2.12):
 
 * [`iXpat-Setup-0.2.12-x64.exe`](https://github.com/knightynite/ixpat/releases/download/win-v0.2.12/iXpat-Setup-0.2.12-x64.exe): per-user installer, no elevation, optional start at login.

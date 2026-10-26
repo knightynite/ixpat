@@ -26,6 +26,14 @@ is [`windows/docs/measurements-2026-10.md`](../windows/docs/measurements-2026-10
 
 ## Changes by release
 
+### win-v0.2.13
+
+* Stops retaining keyboard-event traces in diagnostic files, the Diagnostics pane and its clipboard report.
+  Mouse gestures, haptics and hook-health diagnostics keep working.
+* Filters keyboard-event traces from older logs when creating an issue-report bundle. Existing log files and
+  previously exported bundles are not rewritten; create a new bundle with this version before sharing logs.
+* Adds regression coverage for live logging, exported ZIP contents and truncated log tails.
+
 ### win-v0.2.12
 
 * Windows releases are full releases that never claim the repository's "latest", which stays with the Mac app

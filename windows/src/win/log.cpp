@@ -8,10 +8,32 @@
 #include "win/paths.h"
 
 namespace ixpat::win {
+namespace {
+
+bool hasKeyEvent(std::string_view text) {
+    // Both formats were emitted by the old raw-key diagnostic path, for all devices and hook decisions.
+    return text.find("keyboard vk ") != std::string_view::npos || text.find("hook vk ") != std::string_view::npos;
+}
+
+}  // namespace
+
+std::string withoutKeyEvents(std::string_view text) {
+    std::string out;
+    out.reserve(text.size());
+    while (!text.empty()) {
+        const auto nl = text.find('\n');
+        const auto size = nl == std::string_view::npos ? text.size() : nl + 1;
+        const auto line = text.substr(0, size);
+        if (!hasKeyEvent(line)) out.append(line);
+        text.remove_prefix(size);
+    }
+    return out;
+}
 
 FileLog::FileLog(std::filesystem::path file) : file_(std::move(file)) {}
 
 void FileLog::write(std::string_view line) {
+    if (hasKeyEvent(line)) return;
     using namespace std::chrono;
     const auto now = floor<milliseconds>(system_clock::now());
     const auto days = floor<std::chrono::days>(now);

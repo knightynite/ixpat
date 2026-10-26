@@ -692,20 +692,6 @@ void App::onInputEvents() {
                 uia_.noteWheel();
                 if (router_->freeSpinActive() != lastFreeSpin_) pushConfig();
                 break;
-            case win::InputEvent::Kind::rawKey: {
-                char buf[64];
-                const bool down = (e.c & 1) != 0;
-                if (e.a >= 2) {
-                    std::snprintf(buf, sizeof buf, "hook vk %02x %s %s", e.b, down ? "down" : "up", e.a == 3 ? "swallowed" : "passed");
-                } else {
-                    std::snprintf(buf, sizeof buf, "keyboard vk %02x %s%s%s", e.b, down ? "down" : "up", e.a == 1 ? " (other device)" : "",
-                                  (e.c & 2) ? " (no hook callback)" : "");
-                }
-                win::reportLog(buf);
-                model_.reportLog.push_back(buf);
-                if (model_.reportLog.size() > 150) model_.reportLog.pop_front();
-                break;
-            }
             case win::InputEvent::Kind::chord: {
                 const auto out = static_cast<ChordOutput>(e.b);
                 const char* name = out == ChordOutput::press ? "Press" : out == ChordOutput::doublePress ? "Double press" : out == ChordOutput::holdBegin ? "Press and hold" : "Hold released";

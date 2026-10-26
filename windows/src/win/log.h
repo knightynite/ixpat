@@ -2,6 +2,7 @@
 #include <windows.h>
 
 #include <filesystem>
+#include <string>
 #include <string_view>
 
 namespace ixpat::win {
@@ -12,7 +13,7 @@ class FileLog {
 public:
     static constexpr std::uintmax_t kLimit = 512 * 1024;
     explicit FileLog(std::filesystem::path file);
-    /// Writes "<ISO-8601 UTC> <line>\n".
+    /// Writes "<ISO-8601 UTC> <line>\n", discarding legacy keyboard-event diagnostic messages.
     void write(std::string_view line);
 
 private:
@@ -22,8 +23,11 @@ private:
 
 /// debug.log: device attach/detach, permission and hook state, gestures, errors. No key, menu or text content.
 void debugLog(std::string_view s);
-/// reports.log: summaries of the mouse's own button, key and vendor reports, never pointer motion.
+/// reports.log: the mouse's button transitions, never keyboard events or pointer motion.
 void reportLog(std::string_view s);
+/// Drops whole keyboard/hook key-event lines, including timestamped traces retained by older versions.
+/// Used at export as well as at the live file boundary; does not modify existing files.
+std::string withoutKeyEvents(std::string_view text);
 /// debug.log: "slow: <what> took <ms> ms", at most four lines a second per calling thread. Never from a hook
 /// callback: the input thread posts its slow paths to main instead.
 void debugLogSlow(const char* what, double ms);

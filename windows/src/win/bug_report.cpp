@@ -8,6 +8,7 @@
 #include <regex>
 
 #include "core/zip_writer.h"
+#include "win/log.h"
 #include "win/paths.h"
 
 namespace ixpat::win {
@@ -31,6 +32,7 @@ std::string readTail(const std::filesystem::path& p, std::size_t maxBytes) {
     if (from > 0) {  // start at a whole line
         const auto nl = s.find('\n');
         if (nl != std::string::npos) s.erase(0, nl + 1);
+        else s.clear();  // an incomplete record has no trustworthy prefix to filter
     }
     return s;
 }
@@ -141,7 +143,7 @@ std::optional<std::filesystem::path> writeReportBundle(const ReportFacts& facts,
     ZipWriter zip;
     zip.add("summary.txt", summary.data(), summary.size(), dosDate, dosTime);
     for (const wchar_t* log : {L"debug.log", L"reports.log"}) {
-        const std::string tail = readTail(dir / log, kLogTail);
+        const std::string tail = withoutKeyEvents(readTail(dir / log, kLogTail));
         zip.add(narrow(log), tail.data(), tail.size(), dosDate, dosTime);
     }
     {

@@ -692,11 +692,8 @@ void InputThread::onRaw(const RawEvent& e) noexcept {
             // acted on this chord: silence here, and checkHookLiveness() puts the hooks back.
             const InputConfig cfg = config();
             const ChordGate::Decision d = gate_.rawKey(e.vk, e.keyDown, e.scan, e.surfaceMouse, t, {cfg.swallowChords, cfg.enabled});
-            if (!e.surfaceMouse) {
-                post({InputEvent::Kind::rawKey, 1, e.vk, e.keyDown ? 1 : 0, t});
-                break;
-            }
-            post({InputEvent::Kind::rawKey, 0, e.vk, (e.keyDown ? 1 : 0) | (d.hookSaw ? 0 : 2), t});
+            // The gate must retire other keyboards' hook observations, but key identities never leave this thread.
+            if (!e.surfaceMouse) break;
             postChord(d.out, t);
             if (d.sendMask) {
                 // Windows holds this Win down too (it had to pass for Raw Input to name its device). A key that
@@ -1023,7 +1020,6 @@ bool InputThread::onKey(WPARAM msg, const KBDLLHOOKSTRUCT& k) noexcept {
         // the one this release will never have, so the chord ends as it would have.
         postChord(gate_.rawKey(static_cast<int>(k.vkCode), false, static_cast<std::uint16_t>(k.scanCode), true, t, {cfg.swallowChords, cfg.enabled}).out, t);
     }
-    post({InputEvent::Kind::rawKey, static_cast<std::uint8_t>(swallow ? 3 : 2), idx, down ? 1 : 0, t});
     return swallow;
 }
 

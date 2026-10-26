@@ -242,8 +242,10 @@ like the Mac, in the same accent.
   waits for the mutex, up to 5 s, and then runs. A mutex that cannot be created at all stops the launch with a
   message: two unguarded instances would both shape the input.
 - **Start at login** via the HKCU `Run` key.
-- **Logs**: `%LOCALAPPDATA%\iXpat\debug.log` and `reports.log`, 512 KB rotation, never key or text
-  content, exactly the Mac policy.
+- **Logs**: `%LOCALAPPDATA%\iXpat\debug.log` and `reports.log`, 512 KB rotation. Keyboard-event
+  traces are not queued, displayed or written; hook-health counters and recognized mouse gestures remain.
+  Issue-report exports also remove key-event traces retained in logs from older versions. Existing log
+  files and previously exported bundles are not rewritten.
 - **Crash dumps**: an unhandled exception, a stack overflow, abort(), an uncaught C++ exception or a CRT fault
   writes a minidump beside the logs (`crash-<time>-<pid>.dmp`, the last five kept) and one line in debug.log,
   then the process ends as it would have. A dump thread and the paths are prepared at startup, so the fatal

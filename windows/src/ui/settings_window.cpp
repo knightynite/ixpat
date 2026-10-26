@@ -1134,7 +1134,7 @@ void SettingsWindow::diagnosticsPane(Frame& f) {
     if (f.button("diag/about", L"About iXpat")) tab_ = kAboutTab;
     f.endRow();
     f.sectionBreak();
-    f.label(L"Raw input reports (buttons, keys; motion is not logged)", TextStyle::title);
+    f.label(L"Mouse button reports (keys and motion are not logged)", TextStyle::title);
     f.space(6);
     const Rect box = f.take(0, 180);
     f.fillRound(box, 4, pal.field.rgb, pal.field.alpha);

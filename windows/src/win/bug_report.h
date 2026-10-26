@@ -20,7 +20,7 @@ std::vector<std::filesystem::path> crashDumps();
 std::int64_t newestCrashDumpTime();
 
 /// Writes <data dir>\reports\ixpat-report-<time>.zip: summary.txt (the facts, the Windows build, the dumps on disk),
-/// the tails of debug.log and reports.log, settings.json with its bridge token blanked, and the newest dump when
+/// the log tails with legacy key-event lines removed, settings.json with its bridge token blanked, and the newest dump when
 /// asked for. Returns the path, or nothing with `error` filled. Nothing is sent anywhere.
 std::optional<std::filesystem::path> writeReportBundle(const ReportFacts& facts, std::string& error);
 

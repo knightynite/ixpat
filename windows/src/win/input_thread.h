@@ -38,8 +38,6 @@ struct InputEvent {
     enum class Kind : std::uint8_t {
         rawButtons,    // a = old mask, b = new mask (Surface Mouse)
         rawWheel,      // b = notches (signed)
-        rawKey,        // for the report log: a = 0 the mouse's keyboard (Raw Input), 1 another device, 2 hook passed, 3 hook swallowed;
-                       // b = vk; c = bit 0 down, bit 1 the hook never saw it
         chord,         // b = ChordOutput
         systemEvent,   // b = HapticEvent (screenEdge, dragEnd, forceClick)
         gestureAction, // b = direction (GestureDir), c = gesture session id

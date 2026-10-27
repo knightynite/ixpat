@@ -36,6 +36,10 @@ is [`windows/docs/measurements-2026-10.md`](../windows/docs/measurements-2026-10
   recovery for the session. Chord keys also drain a larger, time-bounded backlog of device reports.
 * Adds recovery replay tests and an opt-in Windows desktop stress test for hook handover and idle recovery.
 
+Validation: 189 automated tests (1,800 assertions), x64 and ARM64 builds, and a Windows desktop stress test
+with 2,000 input events during repeated hook replacements. Physical checks covered repeated mouse-button
+presses, followed by a successful press after idle with the diagnostic monitor stopped.
+
 ### win-v0.2.13
 
 * Stops retaining keyboard-event traces in diagnostic files, the Diagnostics pane and its clipboard report.

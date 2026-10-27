@@ -8,3 +8,4 @@ iXpat.app/
 .notary-profile
 dist/
 windows/build/
+__pycache__/

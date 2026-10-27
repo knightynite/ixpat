@@ -7,11 +7,14 @@
 [![Windows build](https://github.com/knightynite/ixpat/actions/workflows/windows.yml/badge.svg)](https://github.com/knightynite/ixpat/actions/workflows/windows.yml)
 [![Website](https://img.shields.io/badge/Website-knightynite.github.io%2Fixpat-0a84ff.svg)](https://knightynite.github.io/ixpat/)
 
-Menu bar app that gives the **Microsoft Surface Mouse (2nd Edition)** on macOS the
-feel it has on Windows, and more (and, since 0.2, a native Windows port that gives
-Windows the parts Microsoft never shipped, see [Windows](#windows)): haptic feedback for clicks, scrolling, menus and
-text selection, an Action Ring, kinetic scrolling, force click, an action button you
-can remap, and pointer settings that apply to this mouse only.
+iXpat is a free, open-source app for customizing the **Microsoft Surface Mouse (2nd Edition)**
+on **Windows and macOS**. Tune haptic feedback for clicks, scrolling, menus and text selection;
+remap the action button's press, double press and hold; open an Action Ring; and adjust
+kinetic scrolling, force click and pointer settings for this mouse.
+
+[Project page and downloads](https://knightynite.github.io/ixpat/) ·
+[Installation](#install) ·
+[Surface Mouse haptics discussion on r/Surface](https://www.reddit.com/r/Surface/comments/1xfpls1/ixpat_now_brings_customizable_surface_mouse/)
 
 The mouse exposes a standard HID *Simple Haptic Controller* (usage page 0x0E), the
 same interface the Surface app drives on Windows. macOS has no driver for it, but

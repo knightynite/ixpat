@@ -3,11 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Surface Mouse (2nd Edition) on Mac and Windows: haptics, action button and more | iXpat</title>
-    <meta name="description" content="The Microsoft Surface Mouse (2nd Edition) on macOS and Windows: iXpat is the free app that turns on its haptics, remaps the action button, and adds an Action Ring, kinetic scrolling and force click.">
-    <meta name="keywords" content="iXpat, Surface Mouse, Surface Mouse 2nd Edition, macOS, haptic mouse, haptics, Action Ring, action button, kinetic scrolling, force click, Mac app, menu bar app">
+    <title>Surface Mouse Haptics &amp; Button Remapping | iXpat</title>
+    <meta name="description" content="Customize your Microsoft Surface Mouse (2nd Edition) on Windows and Mac. Free, open-source haptics, action-button remapping, Action Ring and smooth scrolling.">
     <meta name="author" content="AL Najafi">
-    <meta name="robots" content="index, follow">
+    <meta name="robots" content="index, follow, max-image-preview:large">
     <meta name="google-site-verification" content="pMsqAE7HVjNwRhAO4jmAIaTVAMso5dFcroVHcbuxJuk">
     <link rel="canonical" href="https://knightynite.github.io/ixpat/">
     <link rel="icon" type="image/png" href="icon.png">
@@ -15,56 +14,87 @@
 
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://knightynite.github.io/ixpat/">
-    <meta property="og:title" content="Surface Mouse (2nd Edition) on Mac and Windows: haptics, action button and more | iXpat">
-    <meta property="og:description" content="Free app for macOS and Windows that gives the Surface Mouse (2nd Edition) its haptics, an Action Ring, kinetic scrolling and force click.">
+    <meta property="og:title" content="Surface Mouse Haptics &amp; Button Remapping | iXpat">
+    <meta property="og:description" content="Customize your Surface Mouse (2nd Edition) on Windows and Mac: haptic feedback, action-button remapping, an Action Ring and smooth scrolling. Free and open source.">
     <meta property="og:image" content="https://knightynite.github.io/ixpat/og-image.jpg">
     <meta property="og:site_name" content="iXpat">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="Surface Mouse (2nd Edition) on Mac: haptics, action button and more | iXpat">
-    <meta name="twitter:description" content="Free macOS app that gives the Surface Mouse (2nd Edition) its haptics, an Action Ring, kinetic scrolling and force click.">
+    <meta name="twitter:title" content="Surface Mouse Haptics &amp; Button Remapping | iXpat">
+    <meta name="twitter:description" content="Customize your Surface Mouse (2nd Edition) on Windows and Mac: haptic feedback, action-button remapping, an Action Ring and smooth scrolling. Free and open source.">
     <meta name="twitter:image" content="https://knightynite.github.io/ixpat/og-image.jpg">
 
     <script type="application/ld+json">
     {
         "@context": "https://schema.org",
-        "@type": "SoftwareApplication",
-        "name": "iXpat",
-        "operatingSystem": "macOS 14+",
-        "applicationCategory": "UtilitiesApplication",
-        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
-        "description": "Free macOS menu bar app that gives the Microsoft Surface Mouse (2nd Edition) haptic feedback, an Action Ring, kinetic scrolling, force click and per-mouse pointer settings",
-        "downloadUrl": "https://github.com/knightynite/ixpat/releases/latest",
-        "softwareVersion": "0.1.1",
-        "author": { "@type": "Person", "name": "AL Najafi", "url": "https://www.linkedin.com/in/alnnajafi/" }
-    }
-    </script>
-    <script type="application/ld+json">
-    {
-        "@context": "https://schema.org",
-        "@type": "HowTo",
-        "name": "Set up the Surface Mouse (2nd Edition) with haptics on a Mac",
-        "description": "Pair the Microsoft Surface Mouse (2nd Edition) with macOS over Bluetooth, install iXpat and grant it the two permissions it needs.",
-        "totalTime": "PT5M",
-        "step": [
-            { "@type": "HowToStep", "name": "Pair the mouse", "text": "Insert the two AAA batteries, hold the power and pairing button on the underside until the light pulses, then connect to Surface Mouse in System Settings > Bluetooth." },
-            { "@type": "HowToStep", "name": "Install iXpat", "text": "Download the DMG from GitHub Releases and drag iXpat to Applications, or run brew install knightynite/ixpat/ixpat." },
-            { "@type": "HowToStep", "name": "Grant permissions", "text": "iXpat opens a setup guide on first launch; use its buttons to allow Input Monitoring and Accessibility under System Settings > Privacy & Security." },
-            { "@type": "HowToStep", "name": "Tune the feel", "text": "Pick a haptic strength, a feel preset per button, map the action button and build the Action Ring in the iXpat settings window." }
-        ]
-    }
-    </script>
-
-    <script type="application/ld+json">
-    {
-        "@context": "https://schema.org",
-        "@type": "FAQPage",
-        "mainEntity": [
-            { "@type": "Question", "name": "Does the Microsoft Surface Mouse (2nd Edition) work with a Mac?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. It pairs over Bluetooth and macOS drives the pointer, buttons and wheel. macOS does not play the haptics or understand the action button; iXpat adds both." } },
-            { "@type": "Question", "name": "Do the Surface Mouse haptics work on macOS?", "acceptedAnswer": { "@type": "Answer", "text": "With iXpat, yes. The mouse exposes a standard HID haptic controller with eight waveforms, and iXpat plays them for clicks, scroll detents, menu highlights, text selection and more." } },
-            { "@type": "Question", "name": "Can I remap the Surface Mouse action button on macOS?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. iXpat catches the button's Windows shortcuts and maps press, double press and hold to Mission Control, Spotlight, a screenshot, the Action Ring, media keys, an app, a shortcut or a shell command." } },
-            { "@type": "Question", "name": "Do I need the Surface app or a Windows PC?", "acceptedAnswer": { "@type": "Answer", "text": "No. Pair the mouse with the Mac, install iXpat, and every setting lives in iXpat." } },
-            { "@type": "Question", "name": "Does iXpat work with the original Surface Mouse?", "acceptedAnswer": { "@type": "Answer", "text": "No. iXpat is for the Surface Mouse (2nd Edition) only; older Surface mice have no haptic controller." } },
-            { "@type": "Question", "name": "Is iXpat free?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. iXpat is free and open source under the MIT license." } }
+        "@graph": [
+            {
+                "@type": "WebPage",
+                "@id": "https://knightynite.github.io/ixpat/#webpage",
+                "url": "https://knightynite.github.io/ixpat/",
+                "name": "Surface Mouse Haptics & Button Remapping | iXpat",
+                "description": "Free, open-source Surface Mouse (2nd Edition) customization for Windows and Mac: haptics, action-button remapping, Action Ring and smooth scrolling.",
+                "image": "https://knightynite.github.io/ixpat/og-image.jpg",
+                "mainEntity": [
+                    { "@id": "https://knightynite.github.io/ixpat/#windows-app" },
+                    { "@id": "https://knightynite.github.io/ixpat/#mac-app" }
+                ],
+                "relatedLink": [
+                    "https://github.com/knightynite/ixpat",
+                    "https://www.reddit.com/r/Surface/comments/1xfpls1/ixpat_now_brings_customizable_surface_mouse/"
+                ]
+            },
+            {
+                "@type": "SoftwareApplication",
+                "@id": "https://knightynite.github.io/ixpat/#windows-app",
+                "name": "iXpat for Windows",
+                "url": "https://knightynite.github.io/ixpat/#windows",
+                "operatingSystem": "Windows 10 (1809 or later), Windows 11",
+                "processorRequirements": "x64 or ARM64",
+                "applicationCategory": "UtilitiesApplication",
+                "softwareRequirements": "Microsoft Surface Mouse (2nd Edition)",
+                "softwareVersion": "0.2.14",
+                "downloadUrl": "https://github.com/knightynite/ixpat/releases/download/win-v0.2.14/iXpat-Setup-0.2.14-x64.exe",
+                "description": "Customize Surface Mouse haptic feedback, remap the action button, open an Action Ring, and tune kinetic scrolling and per-app actions on Windows.",
+                "isAccessibleForFree": true,
+                "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+                "license": "https://github.com/knightynite/ixpat/blob/main/LICENSE",
+                "author": { "@id": "https://knightynite.github.io/ixpat/#author" }
+            },
+            {
+                "@type": "SoftwareApplication",
+                "@id": "https://knightynite.github.io/ixpat/#mac-app",
+                "name": "iXpat for Mac",
+                "url": "https://knightynite.github.io/ixpat/#download",
+                "operatingSystem": "macOS 14 or later",
+                "processorRequirements": "Apple Silicon or Intel",
+                "applicationCategory": "UtilitiesApplication",
+                "softwareRequirements": "Microsoft Surface Mouse (2nd Edition)",
+                "softwareVersion": "0.1.1",
+                "downloadUrl": "https://github.com/knightynite/ixpat/releases/latest",
+                "description": "Enable Surface Mouse haptics on Mac, remap the action button, and customize the Action Ring, kinetic scrolling, force click and per-app settings.",
+                "isAccessibleForFree": true,
+                "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+                "license": "https://github.com/knightynite/ixpat/blob/main/LICENSE",
+                "author": { "@id": "https://knightynite.github.io/ixpat/#author" }
+            },
+            {
+                "@type": "SoftwareSourceCode",
+                "name": "iXpat",
+                "url": "https://github.com/knightynite/ixpat",
+                "codeRepository": "https://github.com/knightynite/ixpat",
+                "description": "Open-source Surface Mouse (2nd Edition) haptics and customization app for Windows and macOS.",
+                "license": "https://github.com/knightynite/ixpat/blob/main/LICENSE",
+                "targetProduct": [
+                    { "@id": "https://knightynite.github.io/ixpat/#windows-app" },
+                    { "@id": "https://knightynite.github.io/ixpat/#mac-app" }
+                ]
+            },
+            {
+                "@type": "Person",
+                "@id": "https://knightynite.github.io/ixpat/#author",
+                "name": "AL Najafi",
+                "url": "https://www.linkedin.com/in/alnnajafi/"
+            }
         ]
     }
     </script>
@@ -429,6 +459,10 @@
         }
         @media (min-width: 521px) and (max-width: 900px) { .steps { grid-template-columns: 1fr 1fr; } }
         @media (max-width: 520px) {
+            .brand { flex-shrink: 0; }
+            .nav-links { gap: 14px; }
+            .nav-links a { white-space: nowrap; }
+            .nav-links a[href="#features"], .nav-links a[href="#setup"] { display: none; }
             .waves { grid-template-columns: repeat(2, 1fr); }
             .bento { grid-template-columns: 1fr; }
             .span-3, .span-2, .span-4 { grid-column: auto; }
@@ -469,8 +503,8 @@
                 <span class="sep"></span>
                 <span class="tag">for Surface Mouse</span>
             </div>
-            <h1>Feel every click.<br><span>On your Mac. And on Windows.</span></h1>
-            <p class="lead">iXpat brings the Surface Mouse's haptics to macOS, then goes further: an Action Ring under the pointer, scrolling with real momentum, force click, and a feel you can tune for every app. The same app now runs natively on Windows 10 and 11.</p>
+            <h1>Your Surface Mouse.<br><span>Haptics your way.</span></h1>
+            <p class="lead">Customize your Microsoft Surface Mouse (2nd Edition) on Windows and Mac. Tune its haptic feedback, remap the action button, open an Action Ring under the pointer, and give scrolling real momentum. Free and open source, with settings for every app.</p>
             <div class="actions">
                 <a class="btn btn-primary" href="https://github.com/knightynite/ixpat/releases/latest">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -770,9 +804,21 @@
         <div class="wrap">
             <div class="section-head reveal">
                 <div class="kicker">Questions</div>
-                <h2>Surface Mouse (2nd Edition) on a Mac</h2>
+                <h2>Surface Mouse haptics on Windows and Mac</h2>
             </div>
             <div class="faq reveal">
+                <details>
+                    <summary>How do I customize Surface Mouse haptics on Windows?</summary>
+                    <p>Install iXpat for Windows 10 (1809 or later) or Windows 11, then open the Haptics page to choose feedback for clicks, scrolling, menus, controls and text selection. Adjust the strength and feel, or use different preferences for each app. Downloads include a signed x64 installer and portable x64 and ARM64 builds.</p>
+                </details>
+                <details>
+                    <summary>Can I remap the Surface Mouse action button on Windows?</summary>
+                    <p>Yes. In iXpat's Action button settings, assign press, double press and hold to the Action Ring, Task View, media controls, an app, a shortcut or another action. Hold-and-move gestures can adjust volume and media controls. Customization applies to normal desktop windows; input in elevated or admin windows is not shaped.</p>
+                </details>
+                <details>
+                    <summary>Why does the Surface Mouse action button open Snipping Tool?</summary>
+                    <p>The mouse sends Win+Shift+S for a single press. To use the Action Ring instead, enable iXpat, turn on "Hide the button's built-in chords from apps" and assign Press to Action Ring. Use the latest Windows release, which includes input-recovery fixes. If Snipping Tool still opens, quit and reopen iXpat, then report your Windows version, iXpat version and whether it happened after sleep or in a particular app.</p>
+                </details>
                 <details open>
                     <summary>Does the Microsoft Surface Mouse (2nd Edition) work with a Mac?</summary>
                     <p>Yes. It pairs over plain Bluetooth and macOS drives the pointer, the buttons and the wheel out of the box. What macOS does not do is play the haptics or understand the action button. iXpat adds both, plus the rest of what is on this page.</p>
@@ -786,12 +832,12 @@
                     <p>Yes. The button sends Windows shortcuts that mean nothing on a Mac. iXpat catches them, hides them from your apps, and maps press, double press and hold to Mission Control, Spotlight, a screenshot, the Action Ring, media keys, an app, a shortcut or a shell command.</p>
                 </details>
                 <details>
-                    <summary>Do I need the Surface app, Mouse and Keyboard Center, or a Windows PC?</summary>
-                    <p>No. Nothing on this page involves Windows. Pair the mouse with the Mac, install iXpat, and every setting lives in iXpat. The only Windows-side thing iXpat cannot replace today is a firmware update, which Microsoft has not yet published for this model.</p>
+                    <summary>Do I need the Surface app or Mouse and Keyboard Center?</summary>
+                    <p>No. Pair the mouse over Bluetooth and install iXpat on your Mac or Windows PC. Haptics and button customization are configured in iXpat. The Mac app works without a Windows PC; firmware updates are separate and remain handled by Windows.</p>
                 </details>
                 <details>
-                    <summary>Does iXpat work with the original Surface Mouse or other Surface mice?</summary>
-                    <p>No. iXpat is written for the 2nd Edition only (USB vendor 045E, product 0880). Older Surface mice have no haptic controller, so there is nothing for it to drive. Other mice and the trackpad are left alone.</p>
+                    <summary>Does iXpat support the original Surface Mouse, Surface Arc Mouse or Modern Mobile Mouse?</summary>
+                    <p>iXpat currently supports the Surface Mouse (2nd Edition) only. The original Surface Mouse, Surface Arc Mouse and Modern Mobile Mouse do not have its haptic controller. Other mice and the trackpad continue to work normally.</p>
                 </details>
                 <details>
                     <summary>Does it work on Intel Macs and older macOS versions?</summary>
@@ -802,6 +848,7 @@
                     <p>Yes. iXpat is free and open source under the MIT license. The code, the issues and the releases are on GitHub.</p>
                 </details>
             </div>
+            <p class="meta" style="margin-top: 24px; text-align: center;">Read the <a href="https://github.com/knightynite/ixpat">source code and installation guide on GitHub</a>, or join the <a href="https://www.reddit.com/r/Surface/comments/1xfpls1/ixpat_now_brings_customizable_surface_mouse/">Surface Mouse haptics discussion on r/Surface</a>.</p>
         </div>
     </section>
 
@@ -838,6 +885,7 @@
                 <a href="https://github.com/knightynite/ixpat">GitHub</a>
                 <a href="https://github.com/knightynite/ixpat/issues">Issues</a>
                 <a href="https://github.com/knightynite/ixpat/blob/main/docs/windows.md">Windows</a>
+                <a href="https://www.reddit.com/r/Surface/comments/1xfpls1/ixpat_now_brings_customizable_surface_mouse/">Reddit discussion</a>
                 <a href="mailto:ixpat@alcybr.com">ixpat@alcybr.com</a>
             </div>
             <div>by <a href="https://www.linkedin.com/in/alnnajafi/" style="margin-right: 0">AL Najafi</a> in Dallas · MIT License · Not affiliated with Microsoft. Surface is a trademark of Microsoft Corporation.</div>

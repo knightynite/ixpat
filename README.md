@@ -16,6 +16,10 @@ kinetic scrolling, force click and pointer settings for this mouse.
 [Installation](#install) ·
 [Surface Mouse haptics discussion on r/Surface](https://www.reddit.com/r/Surface/comments/1xfpls1/ixpat_now_brings_customizable_surface_mouse/)
 
+[![Watch the 25-second iXpat feature tour](docs/feature-tour.jpg)](https://knightynite.github.io/ixpat/#tour)
+
+[Watch the feature tour](https://knightynite.github.io/ixpat/#tour): Action Ring, haptics and button settings from the Mac and Windows apps.
+
 The mouse exposes a standard HID *Simple Haptic Controller* (usage page 0x0E), the
 same interface the Surface app drives on Windows. macOS has no driver for it, but
 user-space IOKit can read the waveform table and fire triggers with no kernel

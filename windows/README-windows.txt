@@ -17,7 +17,8 @@ Run it
 * Zip: unzip anywhere and start iXpat.exe. It lives in the notification area
   (tray); left-click the icon for the settings window, right-click for the
   menu.
-* Installer: iXpat-Setup-<version>-x64.exe installs per user under
+* Installer: iXpat-Setup-<version>-x64.exe, or -arm64.exe for ARM64 PCs
+  such as the Surface Pro 11, installs per user under
   %LOCALAPPDATA%\Programs\iXpat with an optional "start at login" task.
 * The executables and the installer are signed (publisher: AL Najafi).
 * Updates: the app asks GitHub once a day. An installed copy can download

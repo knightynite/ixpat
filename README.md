@@ -180,13 +180,13 @@ presets, per-app profiles, Action Ring, kinetic wheel, chords and plugin bridge.
 | Force click / hold | hold timer on the tap thread | the same, with a `holdAction` (context menu, middle click, ring) |
 | Pointer settings | hidutil | SPI_SETMOUSE / SPI_SETMOUSESPEED while this mouse drives the pointer |
 | UI | SwiftUI | Direct2D immediate-mode toolkit, light/dark, per-monitor DPI |
-| Updates | signed DMG | signed installer, verified against the publisher's name before it runs (installed x64 copies); zip copies open the release page |
+| Updates | signed DMG | signed installer for the PC's architecture, verified against the publisher's name before it runs (installed copies); zip copies open the release page |
 
 Docs: [windows/docs/design.md](windows/docs/design.md) (spec),
 [windows/docs/measurements-2026-10.md](windows/docs/measurements-2026-10.md) (what the mouse
 exposes on Windows, measured), and [docs/windows.md](docs/windows.md) (status and the changes
 by release). CI builds x64 and ARM64 and runs the test suite
-(`.github/workflows/windows.yml`); `win-v*` tags publish the zips and the installer.
+(`.github/workflows/windows.yml`); `win-v*` tags publish the zips and the installers.
 
 ## License
 

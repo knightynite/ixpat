@@ -885,8 +885,8 @@ void App::onUpdateResult(bool manual, win::UpdateResult& r) {
     offerUpdate(*r.release, manual);
 }
 
-/// The Mac's alert: Download / Later / Skip this version. "Install update" when the installer can take over (an x64
-/// install, a signed installer on the release), "Open release page" otherwise.
+/// The Mac's alert: Download / Later / Skip this version. "Install update" when the installer can take over (an
+/// installed copy, a signed installer for this PC on the release), "Open release page" otherwise.
 void App::offerUpdate(const ReleaseInfo& r, bool manual) {
     const bool self = canSelfInstall(r);
     const std::wstring title = L"iXpat " + widen(r.version) + L" is available";
@@ -923,20 +923,15 @@ void App::offerUpdate(const ReleaseInfo& r, bool manual) {
     }
 }
 
-/// Self-install needs the x64 build, the installer asset on the release, and an exe the installer put in place. Zip
-/// users get the release page: a file that lives anywhere is not the installer's to replace.
+/// Self-install needs the installer for this PC's architecture on the release (win::installerArch) and an exe the
+/// installer put in place. Zip users get the release page: a file that lives anywhere is not the installer's to replace.
 bool App::canSelfInstall(const ReleaseInfo& r) const {
-#if defined(_M_X64)
     if (!r.installer || !isWindowsReleaseTag(r.tag)) return false;
     wchar_t exe[MAX_PATH]{};
     if (!GetModuleFileNameW(nullptr, exe, MAX_PATH)) return false;
     const std::filesystem::path installed = win::appDataDir().parent_path() / L"Programs" / L"iXpat" / L"iXpat.exe";
     std::error_code ec;
     return std::filesystem::equivalent(std::filesystem::path(exe), installed, ec);
-#else
-    (void)r;
-    return false;
-#endif
 }
 
 void App::installUpdate(const ReleaseInfo& r) {

@@ -226,13 +226,15 @@ like the Mac, in the same accent.
   reservation.
 - **Updater**: WinHTTP `GET api.github.com/repos/knightynite/ixpat/releases` once a day; Windows releases
   are tagged `win-vX.Y.Z` and never marked "latest", so the Mac updater's `releases/latest` never sees them;
-  the Windows updater picks the highest `win-v` tag. On an x64 copy the installer put in place, and when
-  the release carries the installer asset, "Install update" downloads `iXpat-Setup-<ver>-x64.exe` from
-  GitHub's fixed release URL (built from the validated tag, never read from the response), verifies it
+  the Windows updater picks the highest `win-v` tag. On a copy the installer put in place, and when the
+  release carries the installer for the PC's architecture (`arm64` on an ARM64 PC whichever build runs, so an
+  emulated x64 copy moves to the native build; `x64` elsewhere), "Install update" downloads
+  `iXpat-Setup-<ver>-<arch>.exe` from GitHub's fixed release URL (built from the validated tag and one of
+  the two arch names, never read from the response), verifies it
   with `WinVerifyTrust` (embedded signature, revocation checked, timestamp honoured) and requires the
   signer's CN and O to equal the pinned publisher name; only then does the app quit and run the installer
-  silently with `/relaunch=1`, which starts the new version. Anything else, a zip copy, ARM64, a release
-  without the installer, a signature that fails or belongs to someone else, opens the release page
+  silently with `/relaunch=1`, which starts the new version. Anything else, a zip copy, a release
+  without the installer for this architecture, a signature that fails or belongs to someone else, opens the release page
   instead (fails closed, like the Mac's Team ID check).
 - **Issue reports**: "Report an issue" (About) and the notice after a crash write a zip beside the logs
   (summary, the log tails, settings.json with the bridge token blanked, the newest crash dump only when
@@ -277,13 +279,14 @@ like the Mac, in the same accent.
   0x0E, reads 0x42, plays each waveform, logs Raw Input and hook events with QPC timestamps and reports
   how often the hook saw an event before its `WM_INPUT` (the attribution fallback rate).
 - CI (GitHub Actions `windows-latest`) builds x64 and ARM64 with `/W4 /WX`, runs the unit tests on x64,
-  and packages zips on `win-v*` tags.
+  and packages zips and installers on `win-v*` tags.
 
 ## 6. Release and docs
 
 - Assets per release: `iXpat-<ver>-windows-x64.zip`, `iXpat-<ver>-windows-arm64.zip`,
-  `iXpat-Setup-<ver>-x64.exe` (Inno Setup, per-user install into `%LOCALAPPDATA%\Programs\iXpat`, optional
-  start-at-login, no elevation). The executables and the installer are signed in CI with a publicly
+  `iXpat-Setup-<ver>-x64.exe`, `iXpat-Setup-<ver>-arm64.exe` (Inno Setup, one script built per
+  architecture, per-user install into `%LOCALAPPDATA%\Programs\iXpat`, optional start-at-login, no
+  elevation; the two share the AppId, so the ARM64 one replaces an x64 copy in place). The executables and the installer are signed in CI with a publicly
   trusted certificate (Azure Artifact Signing, through a federated credential bound to the release
   environment); the same publisher name is what the updater pins.
 - README: platform badges, Windows install/build sections, the Windows limitation, the corrected device

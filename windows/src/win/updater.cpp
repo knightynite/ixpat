@@ -120,6 +120,11 @@ struct Request {
 
 }  // namespace
 
+const char* installerArch() {
+    USHORT process = 0, native = 0;
+    return IsWow64Process2(GetCurrentProcess(), &process, &native) && native == IMAGE_FILE_MACHINE_ARM64 ? "arm64" : "x64";
+}
+
 std::int64_t unixNow() {
     return std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 }
@@ -239,7 +244,7 @@ bool Updater::check(bool manual) {
         if (httpsGet(L"api.github.com", L"/repos/knightynite/ixpat/releases?per_page=100", userAgent_.c_str(), body, res->error, &session_)) {
             if (nlohmann::json::parse(body, nullptr, false).is_array()) {
                 res->ok = true;
-                res->release = newestWindowsRelease(body);
+                res->release = newestWindowsRelease(body, installerArch());
             } else {
                 res->error = "GitHub answered with something that is not a release list.";
             }
@@ -264,13 +269,14 @@ void Updater::discardDownloads() {
 }
 
 bool Updater::install(const ReleaseInfo& r) {
-    if (!r.installer || !isWindowsReleaseTag(r.tag)) return false;
+    if (!r.installer || !isWindowsReleaseTag(r.tag) || !isInstallerArch(r.arch)) return false;
     if (!begin()) return false;
     thread_ = std::thread([this, r] {
         auto* res = new InstallResult;
         res->version = r.version;
-        // The tag passed isWindowsReleaseTag (digits and dots after the prefix), so the widening is exact.
-        const std::string name = installerAssetName(r.version);
+        // The tag passed isWindowsReleaseTag (digits and dots after the prefix) and the arch is one of two
+        // fixed names, so the widening is exact.
+        const std::string name = installerAssetName(r.version, r.arch);
         const std::wstring wname(name.begin(), name.end());
         const std::wstring path = L"/knightynite/ixpat/releases/download/" + std::wstring(r.tag.begin(), r.tag.end()) + L"/" + wname;
         const std::filesystem::path dir = appDataDir() / L"updates";

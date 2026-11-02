@@ -1,12 +1,25 @@
-; iXpat for Windows: per-user installer (Inno Setup 6). Built by CI on win-v* tags:
-;   ISCC.exe /DMyAppVersion=0.2.14 /DSourceDir=<dir with iXpat.exe> /O<out dir> windows\installer\ixpat.iss
+; iXpat for Windows: per-user installer (Inno Setup 6). Built by CI on win-v* tags, once per architecture:
+;   ISCC.exe /DMyAppVersion=0.2.14 /DMyArch=x64 /DSourceDir=<dir with iXpat.exe> /O<out dir> windows\installer\ixpat.iss
 ; No elevation, no services, no drivers: files under %LOCALAPPDATA%\Programs\iXpat, settings under %LOCALAPPDATA%\iXpat.
+; Both architectures share the AppId and the folder, so the ARM64 installer replaces an x64 copy in place.
 
 #ifndef MyAppVersion
   #define MyAppVersion "0.2.14"
 #endif
+#ifndef MyArch
+  #define MyArch "x64"
+#endif
+#if MyArch != "x64" && MyArch != "arm64"
+  #error MyArch must be x64 or arm64
+#endif
 #ifndef SourceDir
-  #define SourceDir "..\build\x64-release"
+  #define SourceDir "..\build\" + MyArch + "-release"
+#endif
+; x64compatible keeps the x64 installer usable on an ARM64 PC (it runs emulated there); arm64 is ARM64 only.
+#if MyArch == "arm64"
+  #define MyArchitectures "arm64"
+#else
+  #define MyArchitectures "x64compatible"
 #endif
 #define MyAppName "iXpat"
 #define MyAppPublisher "AL Najafi"
@@ -27,9 +40,9 @@ DefaultDirName={localappdata}\Programs\{#MyAppName}
 DisableProgramGroupPage=yes
 DisableDirPage=auto
 PrivilegesRequired=lowest
-OutputBaseFilename=iXpat-Setup-{#MyAppVersion}-x64
-ArchitecturesAllowed=x64compatible
-ArchitecturesInstallIn64BitMode=x64compatible
+OutputBaseFilename=iXpat-Setup-{#MyAppVersion}-{#MyArch}
+ArchitecturesAllowed={#MyArchitectures}
+ArchitecturesInstallIn64BitMode={#MyArchitectures}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern

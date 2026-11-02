@@ -1,7 +1,7 @@
 # iXpat for Windows
 
 The Windows port lives in [`windows/`](../windows/) and ships as `win-vX.Y.Z` releases: a zip for
-x64 and one for ARM64, and a per-user installer for x64, all signed. The spec is
+x64 and one for ARM64, and a per-user installer for each, all signed. The spec is
 [`windows/docs/design.md`](../windows/docs/design.md); what the mouse exposes on Windows, measured,
 is [`windows/docs/measurements-2026-10.md`](../windows/docs/measurements-2026-10.md).
 
@@ -18,7 +18,7 @@ is [`windows/docs/measurements-2026-10.md`](../windows/docs/measurements-2026-10
 | Pointer settings for this mouse only | yes | Applied while the Surface Mouse drives the pointer, restored when another device does. |
 | Plugin bridge | yes | Same loopback HTTP API and token. |
 | Settings window | yes | A Windows 11 app: Mica, a navigation pane with the live mouse, settings cards, the Fluent controls, Segoe UI Variable, the Windows accent; light/dark, per-monitor DPI; keyboard navigation. |
-| Updates | yes | Asks GitHub daily for a newer `win-v` release. An installed x64 copy downloads the installer, verifies its Authenticode signature against the publisher's name and installs it; zip copies open the release page. |
+| Updates | yes | Asks GitHub daily for a newer `win-v` release. An installed copy downloads the installer for the PC's architecture (ARM64 PCs get the native build, an x64 copy included), verifies its Authenticode signature against the publisher's name and installs it; zip copies open the release page. |
 | Start at login | yes | HKCU Run value. |
 | Crash reports | yes | A crash writes a minidump beside the logs; the next launch offers to bundle it with the logs for an issue, and nothing leaves the PC unless the user attaches it. |
 | Elevated windows | no | Windows does not deliver input aimed at UAC prompts and admin tools to a normal process; the mouse works there, nothing is shaped. |

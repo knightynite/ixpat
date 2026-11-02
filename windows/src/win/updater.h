@@ -62,6 +62,10 @@ bool httpsDownload(const wchar_t* host, const wchar_t* path, const wchar_t* user
 /// the release list. An install downloads the release's installer from GitHub's fixed URL, verifies its Authenticode
 /// signature against the pinned publisher (win/authenticode.h) and hands the file back; the app runs it as it quits.
 /// Nothing unsigned, and nothing signed by anyone else, is ever run.
+/// The installer this PC takes: "arm64" on an ARM64 PC whichever build runs (an x64 copy running there under
+/// emulation updates to the native build), "x64" anywhere else.
+const char* installerArch();
+
 class Updater {
 public:
     ~Updater();

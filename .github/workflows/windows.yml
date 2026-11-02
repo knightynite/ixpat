@@ -55,7 +55,7 @@ jobs:
             !windows/build/arm64-release/ixpat_tests.exe
           if-no-files-found: error
 
-  # win-v* tags: zips for both architectures plus the x64 installer, attached to a release that is never marked
+  # win-v* tags: a zip and an installer for each architecture, attached to a release that is never marked
   # "latest", so the Mac app's updater (which reads releases/latest) keeps resolving the macOS release.
   release:
     if: startsWith(github.ref, 'refs/tags/win-v')
@@ -112,7 +112,10 @@ jobs:
             Compress-Archive -Path "$src/*" -DestinationPath "out/iXpat-$ver-windows-$arch.zip" -Force
           }
           choco install innosetup --no-progress -y | Out-Null
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$ver" "/DSourceDir=$PWD\dist\ixpat-windows-x64" "/O$PWD\out" windows\installer\ixpat.iss
+          foreach ($arch in 'x64', 'arm64') {
+            & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$ver" "/DMyArch=$arch" "/DSourceDir=$PWD\dist\ixpat-windows-$arch" "/O$PWD\out" windows\installer\ixpat.iss
+            if ($LASTEXITCODE -ne 0) { throw "ISCC failed for $arch" }
+          }
           Get-ChildItem out
       - name: Sign the installer
         if: vars.AZURE_SIGNING == 'true'

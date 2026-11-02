@@ -14,6 +14,13 @@ constexpr DWORD kDwmSystemBackdropType = 38;
 constexpr DWORD kDwmBackdropMica = 2;  // DWMSBT_MAINWINDOW
 constexpr COLORREF kDwmColorDefault = 0xFFFFFFFF;
 constexpr UINT kDwmColorizationChanged = 0x0320;  // WM_DWMCOLORIZATIONCOLORCHANGED
+
+/// An ARM64 PC, whichever build runs on it (the x64 one runs there under emulation). On a Surface Pro 11 the pixels
+/// left transparent for Mica reached the screen black, the whole navigation pane with them, so the client stays opaque.
+bool armHost() {
+    USHORT process = 0, native = 0;
+    return IsWow64Process2(GetCurrentProcess(), &process, &native) && native == IMAGE_FILE_MACHINE_ARM64;
+}
 }  // namespace
 
 GfxWindow::~GfxWindow() {
@@ -65,11 +72,11 @@ bool GfxWindow::create(HINSTANCE inst, const wchar_t* className, const wchar_t* 
     clientH_ = c.bottom;
     // Mica: the frame extends over the whole client, so pixels left transparent show the backdrop.
     MARGINS whole{-1, -1, -1, -1};
-    const bool extended = SUCCEEDED(DwmExtendFrameIntoClientArea(hwnd_, &whole));
     const DWORD backdrop = kDwmBackdropMica;
-    micaOn_ = extended && SUCCEEDED(DwmSetWindowAttribute(hwnd_, kDwmSystemBackdropType, &backdrop, sizeof backdrop));
+    micaOn_ = !armHost() && SUCCEEDED(DwmExtendFrameIntoClientArea(hwnd_, &whole)) &&
+              SUCCEEDED(DwmSetWindowAttribute(hwnd_, kDwmSystemBackdropType, &backdrop, sizeof backdrop));
     if (!micaOn_) {
-        // Either call declined (Windows 10, or DWM saying no): back to an ordinary frame and an opaque client.
+        // An ARM64 PC, or a call declined (Windows 10, or DWM saying no): an ordinary frame and an opaque client.
         MARGINS none{};
         DwmExtendFrameIntoClientArea(hwnd_, &none);
         const DWORD noBackdrop = 1;  // DWMSBT_NONE

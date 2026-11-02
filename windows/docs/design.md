@@ -204,9 +204,10 @@ Exactly the split the Mac app has (IOHID reports vs. the CGEvent tap):
 
 Direct2D 1.1 + DirectWrite on a per-monitor-DPI-v2 window with the Windows 11 shell: Mica through the frame and
 the client (the frame is extended over the client, the target paints with per-pixel alpha, the solid base is the
-fallback without Mica), the system title bar in the theme's tone. `Palette` holds the Fluent tokens, named after
-the WinUI resources they stand in for; the accent is Windows' own from the Explorer accent ramp (light 2 on dark,
-dark 1 on light) unless `settings.accentHex` names one; theme follows `settings.theme` (system via
+fallback without Mica, and always on an ARM64 PC, x64 build included: there the transparent pixels reached the
+screen black on a Surface Pro 11), the system title bar in the theme's tone. `Palette` holds the Fluent tokens,
+named after the WinUI resources they stand in for; the accent is Windows' own from the Explorer accent ramp
+(light 2 on dark, dark 1 on light) unless `settings.accentHex` names one; theme follows `settings.theme` (system via
 `AppsUseLightTheme`, refreshed on `WM_SETTINGCHANGE` and the DWM colorization message). Controls are drawn, not
 native, and are the Fluent ones: toggle, slider, selector bar, combo box with its flyout, number box, button, icon
 button, check box, list row, navigation row; the text field is a themed native `EDIT` child (layered, so it stays

@@ -24,7 +24,8 @@ struct UiInput {
 /// A framed Direct2D window with the Windows 11 shell: Mica through the frame and the client area (the client is
 /// painted with per-pixel alpha, so the backdrop shows wherever nothing opaque is drawn), the system title bar in
 /// the theme's tone, per-monitor DPI, paint on invalidate, input events handed to `build`, a 60 Hz animation timer
-/// while `animate(true)`. Without Mica (Windows 10, or DWM saying no) the client is cleared to the base colour.
+/// while `animate(true)`. Without Mica (Windows 10, DWM saying no, or an ARM64 PC) the client is cleared to the base
+/// colour.
 class GfxWindow {
 public:
     GfxWindow() = default;

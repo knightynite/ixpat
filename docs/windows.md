@@ -26,6 +26,20 @@ is [`windows/docs/measurements-2026-10.md`](../windows/docs/measurements-2026-10
 
 ## Changes by release
 
+### win-v0.2.15
+
+* Fixes a black navigation pane in the settings window on ARM64 PCs such as the Surface Pro 11: the window
+  is drawn opaque there instead of over Mica, whose transparent pixels some ARM64 graphics drivers composite
+  as black. x64 PCs keep Mica.
+* Adds a native ARM64 installer, `iXpat-Setup-<version>-arm64.exe`, next to the x64 one. It replaces an x64
+  install in place and keeps the settings.
+* The updater picks the installer for the PC rather than for the running build, so an x64 copy on an ARM64
+  PC moves to the native build at its next update. Installed ARM64 copies now update themselves too.
+* The download button on the project page offers the x64 and the ARM64 installer.
+
+Validation: 191 automated tests (1,818 assertions) on x64 and natively on ARM64; both installers built,
+installed, upgraded x64 to ARM64 in place and uninstalled cleanly on Windows 11 ARM64.
+
 ### win-v0.2.14
 
 * Fixes action-button recovery when a keyboard hook misses the mouse's modifiers: a replacement hook can

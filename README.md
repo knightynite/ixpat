@@ -55,10 +55,10 @@ Needs Xcode 16+ and macOS 14+.
 ### Windows
 
 Windows builds are separate releases tagged `win-vX.Y.Z` (never marked "latest", so the
-Mac updater ignores them). From the [Windows release page](https://github.com/knightynite/ixpat/releases/tag/win-v0.2.14):
+Mac updater ignores them). From the [Windows release page](https://github.com/knightynite/ixpat/releases/tag/win-v0.2.15):
 
-* [`iXpat-Setup-0.2.14-x64.exe`](https://github.com/knightynite/ixpat/releases/download/win-v0.2.14/iXpat-Setup-0.2.14-x64.exe): per-user installer, no elevation, optional start at login.
-* [`iXpat-0.2.14-windows-x64.zip`](https://github.com/knightynite/ixpat/releases/download/win-v0.2.14/iXpat-0.2.14-windows-x64.zip) / [`-arm64.zip`](https://github.com/knightynite/ixpat/releases/download/win-v0.2.14/iXpat-0.2.14-windows-arm64.zip): a single `iXpat.exe`, run it from anywhere.
+* [`iXpat-Setup-0.2.15-x64.exe`](https://github.com/knightynite/ixpat/releases/download/win-v0.2.15/iXpat-Setup-0.2.15-x64.exe) / [`-arm64.exe`](https://github.com/knightynite/ixpat/releases/download/win-v0.2.15/iXpat-Setup-0.2.15-arm64.exe): per-user installer for x64 PCs or ARM64 PCs (Surface Pro X, Surface Pro 11, Snapdragon laptops), no elevation, optional start at login.
+* [`iXpat-0.2.15-windows-x64.zip`](https://github.com/knightynite/ixpat/releases/download/win-v0.2.15/iXpat-0.2.15-windows-x64.zip) / [`-arm64.zip`](https://github.com/knightynite/ixpat/releases/download/win-v0.2.15/iXpat-0.2.15-windows-arm64.zip): a single `iXpat.exe`, run it from anywhere.
 
 The executables and the installer are signed (publisher: AL Najafi).
 Build from source with Visual Studio 2022 Build Tools (C++ workload):
